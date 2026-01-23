@@ -8,11 +8,14 @@
 #include "cached_time_machine.h"
 #include "temporal_coefficient_projector_interface.h"
 #include "temporal_coefficient_projector.h"
+#include "temporal_coefficient_projector_3.h"
 #include "matrix_evaluator_interface.h"
 #include "time_machine_optimizer_factory.h"
+#include "time_machine_optimizer_2_factory.h"
 #include "the_matrix_interface.h"
 #include "float_def.h"
 #include "tensor_model.h"
+#include "matrix_evaluator_factory.h"
 
 namespace matrix_optimizer
 {
@@ -50,14 +53,18 @@ namespace matrix_optimizer
                 return stdx::to_castable_vector_initializer(std::move(coeff_vec));
             }
 
-            void set_cache_map_capacity(size_t sz)
+            auto set_cache_map_capacity(size_t sz) -> TemporalCoefficientOptimizer&
             {
                 this->cache_map_capacity = sz;
+
+                return *this;
             }
 
-            void set_time_machine_cache_map_capacity(size_t sz)
+            auto set_time_machine_cache_map_capacity(size_t sz) -> TemporalCoefficientOptimizer&
             {
                 this->time_machine_cache_map_capacity = sz;
+
+                return *this;
             }
 
         private:
@@ -74,7 +81,7 @@ namespace matrix_optimizer
 
                     CachedMatrix(std::shared_ptr<the_matrix::MatrixInterface> matrix_base,
                                  size_t cache_map_capacity): cache_base(matrix_base, cache_map_capacity),
-                                                             matrix_base(std::move(matrix_base)),
+                                                             matrix_base(matrix_base),
                                                              cache_map_capacity(cache_map_capacity){}
 
                     auto project(const std::vector<std::shared_ptr<tensor_model::Matrix>>& matrix_vec) -> std::vector<std::shared_ptr<tensor_model::Matrix>>
@@ -111,9 +118,9 @@ namespace matrix_optimizer
 
                     SpecificMatrixTimeMachine(the_matrix::MatrixInterface * base_matrix,
                                               temporal_coefficient_projector::TemporalCoefficientProjectorInterface * coefficient_projector,
-                                              matrix_evaluator::MatrixEvaluatorInterface * product_evaluator): base_matrix(std::move(base_matrix)),
-                                                                                                               coefficient_projector(std::move(coefficient_projector)),
-                                                                                                               product_evaluator(std::move(product_evaluator)){}
+                                              matrix_evaluator::MatrixEvaluatorInterface * product_evaluator): base_matrix(base_matrix),
+                                                                                                               coefficient_projector(coefficient_projector),
+                                                                                                               product_evaluator(product_evaluator){}
 
                     auto f(std_float_t t) -> tm_float_t
                     {
@@ -130,8 +137,10 @@ namespace matrix_optimizer
         private:
 
             TemporalCoefficientOptimizer optimizer;
+
             size_t optimization_epoch_sz;
             size_t optimization_step_sz;
+            size_t space_iteration_sz;
             std::optional<std::vector<bool>> activation_coeff_vec;
 
             size_t product_evaluator_float_byte_width;
@@ -143,6 +152,7 @@ namespace matrix_optimizer
             static inline constexpr size_t DEFAULT_TIME_MACHINE_CACHE_MAP_CAPACITY  = 1024u;
             static inline constexpr size_t DEFAULT_OPTIMIZATION_EPOCH_SZ            = 8u;
             static inline constexpr size_t DEFAULT_OPTIMIZATION_STEP_SZ             = 8u;
+            static inline constexpr size_t DEFAULT_SPACE_ITERATION_SZ               = 32u;
             static inline constexpr size_t DEFAULT_FLOAT_BYTE_WIDTH                 = float_def::STD_FLOAT_TYPE_BYTE_WIDTH;
 
         public:
@@ -150,22 +160,28 @@ namespace matrix_optimizer
             BruteForceMatrixOptimizer(): optimizer(DEFAULT_CACHE_MAP_CAPACITY, DEFAULT_TIME_MACHINE_CACHE_MAP_CAPACITY),
                                          optimization_epoch_sz(DEFAULT_OPTIMIZATION_EPOCH_SZ),
                                          optimization_step_sz(DEFAULT_OPTIMIZATION_STEP_SZ),
+                                         space_iteration_sz(DEFAULT_SPACE_ITERATION_SZ),
                                          activation_coeff_vec(std::nullopt),
                                          product_evaluator_float_byte_width(DEFAULT_FLOAT_BYTE_WIDTH),
+                                         product_evaluator_has_double_bag(false),
                                          coefficient_projector_float_byte_width(DEFAULT_FLOAT_BYTE_WIDTH),
                                          time_machine_optimizer_float_byte_width(DEFAULT_FLOAT_BYTE_WIDTH){}
 
-            void set_cache_map_capacity(size_t sz)
+            auto set_cache_map_capacity(size_t sz) -> BruteForceMatrixOptimizer&
             {
                 this->optimizer.set_cache_map_capacity(sz);
+
+                return *this;
             }
 
-            void set_time_machine_cache_map_capacity(size_t sz)
+            auto set_time_machine_cache_map_capacity(size_t sz) -> BruteForceMatrixOptimizer&
             {
                 this->optimizer.set_time_machine_cache_map_capacity(sz);
+
+                return *this;
             }
 
-            void set_optimization_epoch_size(size_t sz)
+            auto set_optimization_epoch_size(size_t sz) -> BruteForceMatrixOptimizer&
             {
                 if (sz == 0u)
                 {
@@ -173,9 +189,11 @@ namespace matrix_optimizer
                 }
 
                 this->optimization_epoch_sz = sz;
+
+                return *this;
             }
 
-            void set_optimization_step_size(size_t sz)
+            auto set_optimization_step_size(size_t sz) -> BruteForceMatrixOptimizer&
             {
                 if (sz == 0u)
                 {
@@ -183,41 +201,67 @@ namespace matrix_optimizer
                 }
 
                 this->optimization_step_sz = sz;
+
+                return *this;
             }
 
-            void set_product_evaluator_float_byte_width(size_t sz)
+            auto set_space_iteration_size(size_t sz) -> BruteForceMatrixOptimizer&
+            {
+                if (sz == 0u)
+                {
+                    throw std::runtime_error("bad space iteration size");
+                }
+
+                this->space_iteration_sz = sz;
+
+                return *this;
+            }
+
+            auto set_product_evaluator_float_byte_width(size_t sz) -> BruteForceMatrixOptimizer&
             {
                 float_def::get_float_type_by_byte_width([](auto&&...){}, sz);
                 this->product_evaluator_float_byte_width = sz;
+
+                return *this;
             }
 
-            void set_product_evaluator_double_bag_status(bool flag)
+            auto set_product_evaluator_double_bag_status(bool flag) -> BruteForceMatrixOptimizer&
             {
                 this->product_evaluator_has_double_bag = flag;
+
+                return *this;
             }
 
-            void set_coefficient_projector_float_byte_width(size_t sz)
+            auto set_coefficient_projector_float_byte_width(size_t sz) -> BruteForceMatrixOptimizer&
             {
                 float_def::get_float_type_by_byte_width([](auto&&...){}, sz);
                 this->coefficient_projector_float_byte_width = sz;
+
+                return *this;
             }
 
-            void set_time_machine_optimizer_float_byte_width(size_t sz)
+            auto set_time_machine_optimizer_float_byte_width(size_t sz) -> BruteForceMatrixOptimizer&
             {
                 float_def::get_float_type_by_byte_width([](auto&&...){}, sz);
                 this->time_machine_optimizer_float_byte_width = sz;
+
+                return *this;
             }
 
-            void set_activation_vector(std::optional<std::vector<bool>> vec)
+            auto set_activation_vector(std::optional<std::vector<bool>> vec) -> BruteForceMatrixOptimizer&
             {
                 this->activation_coeff_vec = std::move(vec);
+
+                return *this;
             }
 
             auto optimize(the_matrix::MatrixInterface& matrix,
                           const std::vector<std::pair<std::shared_ptr<tensor_model::Matrix>, std::shared_ptr<tensor_model::Matrix>>>& gold_std) -> std::shared_ptr<the_matrix::MatrixInterface>
             {
-                std::unique_ptr<matrix_evaluator::MatrixEvaluatorInterface> product_evaluator   = this->get_product_evaluator(gold_std);
-                std::shared_ptr<the_matrix::MatrixInterface> best_matrix                        = matrix.clone();
+                std::unique_ptr<temporal_coefficient_projector_3::TemporalCoefficientProjectorGeneratorInterface> projector_gen = this->get_projector_generator(matrix.get_coefficient_vector().size());
+                std::unique_ptr<global_optimality_approximator::TensorFactoryInterface> time_machine_optimizer_factory          = this->get_time_machine_optimizer_factory();
+                std::unique_ptr<matrix_evaluator::MatrixEvaluatorInterface> product_evaluator                                   = this->get_product_evaluator(gold_std);
+                std::shared_ptr<the_matrix::MatrixInterface> best_matrix                                                        = matrix.clone();
 
                 for (size_t i = 0u; i < this->optimization_epoch_sz; ++i)
                 {
@@ -225,28 +269,37 @@ namespace matrix_optimizer
 
                     for (size_t j = 0u; j < this->optimization_step_sz; ++j)
                     {
-                        std::unique_ptr<temporal_coefficient_projector::TemporalCoefficientProjectorInterface> coefficient_projector    = this->get_random_coefficient_projector(*tmp_matrix);
-                        std::unique_ptr<global_optimality_approximator::TimeMachineOptimizerInterface> time_machine_optimizer           = this->get_time_machine();
+                        std::unique_ptr<temporal_coefficient_projector_3::TemporalCoefficientProjectorContainerInterface> projector_container   = projector_gen->get();
+                        std::shared_ptr<temporal_coefficient_projector::TemporalCoefficientProjectorInterface> coefficient_projector            = this->get_projector_from(best_matrix->get_coefficient_vector(), projector_container->get());
+                        double projection_score                                                                                                 = 0;
 
-                        try
+                        for (size_t z = 0u; z < this->space_iteration_sz; ++z)
                         {
-                            std::vector<tensor_std_float_t> new_coefficient_vec = this->optimizer.optimize(*tmp_matrix,
-                                                                                                           *coefficient_projector,
-                                                                                                           *product_evaluator,
-                                                                                                           *time_machine_optimizer);
+                            std::shared_ptr<global_optimality_approximator::TimeMachineOptimizerInterface> time_machine_optimizer = time_machine_optimizer_factory->get()->get();
 
-                            std::shared_ptr<the_matrix::MatrixInterface> test_matrix = tmp_matrix->clone();
-                            test_matrix->set_coefficient_vector(new_coefficient_vec);
-
-                            if (stdx::nan_cmp(product_evaluator->get_deviation(*test_matrix), product_evaluator->get_deviation(*tmp_matrix)) < 0)
+                            try
                             {
-                                tmp_matrix = test_matrix;
+                                std::vector<tensor_std_float_t> new_coefficient_vec         = this->optimizer.optimize(*tmp_matrix,
+                                                                                                                       *coefficient_projector,
+                                                                                                                       *product_evaluator,
+                                                                                                                       *time_machine_optimizer);
+
+                                std::shared_ptr<the_matrix::MatrixInterface> test_matrix    = tmp_matrix->clone();
+                                test_matrix->set_coefficient_vector(new_coefficient_vec);
+
+                                if (stdx::nan_cmp(product_evaluator->get_deviation(*test_matrix), product_evaluator->get_deviation(*tmp_matrix)) < 0)
+                                {
+                                    tmp_matrix          = test_matrix;
+                                    projection_score    = 1;
+                                }
+                            }
+                            catch (...)
+                            {
+                                continue;
                             }
                         }
-                        catch (...)
-                        {
-                            continue;
-                        }
+
+                        projector_container->feedback(projection_score);
                     }
 
                     if (stdx::nan_cmp(product_evaluator->get_deviation(*tmp_matrix), product_evaluator->get_deviation(*best_matrix)) < 0)
@@ -260,18 +313,57 @@ namespace matrix_optimizer
 
         private:
 
-            auto get_time_machine() -> std::unique_ptr<global_optimality_approximator::TimeMachineOptimizerInterface>
+            auto get_projector_from(const std::vector<tensor_model::tensor_std_float_t>& origin,
+                                    const std::shared_ptr<temporal_coefficient_projector::TemporalCoefficientProjectorInterface>& projectile) -> std::unique_ptr<temporal_coefficient_projector::TemporalCoefficientProjectorInterface>
             {
-                std::unique_ptr<global_optimality_approximator::TimeMachineOptimizerInterface> time_machine;
+                if (projectile == nullptr)
+                {
+                    throw std::invalid_argument("bad projectile, null");
+                }
+
+                std::unique_ptr<temporal_coefficient_projector::TemporalCoefficientProjectorInterface> point_projector      = std::make_unique<temporal_coefficient_projector::PointCoefficientProjector>(stdx::to_castable_vector_initializer(origin));
+                std::unique_ptr<temporal_coefficient_projector::TemporalCoefficientProjectorInterface> up_projectile        = std::make_unique<temporal_coefficient_projector::SharedPointerProjector>(projectile);
+                std::unique_ptr<temporal_coefficient_projector::TemporalCoefficientProjectorInterface> chained_projector    = std::make_unique<temporal_coefficient_projector::ChainedTemporalCoefficientProjector>(stdx::to_variadic_vector_initializer(std::move(up_projectile), std::move(point_projector)));
+                std::unique_ptr<temporal_coefficient_projector::TemporalCoefficientProjectorInterface> final_projector;
+
+                if (this->activation_coeff_vec.has_value())
+                {
+                    final_projector = std::make_unique<temporal_coefficient_projector::ActivationProjector>(std::move(chained_projector), this->activation_coeff_vec.value());
+                }
+                else
+                {
+                    final_projector = std::move(chained_projector);
+                }
+
+                return final_projector;
+            }
+
+            auto get_projector_generator(size_t projection_sz) -> std::unique_ptr<temporal_coefficient_projector_3::TemporalCoefficientProjectorGeneratorInterface>
+            {
+                std::unique_ptr<temporal_coefficient_projector_3::TemporalCoefficientProjectorGeneratorInterface> projector_gen;
 
                 auto callback = [&]<class T>(T)
                 {
-                    time_machine = global_optimality_approximator::TimeMachineOptimizerFactory::get_random_taylor_time_machine_optimizer<T>();
+                    projector_gen = temporal_coefficient_projector_3::GeneratorFactory::get_best_generator(projection_sz, 8u);
+                };
+
+                float_def::get_float_type_by_byte_width(callback, this->coefficient_projector_float_byte_width);
+
+                return projector_gen;
+            }
+
+            auto get_time_machine_optimizer_factory() -> std::unique_ptr<global_optimality_approximator::TensorFactoryInterface>
+            {
+                std::unique_ptr<global_optimality_approximator::TensorFactoryInterface> time_machine_optimizer_factory;
+
+                auto callback = [&]<class T>(T)
+                {
+                    time_machine_optimizer_factory = global_optimality_approximator::TensorFactoryFactory::get_best_factory<T>();
                 };
 
                 float_def::get_float_type_by_byte_width(callback, this->time_machine_optimizer_float_byte_width);
 
-                return time_machine;
+                return time_machine_optimizer_factory;
             }
 
             auto get_product_evaluator(const std::vector<std::pair<std::shared_ptr<tensor_model::Matrix>, std::shared_ptr<tensor_model::Matrix>>>& gold_std) -> std::unique_ptr<matrix_evaluator::MatrixEvaluatorInterface>
@@ -293,30 +385,6 @@ namespace matrix_optimizer
                 {
                     return product_evaluator;
                 }
-            }
-
-            auto get_random_coefficient_projector(the_matrix::MatrixInterface& matrix) -> std::unique_ptr<temporal_coefficient_projector::TemporalCoefficientProjectorInterface>
-            {
-                std::unique_ptr<temporal_coefficient_projector::TemporalCoefficientProjectorInterface> result;
-
-                auto callback = [&]<class T>(T)
-                {
-                    std::vector<tensor_std_float_t> coeff_vec = matrix.get_coefficient_vector();
-
-                    std::unique_ptr<temporal_coefficient_projector::TemporalCoefficientProjectorInterface> point_projector  = temporal_coefficient_projector::CoefficientProjectorFactory::get_point_coefficient_projector(stdx::to_castable_vector_initializer(coeff_vec));
-                    std::unique_ptr<temporal_coefficient_projector::TemporalCoefficientProjectorInterface> random_projector = temporal_coefficient_projector::CoefficientProjectorFactory::get_random_coefficient_projector(coeff_vec.size());
-
-                    if (this->activation_coeff_vec.has_value())
-                    {
-                        random_projector = temporal_coefficient_projector::CoefficientProjectorFactory::get_activation_projector(std::move(random_projector), this->activation_coeff_vec.value());
-                    }
-
-                    result = temporal_coefficient_projector::CoefficientProjectorFactory::get_chained_coefficient_projector(stdx::to_variadic_vector_initializer(std::move(point_projector), std::move(random_projector)));
-                };
-
-                float_def::get_float_type_by_byte_width(callback, this->coefficient_projector_float_byte_width);
-
-                return result;
             }
     };
 }

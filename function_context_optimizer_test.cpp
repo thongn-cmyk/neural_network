@@ -53,13 +53,13 @@ class MagicMachine2: public virtual function_context_optimizer::StatisticalMachi
 {
     private:
 
-        std::unique_ptr<score_context_optimizer::IterativeContextGeneratorInterface> base;
+        std::unique_ptr<score_context_optimizer::IterationContextGeneratorInterface> base;
 
     public:
 
-        MagicMachine2(std::unique_ptr<score_context_optimizer::IterativeContextGeneratorInterface> base): base(std::move(base)){}
+        MagicMachine2(std::unique_ptr<score_context_optimizer::IterationContextGeneratorInterface> base): base(std::move(base)){}
 
-        auto get() -> const std::unique_ptr<score_context_optimizer::IterativeContextGeneratorInterface>&
+        auto get() -> const std::unique_ptr<score_context_optimizer::IterationContextGeneratorInterface>&
         {
             return this->base;
         }

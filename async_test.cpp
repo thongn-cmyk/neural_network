@@ -47,7 +47,7 @@ void test_one_async()
         expected_total += e;
     };
 
-    async_x::sequential_parallel_group_launch_2(random_vec.begin(), random_vec.end(), resolutor);
+    async_x::sequential_parallel_group_launch_2(random_vec.begin(), random_vec.end(), resolutor, group_count);
     std::for_each(random_vec.begin(), random_vec.end(), resolutor2);
 
     if (total.load(std::memory_order_relaxed) != expected_total)

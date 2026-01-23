@@ -29,7 +29,7 @@ class SomeEquation: public virtual time_machine::TimeMachineInterface
                 return stdx::generic_nan();
             }
 
-            if (x > 0.123456 && x < 0.123457)
+            if (x > 0.1234567 && x < 0.1234568)
             {
                 return x;
             }
@@ -40,7 +40,7 @@ class SomeEquation: public virtual time_machine::TimeMachineInterface
 
 void test_some_equation()
 {
-    const size_t TEST_SZ    = size_t{1} << 20;
+    const size_t TEST_SZ    = size_t{1} << 24;
 
     std::optional<double> x = std::nullopt;
     std::optional<double> y = std::nullopt;
@@ -88,7 +88,7 @@ void test_some_equation()
 
 void test_some_equation_2()
 {
-    const size_t TEST_SZ    = size_t{1} << 20;
+    const size_t TEST_SZ    = size_t{1} << 24;
 
     std::optional<double> x = std::nullopt;
     std::optional<double> y = std::nullopt;

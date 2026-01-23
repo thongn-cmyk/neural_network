@@ -706,7 +706,8 @@ namespace temporal_coefficient_projector_2
                     size_t first            = std::min(tentative_first, static_cast<size_t>(coefficient_vec.size()));
                     size_t last             = std::min(tentative_last, static_cast<size_t>(coefficient_vec.size()));
 
-                    coefficient_2d_vec.push_back(std::vector<PromotedFloatType>(std::next(coefficient_vec.begin(), first), std::next(coefficient_vec.begin(), last)));
+                    coefficient_2d_vec.push_back(std::vector<PromotedFloatType>(std::next(coefficient_vec.begin(), first),
+                                                                                std::next(coefficient_vec.begin(), last)));
                 }
 
                 std::unique_ptr<temporal_coefficient_projector::TemporalCoefficientProjectorInterface> projector = std::make_unique<temporal_coefficient_projector::TaylorSeriesProjector<PromotedFloatType>>(std::move(coefficient_2d_vec));

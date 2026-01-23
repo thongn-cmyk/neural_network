@@ -256,7 +256,7 @@ auto run_one_root_test() -> double
     std::optional<double> optimized_root_x      = std::nullopt;
     std::optional<double> optimized_root_y      = std::nullopt;
 
-    static std::unique_ptr<score_context_optimizer::IterativeContextGeneratorInterface> tensor_factory = score_context_optimizer::ContextOptimizerFactory::get_best_binary_progress_context_optimizer(std::make_unique<MagicMachineFactory>());
+    static std::unique_ptr<score_context_optimizer::IterationContextGeneratorInterface> tensor_factory = score_context_optimizer::ContextOptimizerFactory::get_best_binary_progress_context_optimizer(std::make_unique<MagicMachineFactory>());
 
     RootEquation root_eqn(root_vec);
     
@@ -357,7 +357,7 @@ auto run_one_root_offset_test() -> double
     OffsetRootEquation offset_root_eqn(other_root_vec, offset);
     MultiplicativeRootEquation root_eqn(org_root_eqn, offset_root_eqn);
 
-    static std::unique_ptr<score_context_optimizer::IterativeContextGeneratorInterface> tensor_factory = score_context_optimizer::ContextOptimizerFactory::get_best_binary_progress_context_optimizer(std::make_unique<MagicMachineFactory>());
+    static std::unique_ptr<score_context_optimizer::IterationContextGeneratorInterface> tensor_factory = score_context_optimizer::ContextOptimizerFactory::get_best_binary_progress_context_optimizer(std::make_unique<MagicMachineFactory>());
     auto iteration_ctx = tensor_factory->get();
 
     for (size_t i = 0u; i < TEST_SZ; ++i)

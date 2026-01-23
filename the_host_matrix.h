@@ -125,7 +125,7 @@ namespace the_host_matrix
 
                 if (this->project_concurrent_sz.has_value())
                 {
-                    async_x::sequential_parallel_group_launch(enumerated_matrix_vec.begin(), enumerated_matrix_vec.end(), par_func, this->project_concurrent_sz.value());
+                    async_x::sequential_parallel_group_launch_2(enumerated_matrix_vec.begin(), enumerated_matrix_vec.end(), par_func, this->project_concurrent_sz.value());
                 }
                 else
                 {

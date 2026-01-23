@@ -51,20 +51,20 @@ namespace score_context_optimizer
             virtual auto get_statistical_machine() -> std::shared_ptr<StatisticalMachineInterface> = 0;
     };
 
-    class IterativeContextInterface
+    class IterationContextInterface
     {
         public:
 
-            virtual ~IterativeContextInterface() = default;
+            virtual ~IterationContextInterface() = default;
             virtual auto next() -> std::unique_ptr<ActionableResultInterface> = 0;
     };
 
-    class IterativeContextGeneratorInterface
+    class IterationContextGeneratorInterface
     {
         public:
 
-            virtual ~IterativeContextGeneratorInterface() = default;
-            virtual auto get() -> std::unique_ptr<IterativeContextInterface> = 0;
+            virtual ~IterationContextGeneratorInterface() = default;
+            virtual auto get() -> std::unique_ptr<IterationContextInterface> = 0;
     };
 
     class WindowCalculatorInterface
@@ -545,7 +545,7 @@ namespace score_context_optimizer
             }
     };
 
-    class WindowContextGenerator: public virtual IterativeContextGeneratorInterface
+    class WindowContextGenerator: public virtual IterationContextGeneratorInterface
     {
         private:
 
@@ -561,7 +561,7 @@ namespace score_context_optimizer
                                                                     context_window_generator(std::move(context_window_generator)),
                                                                     machine_arr_sz(machine_arr_sz){}
 
-            auto get() -> std::unique_ptr<IterativeContextInterface>
+            auto get() -> std::unique_ptr<IterationContextInterface>
             {
                 return std::make_unique<WindowContext>(this->context_window_generator->get(this->machine_arr_sz),
                                                        this->machine_arr);
@@ -611,7 +611,7 @@ namespace score_context_optimizer
                     }
             };
 
-            class WindowContext: public virtual IterativeContextInterface
+            class WindowContext: public virtual IterationContextInterface
             {
                 private:
 
@@ -633,25 +633,25 @@ namespace score_context_optimizer
             };
     };
 
-    class WarmWindowContextGenerator: public virtual IterativeContextGeneratorInterface
+    class WarmWindowContextGenerator: public virtual IterationContextGeneratorInterface
     {
         private:
 
-            std::unique_ptr<IterativeContextGeneratorInterface> lhs;
-            std::unique_ptr<IterativeContextGeneratorInterface> rhs;
+            std::unique_ptr<IterationContextGeneratorInterface> lhs;
+            std::unique_ptr<IterationContextGeneratorInterface> rhs;
             size_t warmup_window;
 
         public:
 
-            WarmWindowContextGenerator(std::unique_ptr<IterativeContextGeneratorInterface> lhs,
-                                       std::unique_ptr<IterativeContextGeneratorInterface> rhs,
+            WarmWindowContextGenerator(std::unique_ptr<IterationContextGeneratorInterface> lhs,
+                                       std::unique_ptr<IterationContextGeneratorInterface> rhs,
                                        size_t warmup_window) noexcept: lhs(std::move(lhs)),
                                                                        rhs(std::move(rhs)),
                                                                        warmup_window(warmup_window){}
 
-            auto get() -> std::unique_ptr<IterativeContextInterface>
+            auto get() -> std::unique_ptr<IterationContextInterface>
             {
-                return std::make_unique<InternalIterativeContext>
+                return std::make_unique<InternalIterationContext>
                 (
                     this->lhs->get(),
                     this->rhs->get(),
@@ -687,19 +687,19 @@ namespace score_context_optimizer
                     }
             };
 
-            class InternalIterativeContext: public virtual IterativeContextInterface
+            class InternalIterationContext: public virtual IterationContextInterface
             {
                 private:
 
-                    std::unique_ptr<IterativeContextInterface> first_runner;
-                    std::unique_ptr<IterativeContextInterface> second_runner;
+                    std::unique_ptr<IterationContextInterface> first_runner;
+                    std::unique_ptr<IterationContextInterface> second_runner;
                     size_t warmup_window;
                     size_t warmup_counter;
 
                 public:
 
-                    InternalIterativeContext(std::unique_ptr<IterativeContextInterface> first_runner,
-                                             std::unique_ptr<IterativeContextInterface> second_runner,
+                    InternalIterationContext(std::unique_ptr<IterationContextInterface> first_runner,
+                                             std::unique_ptr<IterationContextInterface> second_runner,
                                              size_t warmup_window,
                                              size_t warmup_counter) noexcept: first_runner(std::move(first_runner)),
                                                                               second_runner(std::move(second_runner)),
@@ -732,7 +732,7 @@ namespace score_context_optimizer
     {
         public:
 
-            static auto get_average_binary_progress_context_optimizer(std::shared_ptr<StatisticalMachineGeneratorInterface> generator) -> std::unique_ptr<IterativeContextGeneratorInterface>
+            static auto get_average_binary_progress_context_optimizer(std::shared_ptr<StatisticalMachineGeneratorInterface> generator) -> std::unique_ptr<IterationContextGeneratorInterface>
             {
                 const size_t WINDOW_SZ      = BinaryBitsetWindowCalculatorGenerator::DEFAULT_WINDOW_SZ;
                 const size_t MACHINE_ARR_SZ = size_t{1} << 2;
@@ -759,7 +759,7 @@ namespace score_context_optimizer
                                                                 MACHINE_ARR_SZ);
             }
 
-            static auto get_shape_progress_context_optimizer(std::shared_ptr<StatisticalMachineGeneratorInterface> generator) -> std::unique_ptr<IterativeContextGeneratorInterface>
+            static auto get_shape_progress_context_optimizer(std::shared_ptr<StatisticalMachineGeneratorInterface> generator) -> std::unique_ptr<IterationContextGeneratorInterface>
             {
                 const size_t WINDOW_SZ      = SuffixWindowCalculatorGenerator::DEFAULT_WINDOW_SZ;
                 const size_t MACHINE_ARR_SZ = size_t{1} << 2;
@@ -786,7 +786,7 @@ namespace score_context_optimizer
                                                                 MACHINE_ARR_SZ);
             }
 
-            static auto get_long_average_binary_progress_context_optimizer(std::shared_ptr<StatisticalMachineGeneratorInterface> generator) -> std::unique_ptr<IterativeContextGeneratorInterface>
+            static auto get_long_average_binary_progress_context_optimizer(std::shared_ptr<StatisticalMachineGeneratorInterface> generator) -> std::unique_ptr<IterationContextGeneratorInterface>
             {
                 const size_t WINDOW_SZ      = size_t{1} << 2;
                 const size_t AGGREGATION_SZ = size_t{1} << 3;
@@ -818,7 +818,7 @@ namespace score_context_optimizer
                                                                 MACHINE_ARR_SZ);
             }
 
-            static auto get_long_shape_progress_context_optimizer(std::shared_ptr<StatisticalMachineGeneratorInterface> generator) -> std::unique_ptr<IterativeContextGeneratorInterface>
+            static auto get_long_shape_progress_context_optimizer(std::shared_ptr<StatisticalMachineGeneratorInterface> generator) -> std::unique_ptr<IterationContextGeneratorInterface>
             {
                 const size_t WINDOW_SZ      = size_t{1} << 2;
                 const size_t AGGREGATION_SZ = size_t{1} << 3;
@@ -850,7 +850,7 @@ namespace score_context_optimizer
                                                                 MACHINE_ARR_SZ);
             }
 
-            static auto get_best_binary_progress_context_optimizer(std::shared_ptr<StatisticalMachineGeneratorInterface> generator) -> std::unique_ptr<IterativeContextGeneratorInterface>
+            static auto get_best_binary_progress_context_optimizer(std::shared_ptr<StatisticalMachineGeneratorInterface> generator) -> std::unique_ptr<IterationContextGeneratorInterface>
             {
                 // return get_average_binary_progress_context_optimizer(generator);
                 return std::make_unique<WarmWindowContextGenerator>(get_average_binary_progress_context_optimizer(generator),
@@ -858,7 +858,7 @@ namespace score_context_optimizer
                                                                     32u);
             }
 
-            static auto get_best_shape_progress_context_optimizer(std::shared_ptr<StatisticalMachineGeneratorInterface> generator) -> std::unique_ptr<IterativeContextGeneratorInterface>
+            static auto get_best_shape_progress_context_optimizer(std::shared_ptr<StatisticalMachineGeneratorInterface> generator) -> std::unique_ptr<IterationContextGeneratorInterface>
             {
                 // return get_shape_progress_context_optimizer(generator);
                 return std::make_unique<WarmWindowContextGenerator>(get_shape_progress_context_optimizer(generator),

@@ -10,6 +10,7 @@
 #include "virtual_interval_coefficient_optimizer_tree.h"
 #include "temporal_coefficient_projector_2_interface.h"
 #include "temporal_coefficient_projector_3_interface.h"
+#include "temporal_coefficient_projector_2.h"
 #include "activation.h"
 #include "temporal_coefficient_projector.h"
 #include "float_def.h"
