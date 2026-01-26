@@ -219,7 +219,7 @@ namespace matrix_optimizer
 
             auto set_product_evaluator_float_byte_width(size_t sz) -> BruteForceMatrixOptimizer&
             {
-                float_def::get_float_type_by_byte_width([](auto&&...){}, sz);
+                float_def::check_float_type_by_byte_width(sz);
                 this->product_evaluator_float_byte_width = sz;
 
                 return *this;
@@ -234,7 +234,7 @@ namespace matrix_optimizer
 
             auto set_coefficient_projector_float_byte_width(size_t sz) -> BruteForceMatrixOptimizer&
             {
-                float_def::get_float_type_by_byte_width([](auto&&...){}, sz);
+                float_def::check_float_type_by_byte_width(sz);
                 this->coefficient_projector_float_byte_width = sz;
 
                 return *this;
@@ -242,7 +242,7 @@ namespace matrix_optimizer
 
             auto set_time_machine_optimizer_float_byte_width(size_t sz) -> BruteForceMatrixOptimizer&
             {
-                float_def::get_float_type_by_byte_width([](auto&&...){}, sz);
+                float_def::check_float_type_by_byte_width(sz);
                 this->time_machine_optimizer_float_byte_width = sz;
 
                 return *this;

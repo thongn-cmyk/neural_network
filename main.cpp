@@ -3,6 +3,7 @@
 #include "matrix_optimizer.h"
 #include "the_host_matrix.h"
 #include "matrix_encoder_decoder.h"
+#include "stock_solution.h"
 
 int main()
 {

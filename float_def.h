@@ -44,6 +44,11 @@ namespace float_def
         }
     }
 
+    void check_float_type_by_byte_width(size_t byte_width)
+    {
+        get_float_type_by_byte_width([](auto&& ...){}, byte_width);
+    }
+
     template <class ...Args>
     class Tag{};
 
