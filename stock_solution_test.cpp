@@ -64,14 +64,6 @@ auto randomize_featurization_option() -> uint8_t
         {
             return TemporalFeatureExtractor::FEATURIZATION_FIRST_ORDER_BINARY_SUFFIX;
         }
-        case 2:
-        {
-            return TemporalFeatureExtractor::FEATURIZATION_SECOND_ORDER_SUFFIX;
-        }
-        case 3:
-        {
-            return TemporalFeatureExtractor::FEATURIZATION_FIRST_ORDER_SUFFIX;
-        }
         default:
         {
             std::abort();

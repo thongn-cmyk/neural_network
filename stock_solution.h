@@ -12,6 +12,9 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <map>
+#include "the_matrix_interface.h"
+#include "tensor_matrix_operation.h"
+#include "matrix_optimizer_interface.h"
 
 namespace stock_solution
 {
@@ -19,11 +22,6 @@ namespace stock_solution
     //are you IN THE MONEY or OUT THE MONEY?
     //we'd attempt to do a 10-100 million extraction, then that's it. On the candlesticks!
     //we only need to be confident once in a while, that's how we do that, baby!
-
-    struct SolutionData
-    {
-
-    };
 
     class SolutionSerializer
     {
@@ -131,6 +129,20 @@ namespace stock_solution
             }
     };
 
+    struct FeatureAnalyticPoint
+    {
+        std::string feature_id;
+        std::chrono::time_point<std::chrono::system_clock> window_first;
+        std::chrono::time_point<std::chrono::system_clock> window_last;
+        bool bear_or_bull;
+        double confident_score;
+    };
+
+    struct FeatureAnalyticReport
+    {
+        std::vector<FeatureAnalyticPoint> analytic_point_vec;
+    };
+
     class TemporalFeatureExtractor
     {
         public:
@@ -143,10 +155,10 @@ namespace stock_solution
 
             static inline constexpr uint8_t FEATURIZATION_SECOND_ORDER_BINARY_SUFFIX    = 0u;
             static inline constexpr uint8_t FEATURIZATION_FIRST_ORDER_BINARY_SUFFIX     = 1u;
-            static inline constexpr uint8_t FEATURIZATION_SECOND_ORDER_SUFFIX           = 2u;
-            static inline constexpr uint8_t FEATURIZATION_FIRST_ORDER_SUFFIX            = 3u;
 
             static inline constexpr size_t MAX_DISCRETIZATION_SZ                        = 16u;
+
+            static inline constexpr uint8_t ANALYTIC_SQUARE_DIFFERENCE                  = 0u;
 
         private:
 
@@ -161,6 +173,7 @@ namespace stock_solution
             size_t focal_sz;
             size_t focal_discretization_sz;
             uint8_t featurization_option;
+            uint8_t analytic_option;
 
             std::vector<TickerData> ticker_data_vec;
             std::vector<std::string> feature_name_vec;
@@ -173,6 +186,7 @@ namespace stock_solution
                                         focal_sz(8),
                                         focal_discretization_sz(8),
                                         featurization_option(FEATURIZATION_FIRST_ORDER_BINARY_SUFFIX),
+                                        analytic_option(ANALYTIC_SQUARE_DIFFERENCE),
                                         ticker_data_vec(),
                                         feature_name_vec(),
                                         feature_map(){}
@@ -229,8 +243,6 @@ namespace stock_solution
                 {
                     case FEATURIZATION_SECOND_ORDER_BINARY_SUFFIX: 
                     case FEATURIZATION_FIRST_ORDER_BINARY_SUFFIX: 
-                    case FEATURIZATION_SECOND_ORDER_SUFFIX: 
-                    case FEATURIZATION_FIRST_ORDER_SUFFIX:
                     {
                         this->featurization_option = featurization_option;
                         break;
@@ -238,6 +250,24 @@ namespace stock_solution
                     default:
                     {
                         throw std::invalid_argument("bad featurization option, enumeration out of range");
+                    }
+                }
+
+                return *this;
+            }
+
+            auto set_analytic_option(uint8_t analytic_option) -> TemporalFeatureExtractor&
+            {
+                switch (analytic_option)
+                {
+                    case ANALYTIC_SQUARE_DIFFERENCE:
+                    {
+                        this->analytic_option = analytic_option;
+                        break;
+                    }
+                    default:
+                    {
+                        throw std::invalid_argument("bad analytic option, enumeration out of range");
                     }
                 }
 
@@ -297,8 +327,8 @@ namespace stock_solution
 
                 for (const TickerData& ticker_data: this->ticker_data_vec)
                 {
-                    double lapsed_since_epoch = std::chrono::duration_cast<std::chrono::nanoseconds>(ticker_data.timestamp.time_since_epoch()).count();
-                    intermediate_map[ticker_data.ticker_name][ticker_data.feature_name].insert({lapsed_since_epoch, ticker_data.feature_value});
+                    double lapse_since_epoch = std::chrono::duration_cast<std::chrono::nanoseconds>(ticker_data.timestamp.time_since_epoch()).count();
+                    intermediate_map[ticker_data.ticker_name][ticker_data.feature_name].insert({lapse_since_epoch, ticker_data.feature_value});
                 }
 
                 for (const auto& [ticker_name, ticker_data]: intermediate_map)
@@ -331,19 +361,16 @@ namespace stock_solution
                     {
                         return this->first_order_binary_featurize(raw_feature_map);
                     }
-                    case FEATURIZATION_SECOND_ORDER_SUFFIX:
-                    {
-                        return this->second_order_featurize(raw_feature_map);
-                    }
-                    case FEATURIZATION_FIRST_ORDER_SUFFIX:
-                    {
-                        return this->first_order_featurize(raw_feature_map);
-                    }
                     default:
                     {
                         std::abort();
                     }
                 }
+            }
+
+            auto analyze(const std::vector<double>& feature_vec) -> FeatureAnalyticReport
+            {
+                return {};
             }
 
         private:
@@ -409,8 +436,8 @@ namespace stock_solution
 
                     uint64_t first_epoch                                = std::chrono::duration_cast<std::chrono::nanoseconds>(first.time_since_epoch()).count();
                     uint64_t last_epoch                                 = std::chrono::duration_cast<std::chrono::nanoseconds>(last.time_since_epoch()).count();
-                    uint64_t lapsed                                     = last_epoch - first_epoch;
-                    uint64_t interval_sz                                = lapsed / this->focal_discretization_sz;
+                    uint64_t lapse                                      = last_epoch - first_epoch;
+                    uint64_t interval_sz                                = lapse / this->focal_discretization_sz;
 
                     for (size_t j = 0u; j < this->focal_discretization_sz; ++j)
                     {
@@ -640,64 +667,6 @@ namespace stock_solution
                 return result_vec;
             }
 
-            auto first_order_featurize(const std::unordered_map<std::string, std::vector<std::vector<std::optional<double>>>>& raw_map) -> std::vector<double>
-            {
-                std::vector<double> feature_vec{};
-
-                for (const auto& [feature_id, feature_2d_vec]: raw_map)
-                {
-                    for (const auto& feature_1d_vec: feature_2d_vec)
-                    {
-                        std::vector<double> unfancy_feature_1d_vec  = this->to_non_optional_feature_vector(feature_1d_vec);
-                        auto [suffix_vec, nxt_vec]                  = SequenceCompressor{}.suffix_lossless_compress(unfancy_feature_1d_vec);
-
-                        if (!nxt_vec.empty())
-                        {
-                            feature_vec.push_back(Base10ExponentialRadixer{}.enumerate(nxt_vec.front()));
-                        }
-
-                        std::copy(suffix_vec.begin(), suffix_vec.end(), std::back_inserter(feature_vec));
-                    }
-                }
-
-                return feature_vec;
-            }
-
-            auto second_order_featurize(const std::unordered_map<std::string, std::vector<std::vector<std::optional<double>>>>& raw_map) -> std::vector<double>
-            {
-                std::vector<double> feature_vec{};
-
-                for (const auto& [feature_id, feature_2d_vec]: raw_map)
-                {
-                    for (const auto& feature_1d_vec: feature_2d_vec)
-                    {
-                        std::vector<double> unfancy_feature_1d_vec  = this->to_non_optional_feature_vector(feature_1d_vec);
-                        auto [suffix_vec, nxt_vec]                  = SequenceCompressor{}.suffix_lossless_compress(unfancy_feature_1d_vec);
-
-                        if (!nxt_vec.empty())
-                        {
-                            feature_vec.push_back(Base10ExponentialRadixer{}.enumerate(nxt_vec.front()));   
-                        }
-
-                        std::copy(suffix_vec.begin(), suffix_vec.end(), std::back_inserter(feature_vec));
-
-                        if (!nxt_vec.empty())
-                        {
-                            auto [suffix_vec_2, nxt_vec_2]          = SequenceCompressor{}.suffix_lossless_compress({std::next(nxt_vec.begin()), nxt_vec.end()});
-
-                            if (!nxt_vec_2.empty())
-                            {
-                                feature_vec.push_back(Base10ExponentialRadixer{}.enumerate(nxt_vec_2.front()));
-                            }
-
-                            std::copy(suffix_vec_2.begin(), suffix_vec_2.end(), std::back_inserter(feature_vec));
-                        }
-                    }
-                }
-
-                return feature_vec;
-            }
-
             auto first_order_binary_featurize(const std::unordered_map<std::string, std::vector<std::vector<std::optional<double>>>>& raw_map) -> std::vector<double>
             {
                 std::vector<double> feature_vec{};
@@ -781,7 +750,7 @@ namespace stock_solution
             }
     };
 
-    class SolutionTrainer
+    class MatrixMaker
     {
         public:
 
@@ -793,44 +762,542 @@ namespace stock_solution
             static inline constexpr uint8_t MID_STORAGE     = 1u;
             static inline constexpr uint8_t HIGH_STORAGE    = 2u;
 
-            auto set_compute(uint8_t option) -> SolutionTrainer&
+        private:
+
+            uint8_t compute_option;
+            uint8_t storage_option;
+            size_t in_vector_sz;
+            size_t out_vector_sz;
+
+        public:
+
+            MatrixMaker(): compute_option(LOW_COMPUTE),
+                           storage_option(LOW_STORAGE){}
+
+            auto set_compute(uint8_t option) -> MatrixMaker&
             {
+                switch (option)
+                {
+                    case LOW_COMPUTE:
+                    case MID_COMPUTE:
+                    case HIGH_COMPUTE:
+                    {
+                        this->compute_option = option;
+                        break;
+                    }
+                    default:
+                    {
+                        throw std::invalid_argument("bad compute option, enumeration out of range");
+                    }
+                }
+
                 return *this;
             }
 
-            auto set_storage(uint8_t option) -> SolutionTrainer&
+            auto set_storage(uint8_t option) -> MatrixMaker&
             {
+                switch (option)
+                {
+                    case LOW_STORAGE:
+                    case MID_STORAGE:
+                    case HIGH_STORAGE:
+                    {
+                        this->storage_option = option;
+                        break;
+                    }
+                    default:
+                    {
+                        throw std::invalid_argument("bad storage option, enumeration out of range");
+                    }
+                }
+
                 return *this;
             }
 
-            auto set_data(const std::vector<TickerData>& data) -> SolutionTrainer&
+            auto set_in_vector_size(size_t sz) -> MatrixMaker&
             {
+                this->in_vector_sz = sz;
+
                 return *this;
             }
 
-            auto set_training_first_timepoint(std::chrono::time_point<std::chrono::system_clock> timepoint) -> SolutionTrainer&
+            auto set_out_vector_size(size_t sz) -> MatrixMaker&
             {
+                this->out_vector_sz = sz;
+
                 return *this;
             }
 
-            auto set_training_last_timepoint(std::chrono::time_point<std::chrono::system_clock> timepoint) -> SolutionTrainer&
+            auto get() -> std::unique_ptr<the_matrix::MatrixInterface>
             {
+                return {};
+            }
+    };
+
+    class MatrixEncoderInterface
+    {
+        public:
+
+            virtual ~MatrixEncoderInterface() = default;
+
+            virtual auto encode(const std::vector<double>& feature_vec) -> std::shared_ptr<tensor_model::Matrix> = 0;
+            virtual auto decode(const std::shared_ptr<tensor_model::Matrix>& matrix) -> std::vector<double> = 0;
+    };
+
+    struct SolutionData
+    {
+        std::shared_ptr<the_matrix::MatrixInterface> transformer;
+        std::shared_ptr<TemporalFeatureExtractor> extractor;
+        std::shared_ptr<MatrixEncoderInterface> encoder;
+
+        std::vector<std::string> extractor_ticker_vec;
+        std::vector<std::string> extractor_feature_name_list;
+        uint8_t extractor_focal_unit;
+        double extractor_focal_exponential_base;
+        size_t extractor_focal_step;
+        uint8_t extractor_featurization_option;
+        size_t extractor_focal_discretization_sz;
+
+        std::chrono::time_point<std::chrono::system_clock> training_first;
+        std::chrono::time_point<std::chrono::system_clock> training_last;
+        std::chrono::nanoseconds training_lapse;
+    };
+
+    class SolutionMaker
+    {
+        public:
+
+            static inline constexpr uint8_t LOW_COMPUTE                 = 0u;
+            static inline constexpr uint8_t MID_COMPUTE                 = 1u;
+            static inline constexpr uint8_t HIGH_COMPUTE                = 2u;
+
+            static inline constexpr uint8_t LOW_STORAGE                 = 0u;
+            static inline constexpr uint8_t MID_STORAGE                 = 1u;
+            static inline constexpr uint8_t HIGH_STORAGE                = 2u;
+
+            static inline constexpr uint8_t LOW_TRAIN                   = 0u;
+            static inline constexpr uint8_t MID_TRAIN                   = 1u;
+            static inline constexpr uint8_t HIGH_TRAIN                  = 2u;
+
+            static inline const std::chrono::nanoseconds DEFAULT_WINDOW = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::years(1));
+            static inline const std::chrono::nanoseconds DEFAULT_LAPSE  = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::days(1));
+
+        private:
+
+            struct TrainingDataPoint
+            {
+                std::vector<double> in_point_vec;
+                std::vector<double> out_point_vec;
+            };
+
+            struct TrainingData
+            {
+                std::vector<TrainingDataPoint> point_vec;
+            };
+
+            uint8_t compute_option;
+            uint8_t storage_option;
+            uint8_t train_option;
+
+            std::vector<TickerData> ticker_data_vec;
+            std::vector<std::string> ticker_vec;
+            std::vector<std::string> feature_name_vec;
+
+            std::chrono::time_point<std::chrono::system_clock> first;
+            std::chrono::time_point<std::chrono::system_clock> last;
+            std::chrono::nanoseconds lapse;
+
+        public:
+
+            SolutionMaker(): compute_option(LOW_COMPUTE),
+                             storage_option(LOW_STORAGE),
+                             ticker_data_vec(),
+                             ticker_vec(),
+                             feature_name_vec(),
+                             first(get_past(DEFAULT_WINDOW)),
+                             last(get_now()),
+                             lapse(DEFAULT_LAPSE){}
+
+            auto set_training(uint8_t option) -> SolutionMaker&
+            {
+                switch (option)
+                {
+                    case LOW_TRAIN:
+                    case MID_TRAIN:
+                    case HIGH_TRAIN:
+                    {
+                        this->train_option = option;
+                        break;
+                    }
+                    default:
+                    {
+                        throw std::invalid_argument("bad option, enumeration out of range");
+                    }
+                }
+
                 return *this;
             }
 
-            auto set_tickers(const std::vector<std::string>& ticker_vec) -> SolutionTrainer&
+            auto set_compute(uint8_t option) -> SolutionMaker&
             {
+                switch (option)
+                {
+                    case LOW_COMPUTE:
+                    case MID_COMPUTE:
+                    case HIGH_COMPUTE:
+                    {
+                        this->compute_option = option;
+                        break;
+                    }
+                    default:
+                    {
+                        throw std::invalid_argument("bad option, enumeration out of range");
+                    }
+                }
+
                 return *this;
             }
 
-            auto set_training_intput_output_lapsed(std::chrono::nanoseconds dur) -> SolutionTrainer&
+            auto set_storage(uint8_t option) -> SolutionMaker&
             {
+                switch (option)
+                {
+                    case LOW_STORAGE:
+                    case MID_STORAGE:
+                    case HIGH_STORAGE:
+                    {
+                        this->storage_option = option;
+                        break;
+                    }
+                    default:
+                    {
+                        throw std::invalid_argument("bad option, enumeration out of range");
+                    }
+                }
+
+                return *this;
+            }
+
+            auto set_data(const std::vector<TickerData>& data) -> SolutionMaker&
+            {
+                this->ticker_data_vec = data;
+
+                return *this;
+            }
+
+            auto set_training_first_timepoint(std::chrono::time_point<std::chrono::system_clock> timepoint) -> SolutionMaker&
+            {
+                this->first = timepoint;
+
+                return *this;
+            }
+
+            auto set_training_last_timepoint(std::chrono::time_point<std::chrono::system_clock> timepoint) -> SolutionMaker&
+            {
+                this->last = timepoint;
+
+                return *this;
+            }
+
+            auto set_feature_name_list(const std::vector<std::string>& feature_vec) -> SolutionMaker&
+            {
+                this->feature_name_vec = feature_vec;
+
+                return *this;
+            }
+
+            auto set_tickers(const std::vector<std::string>& ticker_vec) -> SolutionMaker&
+            {
+                this->ticker_vec = ticker_vec;
+
+                return *this;
+            }
+
+            auto set_training_intput_output_lapse(std::chrono::nanoseconds dur) -> SolutionMaker&
+            {
+                if (dur <= std::chrono::nanoseconds(0))
+                {
+                    throw std::invalid_argument("bad lapse, negative or zero");
+                }
+
+                this->lapse = dur;
+
                 return *this;
             }
 
             auto train() -> SolutionData
             {
+                std::unique_ptr<the_matrix::MatrixInterface> matrix                                                                 = this->get_transform_matrix();
+                std::unique_ptr<matrix_optimizer::MatrixOptimizerInterface> optimizer                                               = this->get_optimizer();
+                std::vector<std::pair<std::shared_ptr<tensor_model::Matrix>, std::shared_ptr<tensor_model::Matrix>>> training_data  = this->to_matrix_training_data(this->get_training_data());
+
+                optimizer->optimize(*matrix, training_data);
+
+                return SolutionData
+                {
+                    .transformer                        = std::move(matrix),
+                    .extractor                          = std::make_shared<TemporalFeatureExtractor>(this->get_feature_extractor()),
+                    .encoder                            = std::make_shared<InternalMatrixEncoder>(),
+                    .extractor_ticker_vec               = this->ticker_vec,
+                    .extractor_feature_name_list        = this->feature_name_vec,
+                    .extractor_focal_unit               = this->get_focal_unit(),
+                    .extractor_focal_exponential_base   = this->get_focal_exponential_base(),
+                    .extractor_focal_step               = this->get_focal_step(),
+                    .extractor_featurization_option     = this->get_featurization_option(),
+                    .extractor_focal_discretization_sz  = this->get_focal_discretization_size(),
+                    .training_first                     = this->first,
+                    .training_last                      = this->last,
+                    .training_lapse                     = this->lapse
+                };
+            }
+
+        private:
+
+            class InternalMatrixEncoder: public virtual MatrixEncoderInterface
+            {
+                public:
+
+                    auto encode(const std::vector<double>& feature_vec) -> std::shared_ptr<tensor_model::Matrix>
+                    {
+                        return tensor_matrix_operation::make_matrix_from_flat_vec(this->to_shape(feature_vec),
+                                                                                  std::vector<tensor_model::tensor_std_float_t>(stdx::to_castable_vector_initializer(feature_vec)));
+                    }
+
+                    auto decode(const std::shared_ptr<tensor_model::Matrix>& matrix) -> std::vector<double>
+                    {
+                        std::vector<tensor_model::tensor_std_float_t> result{};
+                        tensor_matrix_operation::flatten(matrix, result);
+
+                        return stdx::to_castable_vector_initializer(result);
+                    }
+                
+                private:
+
+                    auto to_shape(const std::vector<double>& feature_vec) -> std::vector<size_t>
+                    {
+                        return {};
+                    }
+            };
+
+            static auto get_now() -> std::chrono::time_point<std::chrono::system_clock>
+            {
+                return std::chrono::system_clock::now();
+            }
+
+            static auto get_past(std::chrono::nanoseconds duration) -> std::chrono::time_point<std::chrono::system_clock>
+            {
+                auto new_timepoint      = get_now() - duration;
+                using default_dur_rep_t = typename std::chrono::time_point<std::chrono::system_clock>::duration;
+
+                return std::chrono::time_point_cast<default_dur_rep_t>(new_timepoint);
+            }
+
+            auto get_transform_matrix() -> std::unique_ptr<the_matrix::MatrixInterface>
+            {
                 return {};
+            }
+
+            auto get_optimizer() -> std::unique_ptr<matrix_optimizer::MatrixOptimizerInterface>
+            {
+                return {};
+            }
+
+            auto get_feature_extractor() -> TemporalFeatureExtractor
+            {
+                TemporalFeatureExtractor extractor{};
+
+                extractor.set_focal_unit(this->get_focal_unit())
+                         .set_focal_exponential_base(this->get_focal_exponential_base())
+                         .set_focal_step(this->get_focal_step())
+                         .set_featurization_option(this->get_featurization_option())
+                         .set_focal_discretization_size(this->get_focal_discretization_size())
+                         .set_data(this->ticker_data_vec)
+                         .set_feature_name_list(this->feature_name_vec)
+                         .compute();
+                
+                return extractor;
+            }
+
+            auto get_training_data() -> TrainingData
+            {
+                if (this->last < this->first)
+                {
+                    throw std::invalid_argument("bad time slice, negative time slice");
+                }
+
+
+                TemporalFeatureExtractor extractor  = this->get_feature_extractor();
+                size_t epoch_first                  = std::chrono::duration_cast<std::chrono::nanoseconds>(this->first.time_since_epoch()).count();
+                size_t epoch_last                   = std::chrono::duration_cast<std::chrono::nanoseconds>(this->last.time_since_epoch()).count();
+                size_t time_interval_uint           = std::chrono::duration_cast<std::chrono::nanoseconds>(this->last - this->first).count();
+                size_t lapse_uint                   = this->lapse.count();
+
+                if (lapse_uint == 0u)
+                {
+                    throw std::runtime_error("unexpected error, time lapse 0");
+                }
+
+                size_t slice_sz             = time_interval_uint / lapse_uint + static_cast<size_t>(time_interval_uint % lapse_uint != 0u);
+                TrainingData result         = {};
+
+                for (size_t i = 0u; i < slice_sz; ++i)
+                {
+                    size_t local_epoch_first        = epoch_first + i * lapse_uint;
+                    size_t local_epoch_last         = std::min(static_cast<size_t>(local_epoch_first + lapse_uint), epoch_last);
+
+                    std::chrono::time_point<std::chrono::system_clock, std::chrono::nanoseconds> time_point_first{std::chrono::nanoseconds(local_epoch_first)}; //what is going on??
+                    std::chrono::time_point<std::chrono::system_clock, std::chrono::nanoseconds> time_point_last{std::chrono::nanoseconds(local_epoch_last)};
+
+                    using default_dur_rep_t         = typename std::chrono::time_point<std::chrono::system_clock>::duration;
+
+                    std::vector<double> in_feature  = this->extract_feature_at(extractor, std::chrono::time_point_cast<default_dur_rep_t>(time_point_first));
+                    std::vector<double> out_feature = this->extract_feature_at(extractor, std::chrono::time_point_cast<default_dur_rep_t>(time_point_last));
+
+                    result.point_vec.push_back
+                    (
+                        TrainingDataPoint
+                        {
+                            .in_point_vec   = std::move(in_feature),
+                            .out_point_vec  = std::move(out_feature)
+                        }
+                    );
+                }
+
+                return result;
+            }
+
+            auto to_matrix_training_data(const TrainingData& data) -> std::vector<std::pair<std::shared_ptr<tensor_model::Matrix>, std::shared_ptr<tensor_model::Matrix>>>
+            {
+                return {};
+            }
+
+            auto get_focal_unit() -> uint8_t
+            {
+                switch (this->compute_option)
+                {
+                    case LOW_COMPUTE:
+                    {
+                        return TemporalFeatureExtractor::FOCAL_UNIT_MINUTE;
+                    }
+                    case MID_COMPUTE:
+                    {
+                        return TemporalFeatureExtractor::FOCAL_UNIT_SECOND;
+                    }
+                    case HIGH_COMPUTE:
+                    {
+                        return TemporalFeatureExtractor::FOCAL_UNIT_SECOND;
+                    }
+                    default:
+                    {
+                        std::abort();
+                    }
+                }
+            }
+
+            auto get_focal_exponential_base() -> double
+            {
+                switch (this->compute_option)                
+                {
+                    case LOW_COMPUTE:
+                    {
+                        return 10;
+                    }
+                    case MID_COMPUTE:
+                    {
+                        return 8;
+                    }
+                    case HIGH_COMPUTE:
+                    {
+                        return 5;
+                    }
+                    default:
+                    {
+                        std::abort();
+                    }
+                }
+            }
+
+            auto get_focal_step() -> size_t
+            {
+                switch (this->compute_option)
+                {
+                    case LOW_COMPUTE:
+                    {
+                        return 6;
+                    }
+                    case MID_COMPUTE:
+                    {
+                        return 9;
+                    }
+                    case HIGH_COMPUTE:
+                    {
+                        return 12;
+                    }
+                    default:
+                    {
+                        std::abort();
+                    }
+                }
+            }
+
+            auto get_featurization_option() -> uint8_t
+            {
+                switch (this->compute_option)
+                {
+                    case LOW_COMPUTE:
+                    {
+                        return TemporalFeatureExtractor::FEATURIZATION_FIRST_ORDER_BINARY_SUFFIX;
+                    }
+                    case MID_COMPUTE:
+                    {
+                        return TemporalFeatureExtractor::FEATURIZATION_SECOND_ORDER_BINARY_SUFFIX;
+                    }
+                    case HIGH_COMPUTE:
+                    {
+                        return TemporalFeatureExtractor::FEATURIZATION_SECOND_ORDER_BINARY_SUFFIX;
+                    }
+                    default:
+                    {
+                        std::abort();
+                    }
+                }
+            }
+
+            auto get_focal_discretization_size() -> size_t
+            {
+                switch (this->compute_option)
+                {
+                    case LOW_COMPUTE:
+                    {
+                        return 4;
+                    }
+                    case MID_COMPUTE:
+                    {
+                        return 6;
+                    }
+                    case HIGH_COMPUTE:
+                    {
+                        return 6;
+                    }
+                    default:
+                    {
+                        std::abort();
+                    }
+                }
+            }
+
+            auto extract_feature_at(TemporalFeatureExtractor& extractor,
+                                    std::chrono::time_point<std::chrono::system_clock> timepoint) -> std::vector<double>
+            {
+                std::vector<double> result{};
+
+                for (const std::string& ticker: this->ticker_vec)
+                {
+                    std::vector<double> ticker_feature = extractor.get_feature_vector_at_timepoint(ticker, timepoint);
+                    std::copy(ticker_feature.begin(), ticker_feature.end(), std::back_inserter(result));
+                }
+
+                return result;
             }
     };
 
@@ -839,7 +1306,7 @@ namespace stock_solution
     static inline const std::string ACTIONABLE_SELLBUY_NEXT_SECOND      = "sellbuy_next_second";
     static inline const std::string ACTIONABLE_SELLBUY_NEXT_MILLISECOND = "sellbuy_next_millisecond";
 
-    class Actionable
+    struct Actionable
     {
         std::string ticker_name;
         std::string actionable_type;
@@ -851,19 +1318,209 @@ namespace stock_solution
         private:
 
             SolutionData data;
+            TemporalFeatureExtractor shadow_extractor;
 
         public:
 
-            SolutionProduct(SolutionData data): data(std::move(data)){}
+            SolutionProduct(SolutionData data): data(std::move(data))
+            {
+                if (this->data.transformer == nullptr)
+                {
+                    throw std::invalid_argument("bad data transformer, null");
+                }
+
+                if (this->data.extractor == nullptr)
+                {
+                    throw std::invalid_argument("bad data extractor, null");
+                }
+
+                if (this->data.encoder == nullptr)
+                {
+                    throw std::invalid_argument("bad data encoder, null");
+                }
+
+                this->shadow_extractor = *this->data.extractor;
+            }
 
             auto load_data(const std::vector<TickerData>& ticker_data) -> SolutionProduct&
             {
+                this->shadow_extractor.set_data(ticker_data).compute();
+
                 return *this;
             }
 
             auto predict(std::chrono::time_point<std::chrono::system_clock> forecast_timepoint) -> std::vector<Actionable>
             {
-                return {};
+                const std::vector<std::string>& tickers                         = this->data.extractor_ticker_vec;
+
+                std::vector<std::vector<double>> org_state_vec                  = this->featurize_tickers(tickers, forecast_timepoint);
+                std::vector<double> unified_state                               = this->unify_state(org_state_vec);
+                std::shared_ptr<tensor_model::Matrix> matrix_state              = this->data.encoder->encode(unified_state);
+                std::shared_ptr<tensor_model::Matrix> transformed_matrix_state  = this->data.transformer->project({matrix_state}).front();
+                std::vector<double> transformed_state                           = this->data.encoder->decode(transformed_matrix_state);
+                std::vector<std::vector<double>> predicted_state_vec            = this->individualize_state_as(transformed_state, org_state_vec);
+                std::vector<Actionable> actionable_vec                          = {};
+
+                for (const auto& [ticker, state]: stdx::zip(tickers, predicted_state_vec))
+                {
+                    FeatureAnalyticReport report = this->data.extractor->analyze(state);
+
+                    for (const FeatureAnalyticPoint& analytic_point: report.analytic_point_vec)
+                    {
+                        std::optional<std::string> actionable   = this->get_actionable(analytic_point);
+
+                        if (!actionable.has_value())
+                        {
+                            continue;
+                        }
+
+                        actionable_vec.push_back
+                        (
+                            Actionable
+                            {
+                                .ticker_name        = ticker,
+                                .actionable_type    = actionable.value(),
+                                .confident_score    = analytic_point.confident_score
+                            }
+                        );
+                    }
+                }
+
+                return actionable_vec;
+            }
+        
+        private:
+
+            auto featurize_tickers(const std::vector<std::string>& ticker_vec,
+                                   std::chrono::time_point<std::chrono::system_clock> forecast_timepoint) -> std::vector<std::vector<double>>
+            {
+                std::vector<std::vector<double>> result_vec{};
+
+                for (const std::string& ticker: ticker_vec)
+                {
+                    std::vector<double> feature_vec = this->data.extractor->get_feature_vector_at_timepoint(ticker, forecast_timepoint);
+                    result_vec.push_back(std::move(feature_vec));
+                }
+
+                return result_vec;
+            }
+
+            auto unify_state(const std::vector<std::vector<double>>& state_vec) -> std::vector<double>
+            {
+                std::vector<double> result_vec{};
+
+                for (const std::vector<double>& state: state_vec)
+                {
+                    std::copy(state.begin(), state.end(), std::back_inserter(result_vec));
+                }
+
+                return result_vec;
+            }
+
+            auto individualize_state_as(const std::vector<double>& state_vec,
+                                        const std::vector<std::vector<double>>& shape_vec) -> std::vector<std::vector<double>>
+            {
+                std::vector<std::vector<double>> result_vec{};
+                size_t first = 0u;
+
+                for (const auto& shape: shape_vec)
+                {
+                    size_t last = first + shape.size();
+
+                    if (last > state_vec.size())
+                    {
+                        throw std::invalid_argument("incompatible shape, out of range access");
+                    }
+
+                    result_vec.push_back({std::next(state_vec.begin(), first),
+                                          std::next(state_vec.begin(), last)});
+
+                    first = last;
+                }
+
+                return result_vec;
+            }
+
+            auto is_next_millisecond_system() -> bool
+            {
+                return true;
+            }
+
+            auto is_next_second_system() -> bool
+            {
+                return true;
+            }
+
+            auto is_in_millisecond_range(const FeatureAnalyticPoint& analytic_point) -> bool
+            {
+                return true;
+            }
+
+            auto is_in_second_range(const FeatureAnalyticPoint& analytic_point) -> bool
+            {
+                return true;
+            }
+
+            auto is_buyable_action(const FeatureAnalyticPoint& analytic_point) -> bool
+            {
+                return true;
+            }
+
+            auto is_sellable_action(const FeatureAnalyticPoint& analytic_point) -> bool
+            {
+                return true;
+            }
+
+            auto get_actionable(const FeatureAnalyticPoint& analytic_point) -> std::optional<std::string>
+            {
+                if (this->is_next_millisecond_system())
+                {
+                    if (this->is_in_millisecond_range(analytic_point))
+                    {
+                        if (this->is_buyable_action(analytic_point))
+                        {
+                            return ACTIONABLE_BUYSELL_NEXT_MILLISECOND;
+                        }
+                        else if (this->is_sellable_action(analytic_point))
+                        {
+                            return ACTIONABLE_SELLBUY_NEXT_MILLISECOND;
+                        }
+                        else
+                        {
+                            return std::nullopt;
+                        }
+                    }
+                    else
+                    {
+                        return std::nullopt;
+                    }
+                }
+                else if (this->is_next_second_system())
+                {
+                    if (this->is_in_second_range(analytic_point))
+                    {
+                        if (this->is_buyable_action(analytic_point))
+                        {
+                            return ACTIONABLE_BUYSELL_NEXT_SECOND;
+                        }
+                        else if (this->is_sellable_action(analytic_point))
+                        {
+                            return ACTIONABLE_SELLBUY_NEXT_SECOND;
+                        }
+                        else
+                        {
+                            return std::nullopt;
+                        }
+                    }
+                    else
+                    {
+                        return std::nullopt;
+                    }
+                }
+                else
+                {
+                    throw std::invalid_argument("bad actionable, bad prediction precision");   
+                }
             }
     };
 }

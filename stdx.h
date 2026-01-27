@@ -639,6 +639,24 @@ namespace stdx
         return ptr;
     }
 
+    template <class T, class T1>
+    constexpr auto zip(const std::vector<T>& lhs, const std::vector<T1>& rhs) -> std::vector<std::pair<T, T1>>
+    {
+        if (lhs.size() != rhs.size())
+        {
+            throw std::invalid_argument("incompatible zip, mismatched vector size");
+        }
+
+        std::vector<std::pair<T, T1>> result_vec{};
+
+        for (size_t i = 0u; i < lhs.size(); ++i)
+        {
+            result_vec.push_back(std::make_pair(lhs[i], rhs[i]));
+        }
+
+        return result_vec;
+    }
+
     template <class T, class Allocator = std::allocator<char>>
     using transparent_vector = std::vector<T, typename std::allocator_traits<Allocator>::template rebind_alloc<T>>;
 
