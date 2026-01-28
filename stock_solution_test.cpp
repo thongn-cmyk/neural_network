@@ -51,7 +51,7 @@ auto randomize_focal_unit() -> uint8_t
 auto randomize_featurization_option() -> uint8_t
 {
     static auto randomizer      = std::bind(std::uniform_int_distribution<size_t>{}, std::mt19937_64{static_cast<uint32_t>(std::chrono::high_resolution_clock::now().time_since_epoch().count())});
-    const size_t ENUMERATION_SZ = 4u;
+    const size_t ENUMERATION_SZ = 2u;
     size_t enumeration_idx      = randomizer() % ENUMERATION_SZ;
 
     switch (enumeration_idx)

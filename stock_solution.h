@@ -15,6 +15,9 @@
 #include "the_matrix_interface.h"
 #include "tensor_matrix_operation.h"
 #include "matrix_optimizer_interface.h"
+#include <numeric>
+#include <functional>
+#include "matrix_optimizer.h"
 
 namespace stock_solution
 {
@@ -23,10 +26,10 @@ namespace stock_solution
     //we'd attempt to do a 10-100 million extraction, then that's it. On the candlesticks!
     //we only need to be confident once in a while, that's how we do that, baby!
 
-    class SolutionSerializer
-    {
+    //we actually rotate all the stocks in the world at once, by using focal and suffix compression (you wont believe how efficient suffix compression is in the semantic space)
+    //and we'd want to predict the next second to be on the candlesticks
 
-    };
+    //ideally, we'd want to buy immediately and sell to a higher bidder, or cut loss in the next second
 
     struct TickerData
     {
@@ -160,6 +163,13 @@ namespace stock_solution
 
             static inline constexpr uint8_t ANALYTIC_SQUARE_DIFFERENCE                  = 0u;
 
+            static inline constexpr uint8_t AGGREGATION_OPTION_MAX                      = 0u;
+            static inline constexpr uint8_t AGGREGATION_OPTION_MIN                      = 1u;
+            static inline constexpr uint8_t AGGREGATION_OPTION_AVG                      = 2u;
+            static inline constexpr uint8_t AGGREGATION_OPTION_SUM                      = 3u;
+
+            static inline constexpr double MAX_FOCAL_BASE                               = 20u;
+
         private:
 
             struct FeatureTimePoint
@@ -178,6 +188,7 @@ namespace stock_solution
             std::vector<TickerData> ticker_data_vec;
             std::vector<std::string> feature_name_vec;
             std::unordered_map<std::string, std::unordered_map<std::string, std::vector<FeatureTimePoint>>> feature_map;
+            std::unordered_map<std::string, uint8_t> feature_preferred_aggregation_map;
 
         public:
 
@@ -189,7 +200,8 @@ namespace stock_solution
                                         analytic_option(ANALYTIC_SQUARE_DIFFERENCE),
                                         ticker_data_vec(),
                                         feature_name_vec(),
-                                        feature_map(){}
+                                        feature_map(),
+                                        feature_preferred_aggregation_map(){}
 
             auto set_focal_unit(uint8_t focal_unit) -> TemporalFeatureExtractor&
             {
@@ -223,6 +235,11 @@ namespace stock_solution
                 if (focal_base < 0)
                 {
                     throw std::invalid_argument("bad focal base, negative");
+                }
+
+                if (focal_base > MAX_FOCAL_BASE)
+                {
+                    throw std::invalid_argument("bad focal base, max value reached");
                 }
 
                 this->focal_base = focal_base;
@@ -319,6 +336,36 @@ namespace stock_solution
                 return *this;
             }
 
+            auto set_feature_aggregation_technique(const std::string& feature_name, uint8_t aggregation_option) -> TemporalFeatureExtractor&
+            {
+                switch (aggregation_option)
+                {
+                    case AGGREGATION_OPTION_MAX:
+                    case AGGREGATION_OPTION_MIN:
+                    case AGGREGATION_OPTION_AVG:
+                    {
+                        this->feature_preferred_aggregation_map[feature_name] = aggregation_option;
+                        break;
+                    }
+                    default:
+                    {
+                        throw std::invalid_argument("bad aggregation option, enumeration out of range");
+                    }
+                }
+
+                return *this;
+            }
+
+            auto set_feature_aggregation_technique_map(const std::unordered_map<std::string, uint8_t>& aggregation_option_map) -> TemporalFeatureExtractor&
+            {
+                for (const auto& [key, value]: aggregation_option_map)
+                {
+                    this->set_feature_aggregation_technique(key, value);
+                }
+
+                return *this;
+            }
+
             auto compute() -> TemporalFeatureExtractor&
             {
                 this->feature_map.clear();
@@ -328,6 +375,12 @@ namespace stock_solution
                 for (const TickerData& ticker_data: this->ticker_data_vec)
                 {
                     double lapse_since_epoch = std::chrono::duration_cast<std::chrono::nanoseconds>(ticker_data.timestamp.time_since_epoch()).count();
+
+                    if (std::isnan(lapse_since_epoch))
+                    {
+                        throw std::runtime_error("computation went wrong, NaN");
+                    }
+
                     intermediate_map[ticker_data.ticker_name][ticker_data.feature_name].insert({lapse_since_epoch, ticker_data.feature_value});
                 }
 
@@ -423,6 +476,11 @@ namespace stock_solution
 
             auto get_timeslice_vector_since(std::chrono::time_point<std::chrono::system_clock> timepoint) -> std::vector<std::vector<std::pair<double, double>>>
             {
+                if (timepoint < decltype(timepoint)(typename decltype(timepoint)::duration(0)))
+                {
+                    throw std::invalid_argument("bad timepoint, negative timepoint");
+                }
+
                 std::vector<std::vector<std::pair<double, double>>> result{};
                 std::chrono::nanoseconds unit_dur = this->get_unit_duration();
 
@@ -433,6 +491,11 @@ namespace stock_solution
 
                     auto first                                          = timepoint - (unit_dur * focal_value);
                     auto last                                           = timepoint;
+
+                    if (first < decltype(first)(typename decltype(first)::duration(0)))
+                    {
+                        first = decltype(first)(typename decltype(first)::duration(0));
+                    }
 
                     uint64_t first_epoch                                = std::chrono::duration_cast<std::chrono::nanoseconds>(first.time_since_epoch()).count();
                     uint64_t last_epoch                                 = std::chrono::duration_cast<std::chrono::nanoseconds>(last.time_since_epoch()).count();
@@ -491,6 +554,11 @@ namespace stock_solution
                     std::abort();
                 }
                 
+                if (std::isnan(epoch_timepoint))
+                {
+                    throw std::invalid_argument("bad epoch timepoint, NaN");
+                }
+
                 size_t sz       = chk_sz;
 
                 if (sz == 0u)
@@ -548,6 +616,11 @@ namespace stock_solution
                     std::abort();
                 }
 
+                if (std::isnan(epoch_timepoint))
+                {
+                    throw std::invalid_argument("bad epoch timepoint, NaN");
+                }
+
                 size_t sz       = chk_sz;
 
                 if (sz == 0u)
@@ -586,6 +659,88 @@ namespace stock_solution
                 return std::make_pair(finding_first, std::next(finding_first, sz));
             }
 
+            template <class Iterator, class Extractor>
+            auto reduce(uint8_t best_metric,
+                        Iterator first, Iterator last,
+                        Extractor&& extractor) -> std::decay_t<decltype(extractor(*first))>
+            {
+                auto resolutor = [&]<class Reducer>(Reducer&& reducer) -> std::decay_t<decltype(extractor(*first))>
+                {
+                    if (std::distance(first, last) == 0u)
+                    {
+                        throw std::invalid_argument("bad reduce, invalid size");
+                    }
+
+                    auto first_value = extractor(*first);
+
+                    for (auto it = std::next(first); it != last; std::advance(it, 1u))
+                    {
+                        first_value = reducer(first_value, extractor(*it));
+                    }
+
+                    return first_value;
+                };
+
+                switch (best_metric)
+                {
+                    case AGGREGATION_OPTION_MAX:
+                    {
+                        auto reducer = [](const auto& lhs, const auto& rhs)
+                        {
+                            if (rhs > lhs)
+                            {
+                                return rhs;
+                            }
+                            else
+                            {
+                                return lhs;
+                            }
+                        };
+
+                        return resolutor(reducer);
+                    }
+                    case AGGREGATION_OPTION_MIN:
+                    {
+                        auto reducer = [](const auto& lhs, const auto& rhs)
+                        {
+                            if (rhs < lhs)
+                            {
+                                return rhs;
+                            }
+                            else
+                            {
+                                return lhs;
+                            }
+                        };
+
+                        return resolutor(reducer);
+                    }
+                    case AGGREGATION_OPTION_AVG:
+                    {
+                        auto reducer = [](const auto& lhs, const auto& rhs)
+                        {
+                            return lhs + rhs;
+                        };
+
+                        return std::distance(first, last) == 0 ? std::decay_t<decltype(extractor(*first))>(resolutor(reducer))
+                                                               : std::decay_t<decltype(extractor(*first))>(resolutor(reducer) / std::distance(first, last));
+                    }
+                    case AGGREGATION_OPTION_SUM:
+                    {
+                        auto reducer = [](const auto& lhs, const auto & rhs)
+                        {
+                            return lhs + rhs;
+                        };
+
+                        return resolutor(reducer);
+                    }
+                    default:
+                    {
+                        throw std::invalid_argument("bad metric, enumeration out of range");
+                    }
+                }
+            }
+
             auto get_best_feature_for_window(const std::string& ticker_name,
                                              const std::string& feature_name,
                                              double epoch_timepoint_first,
@@ -607,17 +762,28 @@ namespace stock_solution
                     return std::nullopt;
                 }
 
-                FeatureTimePoint * first            = map_ptr_2->second.data();
-                FeatureTimePoint * last             = std::next(first, map_ptr_2->second.size());
-                auto [finding_first, finding_last]  = this->binary_interval(first, last, epoch_timepoint_first, epoch_timepoint_last);
-                auto max_ptr                        = std::min_element(finding_first, finding_last, [](const auto& lhs, const auto& rhs){return lhs.feature_value < rhs.feature_value;});
+                uint8_t best_metric;
 
-                if (max_ptr == finding_last)
+                if (auto metric_ptr = this->feature_preferred_aggregation_map.find(feature_name); metric_ptr != this->feature_preferred_aggregation_map.end())
+                {
+                    best_metric = metric_ptr->second;
+                }
+                else
+                {
+                    best_metric = AGGREGATION_OPTION_MIN;
+                }
+
+                FeatureTimePoint * first    = map_ptr_2->second.data();
+                FeatureTimePoint * last     = std::next(first, map_ptr_2->second.size());
+
+                if (std::distance(first, last) == 0u)
                 {
                     return std::nullopt;
                 }
 
-                return max_ptr->feature_value;
+                return this->reduce(best_metric,
+                                    first, last,
+                                    [](const auto& obj){return obj.feature_value;});
             }
 
             auto get_raw_feature_vector_at_timepoint(const std::string& ticker_name,
@@ -772,7 +938,9 @@ namespace stock_solution
         public:
 
             MatrixMaker(): compute_option(LOW_COMPUTE),
-                           storage_option(LOW_STORAGE){}
+                           storage_option(LOW_STORAGE),
+                           in_vector_sz(0u),
+                           out_vector_sz(0u){}
 
             auto set_compute(uint8_t option) -> MatrixMaker&
             {
@@ -834,33 +1002,132 @@ namespace stock_solution
             }
     };
 
-    class MatrixEncoderInterface
+    class OneOneMatrixEncoder
     {
+        private:
+
+            std::vector<size_t> matrix_shape;
+            size_t logit_vec_sz;
+            size_t matrix_vec_sz;
+
         public:
 
-            virtual ~MatrixEncoderInterface() = default;
+            OneOneMatrixEncoder(const std::vector<size_t>& matrix_shape,
+                                size_t logit_vec_sz): matrix_shape(matrix_shape),
+                                                      logit_vec_sz(logit_vec_sz)
+            {
+                size_t shape_sz = this->to_shape_size(matrix_shape);
 
-            virtual auto encode(const std::vector<double>& feature_vec) -> std::shared_ptr<tensor_model::Matrix> = 0;
-            virtual auto decode(const std::shared_ptr<tensor_model::Matrix>& matrix) -> std::vector<double> = 0;
+                if (logit_vec_sz > shape_sz)
+                {
+                    throw std::invalid_argument("bad logit vec size, incompatible shape");
+                }
+
+                this->matrix_vec_sz = shape_sz;
+            }
+
+            auto encode(const std::vector<double>& feature_vec) -> std::shared_ptr<tensor_model::Matrix>
+            {
+                if (feature_vec.size() != this->logit_vec_sz)
+                {
+                    throw std::invalid_argument("bad feature vec size, mismatched configurated size");
+                }
+
+                std::vector<double> new_feature_vec = feature_vec;
+                new_feature_vec.resize(this->matrix_vec_sz, 0);
+
+                return tensor_matrix_operation::make_matrix_from_flat_vec(this->matrix_shape,
+                                                                          std::vector<tensor_model::tensor_std_float_t>(stdx::to_castable_vector_initializer(new_feature_vec)));
+            }
+
+            auto decode(const std::shared_ptr<tensor_model::Matrix>& matrix) -> std::vector<double>
+            {
+                if (matrix == nullptr)
+                {
+                    throw std::invalid_argument("bad matrix, null");
+                }
+
+                std::vector<tensor_model::tensor_std_float_t> result{};
+                tensor_matrix_operation::flatten(matrix, result);
+                
+                if (result.size() != this->matrix_vec_sz)
+                {
+                    throw std::invalid_argument("bad matrix, incompatible shape");
+                }
+
+                result.resize(this->logit_vec_sz);
+
+                return stdx::to_castable_vector_initializer(result);
+            }
+
+        private:
+
+            auto to_shape_size(const std::vector<size_t>& matrix_shape) -> size_t
+            {
+                if (matrix_shape.empty())
+                {
+                    return 0u;
+                }
+
+                return std::accumulate(matrix_shape.begin(), matrix_shape.end(), size_t{1}, std::multiplies<size_t>{});
+            }
     };
 
     struct SolutionData
     {
-        std::shared_ptr<the_matrix::MatrixInterface> transformer;
-        std::shared_ptr<TemporalFeatureExtractor> extractor;
-        std::shared_ptr<MatrixEncoderInterface> encoder;
-
         std::vector<std::string> extractor_ticker_vec;
         std::vector<std::string> extractor_feature_name_list;
+
         uint8_t extractor_focal_unit;
         double extractor_focal_exponential_base;
-        size_t extractor_focal_step;
+        uint64_t extractor_focal_step;
         uint8_t extractor_featurization_option;
-        size_t extractor_focal_discretization_sz;
+        uint8_t extractor_analytic_option;
+        uint64_t extractor_focal_discretization_sz;
+
+        uint8_t matrix_maker_compute_option;
+        uint8_t matrix_maker_storage_option;
+        uint64_t matrix_maker_in_vector_sz;
+        uint64_t matrix_maker_out_vector_sz;
+
+        std::vector<uint64_t> matrix_encoder_shape;
+        uint64_t matrix_encoder_flat_sz;
+
+        std::vector<tensor_model::tensor_std_float_t> matrix_logit_vec;
 
         std::chrono::time_point<std::chrono::system_clock> training_first;
         std::chrono::time_point<std::chrono::system_clock> training_last;
         std::chrono::nanoseconds training_lapse;
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector) const
+        {
+            reflector(extractor_ticker_vec, extractor_feature_name_list,
+                      extractor_focal_unit, extractor_focal_exponential_base,
+                      extractor_focal_step, extractor_featurization_option,
+                      extractor_analytic_option, extractor_focal_discretization_sz,
+                      matrix_maker_compute_option, matrix_maker_storage_option,
+                      matrix_maker_in_vector_sz, matrix_maker_out_vector_sz,
+                      matrix_encoder_shape, matrix_encoder_flat_sz,
+                      matrix_logit_vec,
+                      training_first, training_last,
+                      training_lapse);
+        }
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector)
+        {
+            reflector(extractor_ticker_vec, extractor_feature_name_list,
+                      extractor_focal_unit, extractor_focal_exponential_base,
+                      extractor_focal_step, extractor_featurization_option,
+                      extractor_analytic_option, extractor_focal_discretization_sz,
+                      matrix_maker_compute_option, matrix_maker_storage_option,
+                      matrix_maker_in_vector_sz, matrix_maker_out_vector_sz,
+                      matrix_encoder_shape, matrix_encoder_flat_sz,
+                      matrix_logit_vec,
+                      training_first, training_last,
+                      training_lapse);
+        }
     };
 
     class SolutionMaker
@@ -1035,16 +1302,26 @@ namespace stock_solution
 
                 return SolutionData
                 {
-                    .transformer                        = std::move(matrix),
-                    .extractor                          = std::make_shared<TemporalFeatureExtractor>(this->get_feature_extractor()),
-                    .encoder                            = std::make_shared<InternalMatrixEncoder>(),
                     .extractor_ticker_vec               = this->ticker_vec,
                     .extractor_feature_name_list        = this->feature_name_vec,
+
                     .extractor_focal_unit               = this->get_focal_unit(),
                     .extractor_focal_exponential_base   = this->get_focal_exponential_base(),
-                    .extractor_focal_step               = this->get_focal_step(),
+                    .extractor_focal_step               = stdx::throw_integer_cast<uint64_t>(this->get_focal_step()),
                     .extractor_featurization_option     = this->get_featurization_option(),
-                    .extractor_focal_discretization_sz  = this->get_focal_discretization_size(),
+                    .extractor_analytic_option          = this->get_analytic_option(),
+                    .extractor_focal_discretization_sz  = stdx::throw_integer_cast<uint64_t>(this->get_focal_discretization_size()),
+
+                    .matrix_maker_compute_option        = this->get_matrix_maker_compute_option(),
+                    .matrix_maker_storage_option        = this->get_matrix_maker_storage_option(),
+                    .matrix_maker_in_vector_sz          = stdx::throw_integer_cast<uint64_t>(this->get_matrix_maker_in_vector_size()),
+                    .matrix_maker_out_vector_sz         = stdx::throw_integer_cast<uint64_t>(this->get_matrix_maker_out_vector_size()),
+
+                    .matrix_encoder_shape               = stdx::to_castable_vector_initializer(this->get_encoder_shape()),
+                    .matrix_encoder_flat_sz             = stdx::throw_integer_cast<uint64_t>(this->get_encoder_flat_size()),
+
+                    .matrix_logit_vec                   = matrix->get_coefficient_vector(),
+
                     .training_first                     = this->first,
                     .training_last                      = this->last,
                     .training_lapse                     = this->lapse
@@ -1053,31 +1330,83 @@ namespace stock_solution
 
         private:
 
-            class InternalMatrixEncoder: public virtual MatrixEncoderInterface
+            auto get_size_from_shape(const std::vector<size_t>& shape) -> size_t
             {
-                public:
+                if (shape.empty())
+                {
+                    return 0u;
+                }
 
-                    auto encode(const std::vector<double>& feature_vec) -> std::shared_ptr<tensor_model::Matrix>
+                return std::accumulate(shape.begin(), shape.end(), size_t{1}, std::multiplies<size_t>{});
+            }
+
+            auto get_matrix_maker_compute_option() -> uint8_t
+            {
+                switch (this->compute_option)
+                {
+                    case LOW_COMPUTE:
                     {
-                        return tensor_matrix_operation::make_matrix_from_flat_vec(this->to_shape(feature_vec),
-                                                                                  std::vector<tensor_model::tensor_std_float_t>(stdx::to_castable_vector_initializer(feature_vec)));
+                        return MatrixMaker::LOW_COMPUTE;
                     }
-
-                    auto decode(const std::shared_ptr<tensor_model::Matrix>& matrix) -> std::vector<double>
+                    case MID_COMPUTE:
                     {
-                        std::vector<tensor_model::tensor_std_float_t> result{};
-                        tensor_matrix_operation::flatten(matrix, result);
-
-                        return stdx::to_castable_vector_initializer(result);
+                        return MatrixMaker::MID_COMPUTE;
                     }
-                
-                private:
-
-                    auto to_shape(const std::vector<double>& feature_vec) -> std::vector<size_t>
+                    case HIGH_COMPUTE:
                     {
-                        return {};
+                        return MatrixMaker::HIGH_COMPUTE;
                     }
-            };
+                    default:
+                    {
+                        std::abort();
+                    }
+                }
+            }
+
+            auto get_matrix_maker_storage_option() -> uint8_t
+            {
+                switch (this->storage_option)
+                {
+                    case LOW_STORAGE:
+                    {
+                        return MatrixMaker::LOW_STORAGE;
+                    }
+                    case MID_STORAGE:
+                    {
+                        return MatrixMaker::MID_STORAGE;
+                    }
+                    case HIGH_STORAGE:
+                    {
+                        return MatrixMaker::HIGH_STORAGE;
+                    }
+                    default:
+                    {
+                        std::abort();
+                    }
+                }
+            }
+
+            auto get_matrix_maker_in_vector_size() -> size_t
+            {
+                return this->get_size_from_shape(get_encoder_shape());
+            }
+
+            auto get_matrix_maker_out_vector_size() -> size_t
+            {
+                return this->get_size_from_shape(get_encoder_shape());
+            }
+
+            auto get_encoder_shape() -> std::vector<size_t>
+            {
+                return {};
+            }
+
+            auto get_encoder_flat_size() -> size_t
+            {
+                std::vector<double> feature_matrix = get_feature_extractor().get_feature_vector_at_timepoint({}, {});
+
+                return feature_matrix.size();
+            }
 
             static auto get_now() -> std::chrono::time_point<std::chrono::system_clock>
             {
@@ -1094,12 +1423,103 @@ namespace stock_solution
 
             auto get_transform_matrix() -> std::unique_ptr<the_matrix::MatrixInterface>
             {
-                return {};
+                return MatrixMaker{}.set_compute(this->get_matrix_maker_compute_option())
+                                    .set_storage(this->get_matrix_maker_storage_option())
+                                    .set_in_vector_size(this->get_matrix_maker_in_vector_size())
+                                    .set_out_vector_size(this->get_matrix_maker_out_vector_size())
+                                    .get();
+            }
+
+            auto get_optimizer_optimization_epoch_size() -> size_t
+            {
+                const size_t LOW_COMPUTE_EPOCH_SZ   = size_t{1} << 16;
+                const size_t MID_COMPUTE_EPOCH_SZ   = size_t{1} << 20;
+                const size_t HIGH_COMPUTE_EPOCH_SZ  = size_t{1} << 24;
+
+                switch (this->compute_option)
+                {
+                    case LOW_COMPUTE:
+                    {
+                        return LOW_COMPUTE_EPOCH_SZ;
+                    }
+                    case MID_COMPUTE:
+                    {
+                        return MID_COMPUTE_EPOCH_SZ;
+                    }
+                    case HIGH_COMPUTE:
+                    {
+                        return HIGH_COMPUTE_EPOCH_SZ;
+                    }
+                    default:
+                    {
+                        std::abort();
+                    }
+                }
+            }
+
+            auto get_optimizer_optimization_step_size() -> size_t
+            {
+                const size_t LOW_COMPUTE_OPTIMIZATION_STEP_SZ   = size_t{1} << 4;
+                const size_t MID_COMPUTE_OPTIMIZATION_STEP_SZ   = size_t{1} << 4;
+                const size_t HIGH_COMPUTE_OPTIMIZATION_STEP_SZ  = size_t{1} << 4;
+
+                switch (this->compute_option)
+                {
+                    case LOW_COMPUTE:
+                    {
+                        return LOW_COMPUTE_OPTIMIZATION_STEP_SZ;
+                    }
+                    case MID_COMPUTE:
+                    {
+                        return MID_COMPUTE_OPTIMIZATION_STEP_SZ;
+                    }
+                    case HIGH_COMPUTE:
+                    {
+                        return HIGH_COMPUTE_OPTIMIZATION_STEP_SZ;
+                    }
+                    default:
+                    {
+                        std::abort();
+                    }
+                }
+            }
+
+            auto get_optimizer_space_iteration_size() -> size_t
+            {
+                const size_t LOW_COMPUTE_SPACE_ITERATION_SZ     = size_t{1} << 4;
+                const size_t MID_COMPUTE_SPACE_ITERATION_SZ     = size_t{1} << 4;
+                const size_t HIGH_COMPUTE_SPACE_ITERATION_SZ    = size_t{1} << 4;
+
+                switch (this->compute_option)
+                {
+                    case LOW_COMPUTE:
+                    {
+                        return LOW_COMPUTE_SPACE_ITERATION_SZ;
+                    }
+                    case MID_COMPUTE:
+                    {
+                        return MID_COMPUTE_SPACE_ITERATION_SZ;
+                    }
+                    case HIGH_COMPUTE:
+                    {
+                        return HIGH_COMPUTE_SPACE_ITERATION_SZ;
+                    }
+                    default:
+                    {
+                        std::abort();
+                    }
+                }
             }
 
             auto get_optimizer() -> std::unique_ptr<matrix_optimizer::MatrixOptimizerInterface>
             {
-                return {};
+                matrix_optimizer::BruteForceMatrixOptimizer matrix_optimizer{};
+
+                matrix_optimizer.set_optimization_epoch_size(this->get_optimizer_optimization_epoch_size())
+                                .set_optimization_step_size(this->get_optimizer_optimization_step_size())
+                                .set_space_iteration_size(this->get_optimizer_space_iteration_size());
+
+                return std::make_unique<matrix_optimizer::BruteForceMatrixOptimizer>(std::move(matrix_optimizer));
             }
 
             auto get_feature_extractor() -> TemporalFeatureExtractor
@@ -1111,6 +1531,7 @@ namespace stock_solution
                          .set_focal_step(this->get_focal_step())
                          .set_featurization_option(this->get_featurization_option())
                          .set_focal_discretization_size(this->get_focal_discretization_size())
+                         .set_analytic_option(this->get_analytic_option())
                          .set_data(this->ticker_data_vec)
                          .set_feature_name_list(this->feature_name_vec)
                          .compute();
@@ -1168,7 +1589,16 @@ namespace stock_solution
 
             auto to_matrix_training_data(const TrainingData& data) -> std::vector<std::pair<std::shared_ptr<tensor_model::Matrix>, std::shared_ptr<tensor_model::Matrix>>>
             {
-                return {};
+                OneOneMatrixEncoder encoder(this->get_encoder_shape(), this->get_encoder_flat_size());
+                std::vector<std::pair<std::shared_ptr<tensor_model::Matrix>, std::shared_ptr<tensor_model::Matrix>>> result{};
+
+                for (const auto& data_point: data.point_vec)
+                {
+                    result.push_back({encoder.encode(data_point.in_point_vec),
+                                      encoder.encode(data_point.out_point_vec)});
+                }
+
+                return result;
             }
 
             auto get_focal_unit() -> uint8_t
@@ -1263,6 +1693,11 @@ namespace stock_solution
                 }
             }
 
+            auto get_analytic_option() -> uint8_t
+            {
+                return {};
+            }
+
             auto get_focal_discretization_size() -> size_t
             {
                 switch (this->compute_option)
@@ -1318,33 +1753,37 @@ namespace stock_solution
         private:
 
             SolutionData data;
-            TemporalFeatureExtractor shadow_extractor;
+
+            std::unique_ptr<TemporalFeatureExtractor> extractor;
+            std::unique_ptr<the_matrix::MatrixInterface> transformer;
+            std::unique_ptr<OneOneMatrixEncoder> encoder;
 
         public:
 
-            SolutionProduct(SolutionData data): data(std::move(data))
+            SolutionProduct(const SolutionData& data): data(data)
             {
-                if (this->data.transformer == nullptr)
-                {
-                    throw std::invalid_argument("bad data transformer, null");
-                }
+                this->extractor     = std::make_unique<TemporalFeatureExtractor>();
 
-                if (this->data.extractor == nullptr)
-                {
-                    throw std::invalid_argument("bad data extractor, null");
-                }
+                this->extractor->set_focal_unit(data.extractor_focal_unit)
+                                .set_focal_exponential_base(data.extractor_focal_exponential_base)
+                                .set_focal_step(data.extractor_focal_step)
+                                .set_focal_discretization_size(data.extractor_focal_discretization_sz)
+                                .set_featurization_option(data.extractor_featurization_option)
+                                .set_feature_name_list(data.extractor_feature_name_list)
+                                .set_analytic_option(data.extractor_analytic_option);
 
-                if (this->data.encoder == nullptr)
-                {
-                    throw std::invalid_argument("bad data encoder, null");
-                }
+                this->transformer   = MatrixMaker{}.set_compute(data.matrix_maker_compute_option)
+                                                   .set_storage(data.matrix_maker_storage_option)
+                                                   .set_in_vector_size(data.matrix_maker_in_vector_sz)
+                                                   .set_out_vector_size(data.matrix_maker_out_vector_sz)
+                                                   .get();
 
-                this->shadow_extractor = *this->data.extractor;
+                this->encoder       = std::make_unique<OneOneMatrixEncoder>(stdx::to_castable_vector_initializer(data.matrix_encoder_shape), data.matrix_encoder_flat_sz);
             }
 
             auto load_data(const std::vector<TickerData>& ticker_data) -> SolutionProduct&
             {
-                this->shadow_extractor.set_data(ticker_data).compute();
+                this->extractor->set_data(ticker_data).compute();
 
                 return *this;
             }
@@ -1355,15 +1794,15 @@ namespace stock_solution
 
                 std::vector<std::vector<double>> org_state_vec                  = this->featurize_tickers(tickers, forecast_timepoint);
                 std::vector<double> unified_state                               = this->unify_state(org_state_vec);
-                std::shared_ptr<tensor_model::Matrix> matrix_state              = this->data.encoder->encode(unified_state);
-                std::shared_ptr<tensor_model::Matrix> transformed_matrix_state  = this->data.transformer->project({matrix_state}).front();
-                std::vector<double> transformed_state                           = this->data.encoder->decode(transformed_matrix_state);
+                std::shared_ptr<tensor_model::Matrix> matrix_state              = this->encoder->encode(unified_state);
+                std::shared_ptr<tensor_model::Matrix> transformed_matrix_state  = this->transformer->project({matrix_state}).front();
+                std::vector<double> transformed_state                           = this->encoder->decode(transformed_matrix_state);
                 std::vector<std::vector<double>> predicted_state_vec            = this->individualize_state_as(transformed_state, org_state_vec);
                 std::vector<Actionable> actionable_vec                          = {};
 
                 for (const auto& [ticker, state]: stdx::zip(tickers, predicted_state_vec))
                 {
-                    FeatureAnalyticReport report = this->data.extractor->analyze(state);
+                    FeatureAnalyticReport report = this->extractor->analyze(state);
 
                     for (const FeatureAnalyticPoint& analytic_point: report.analytic_point_vec)
                     {
@@ -1388,7 +1827,7 @@ namespace stock_solution
 
                 return actionable_vec;
             }
-        
+
         private:
 
             auto featurize_tickers(const std::vector<std::string>& ticker_vec,
@@ -1398,7 +1837,7 @@ namespace stock_solution
 
                 for (const std::string& ticker: ticker_vec)
                 {
-                    std::vector<double> feature_vec = this->data.extractor->get_feature_vector_at_timepoint(ticker, forecast_timepoint);
+                    std::vector<double> feature_vec = this->extractor->get_feature_vector_at_timepoint(ticker, forecast_timepoint);
                     result_vec.push_back(std::move(feature_vec));
                 }
 

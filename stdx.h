@@ -101,6 +101,51 @@ namespace stdx
             }
     };
 
+    template <class T1, class T>
+    constexpr auto throw_integer_cast(T value) -> T1
+    {
+        static_assert(std::numeric_limits<T>::is_integer);
+        static_assert(std::numeric_limits<T1>::is_integer);
+
+        if constexpr(std::is_unsigned_v<T> && std::is_unsigned_v<T1>){
+            (void) value;
+        } else if constexpr(std::is_signed_v<T> && std::is_signed_v<T1>){
+            (void) value;
+        } else{
+            if constexpr(std::is_signed_v<T>){
+                if constexpr(sizeof(T) > sizeof(T1)){
+                    (void) value;
+                } else{
+                    if (value < 0){
+                        throw std::runtime_error("overflow integer conversion");
+                    } else{
+                        return value; //sizeof(signed) <= sizeof(unsigned)
+                    }
+                }
+            } else{
+                if constexpr(sizeof(T1) > sizeof(T)){
+                    (void) value;
+                } else{
+                    if (value > std::numeric_limits<T1>::max()){
+                        throw std::runtime_error("overflow integer conversion");
+                    } else{
+                        return value; //sizeof(unsigned) >= sizeof(signed)
+                    }
+                }
+            }
+        }
+
+        if (value > std::numeric_limits<T1>::max()){
+            throw std::runtime_error("overflow integer conversion");
+        }
+
+        if (value < std::numeric_limits<T1>::min()){
+            throw std::runtime_error("overflow integer conversion");
+        }
+
+        return value;
+    }
+
     template <class T, std::enable_if_t<std::is_unsigned_v<T>, bool> = true>
     constexpr auto is_pow2(T value) -> bool
     {
