@@ -135,8 +135,7 @@ namespace stock_solution
     struct FeatureAnalyticPoint
     {
         std::string feature_id;
-        std::chrono::time_point<std::chrono::system_clock> window_first;
-        std::chrono::time_point<std::chrono::system_clock> window_last;
+        size_t focal_idx;
         bool bear_or_bull;
         double confident_score;
     };
@@ -144,6 +143,272 @@ namespace stock_solution
     struct FeatureAnalyticReport
     {
         std::vector<FeatureAnalyticPoint> analytic_point_vec;
+    };
+
+    template <class Reducer>
+    class IntervalReducedTree
+    {
+        private:
+
+            std::vector<std::optional<double>> interval_tree;
+            Reducer reducer;
+            size_t virtual_sz;
+            size_t actual_sz;
+
+        public:
+
+            IntervalReducedTree(const std::vector<double>& managing_interval,
+                                const Reducer& reducer = Reducer())
+            {
+                stdx::safe_float_range_access(managing_interval.data(), managing_interval.size());
+
+                this->actual_sz     = this->get_tree_size(managing_interval.size());
+                this->interval_tree = this->make_interval_tree_from(managing_interval, reducer, this->actual_sz);
+                this->virtual_sz    = managing_interval.size();
+                this->reducer       = reducer;
+            }
+
+            auto get(const std::pair<size_t, size_t>& interval) -> double
+            {
+                size_t first        = interval.first;
+                size_t last         = interval.first + interval.second;
+
+                if (last > this->virtual_sz)
+                {
+                    throw std::invalid_argument("bad access, out of range access");
+                }
+
+                if (first == last)
+                {
+                    throw std::invalid_argument("bad interval, 0 interval");
+                }
+
+                size_t tree_first   = 0u;
+                size_t tree_last    = this->actual_sz;
+                size_t key_first    = first;
+                size_t key_last     = last;
+                size_t idx          = 0u;
+
+                std::optional<double> result = this->get_helper(this->interval_tree,
+                                                                tree_first, tree_last,
+                                                                key_first, key_last,
+                                                                idx,
+                                                                this->reducer);
+
+                if (!result.has_value())
+                {
+                    std::abort();
+                }
+
+                return result.value();
+            }
+
+        private:
+
+            auto get_tree_size(size_t managing_interval_sz) -> size_t
+            {
+                return size_t{1} << stdx::ulog2(stdx::ceil2(managing_interval_sz));
+            }
+
+            template <class ReducerLike>
+            auto make_interval_tree_helper(std::vector<std::optional<double>>& interval_tree,
+                                           size_t first, size_t last,
+                                           size_t idx,
+                                           ReducerLike&& reducer,
+                                           const std::vector<double>& managing_interval) -> std::optional<double>
+            {
+                if (first + 1 == last)
+                {
+                    if (first < managing_interval.size())
+                    {
+                        interval_tree[idx] = managing_interval[first];
+                        return interval_tree[idx];
+                    }
+                    else
+                    {
+                        interval_tree[idx] = std::nullopt;
+                        return std::nullopt;
+                    }
+                }
+
+                size_t interval_sz          = last - first;
+                size_t mid_sz               = interval_sz / 2;
+                size_t nxt_first            = first + mid_sz;
+
+                std::optional<double> lhs   = this->make_interval_tree_helper(interval_tree,
+                                                                              first, nxt_first,
+                                                                              idx * 2 + 1,
+                                                                              reducer,
+                                                                              managing_interval);
+
+                std::optional<double> rhs   = this->make_interval_tree_helper(interval_tree,
+                                                                              nxt_first, last,
+                                                                              idx * 2 + 2,
+                                                                              reducer,
+                                                                              managing_interval);
+
+                if (lhs.has_value())
+                {
+                    if (rhs.has_value())
+                    {
+                        interval_tree[idx] = reducer(lhs.value(), rhs.value());
+                    }
+                    else
+                    {
+                        interval_tree[idx] = lhs.value();
+                    }
+                }
+                else
+                {
+                    if (rhs.has_value())
+                    {
+                        interval_tree[idx] = rhs.value();
+                    }
+                    else
+                    {
+                        interval_tree[idx] = std::nullopt;
+                    }
+                }
+
+                return interval_tree[idx];
+            }
+
+            template <class ReducerLike>
+            auto make_interval_tree_from(const std::vector<double>& managing_interval,
+                                         ReducerLike&& reducer,
+                                         size_t tree_sz) -> std::vector<std::optional<double>>
+            {
+                if (!stdx::is_pow2(tree_sz))
+                {
+                    throw std::invalid_argument("bad tree size, not pow 2 tree size");
+                }
+
+                if (managing_interval.size() > tree_sz)
+                {
+                    throw std::invalid_argument("bad managing interval size, unfit tree size");
+                }
+
+                std::vector<std::optional<double>> interval_tree(tree_sz, std::nullopt);
+
+                size_t first    = 0u;
+                size_t last     = tree_sz;
+                size_t idx      = 0u;
+
+                this->make_interval_tree_helper(interval_tree,
+                                                first, last,
+                                                idx,
+                                                reducer,
+                                                managing_interval);
+
+                return interval_tree;
+            }
+
+            template <class ReducerLike>
+            auto get_helper(const std::vector<std::optional<double>>& interval_tree,
+                            size_t tree_first, size_t tree_last,
+                            size_t key_first, size_t key_last,
+                            size_t idx,
+                            ReducerLike&& reducer) -> std::optional<double>
+            {
+                if (tree_first == key_first && tree_last == key_last)
+                {
+                    return interval_tree[idx];
+                }
+
+                size_t interval_sz  = tree_last - tree_first;
+                size_t mid_sz       = interval_sz / 2;
+                size_t nxt_first    = tree_first + mid_sz;
+
+                if (key_last <= nxt_first)
+                {
+                    return this->get_helper(interval_tree,
+                                            tree_first, nxt_first,
+                                            key_first, key_last,
+                                            idx * 2 + 1,
+                                            reducer);
+                }
+                else if (key_first >= nxt_first)
+                {
+                    return this->get_helper(interval_tree,
+                                            nxt_first, tree_last,
+                                            key_first, key_last,
+                                            idx * 2 + 2,
+                                            reducer);
+                }
+                else
+                {
+                    std::optional<double> lhs = this->get_helper(interval_tree,
+                                                                 tree_first, nxt_first,
+                                                                 key_first, nxt_first,
+                                                                 idx * 2 + 1,
+                                                                 reducer);
+
+                    std::optional<double> rhs = this->get_helper(interval_tree,
+                                                                 nxt_first, tree_last,
+                                                                 nxt_first, key_last,
+                                                                 idx * 2 + 2,
+                                                                 reducer);
+
+                    if (lhs.has_value())
+                    {
+                        if (rhs.has_value())
+                        {
+                            return reducer(lhs.value(), rhs.value());
+                        }
+                        else
+                        {
+                            return lhs.value();
+                        }
+                    }
+                    else
+                    {
+                        if (rhs.has_value())
+                        {
+                            return rhs.value();
+                        }
+                        else
+                        {
+                            return std::nullopt;
+                        }
+                    }
+                }
+            }
+    };
+
+    class MaxReducer
+    {
+        public:
+
+            constexpr auto operator()(double lhs, double rhs) const -> double
+            {
+                stdx::safe_float_access(lhs);
+                stdx::safe_float_access(rhs);
+
+                return std::max(lhs, rhs);
+            }            
+    };
+
+    class MinReducer
+    {
+        public:
+
+            constexpr auto operator()(double lhs, double rhs) const -> double
+            {
+                stdx::safe_float_access(lhs);
+                stdx::safe_float_access(rhs);
+
+                return std::min(lhs, rhs);
+            }
+    };
+
+    class SumReducer
+    {
+        public:
+
+            constexpr auto operator()(double lhs, double rhs) const -> double
+            {
+                return lhs + rhs;
+            }
     };
 
     class TemporalFeatureExtractor
@@ -178,6 +443,13 @@ namespace stock_solution
                 double feature_value;
             };
 
+            struct PrecomputedAccelerationResource
+            {
+                std::unique_ptr<IntervalReducedTree<MaxReducer>> max_reducer_resource;
+                std::unique_ptr<IntervalReducedTree<MinReducer>> min_reducer_resource;
+                std::unique_ptr<IntervalReducedTree<SumReducer>> sum_reducer_resource;
+            };
+
             uint8_t focal_unit;
             double focal_base;
             size_t focal_sz;
@@ -188,6 +460,7 @@ namespace stock_solution
             std::vector<TickerData> ticker_data_vec;
             std::vector<std::string> feature_name_vec;
             std::unordered_map<std::string, std::unordered_map<std::string, std::vector<FeatureTimePoint>>> feature_map;
+            std::unordered_map<std::string, std::unordered_map<std::string, PrecomputedAccelerationResource>> precomputed_map;
             std::unordered_map<std::string, uint8_t> feature_preferred_aggregation_map;
 
         public:
@@ -201,6 +474,7 @@ namespace stock_solution
                                         ticker_data_vec(),
                                         feature_name_vec(),
                                         feature_map(),
+                                        precomputed_map(),
                                         feature_preferred_aggregation_map(){}
 
             auto set_focal_unit(uint8_t focal_unit) -> TemporalFeatureExtractor&
@@ -388,11 +662,22 @@ namespace stock_solution
                 {
                     for (const auto& [feature_name, feature_data]: ticker_data)
                     {
+                        std::vector<double> feature_vec = {};
+
                         for (const auto& [epoch_timestamp, feature_value]: feature_data)
                         {
                             this->feature_map[ticker_name][feature_name].push_back(FeatureTimePoint{.epoch_timepoint    = epoch_timestamp,
                                                                                                     .feature_value      = feature_value});
+
+                            feature_vec.push_back(feature_value);
                         }
+
+                        this->precomputed_map[ticker_name][feature_name] = PrecomputedAccelerationResource
+                        {
+                            .max_reducer_resource   = std::make_unique<IntervalReducedTree<MaxReducer>>(feature_vec),
+                            .min_reducer_resource   = std::make_unique<IntervalReducedTree<MinReducer>>(feature_vec),
+                            .sum_reducer_resource   = std::make_unique<IntervalReducedTree<SumReducer>>(feature_vec)
+                        };
                     }
                 }
 
@@ -423,10 +708,44 @@ namespace stock_solution
 
             auto analyze(const std::vector<double>& feature_vec) -> FeatureAnalyticReport
             {
-                return {};
+                switch (this->analytic_option)
+                {
+                    case ANALYTIC_SQUARE_DIFFERENCE:
+                    {
+                        return sqrdiff_analyze(feature_vec);
+                    }
+                    default:
+                    {
+                        std::abort();
+                    }
+                }
             }
 
         private:
+
+            auto double_to_bool_vector(float value) -> std::vector<double>
+            {
+                static_assert(std::numeric_limits<float>::is_iec559);
+
+                uint32_t bitvec         = std::bit_cast<uint32_t>(value);
+                std::vector<double> rs  = {};
+
+                for (size_t i = 0u; i < std::numeric_limits<uint32_t>::digits; ++i)
+                {
+                    uint32_t test_bit = uint32_t{1} << i;
+
+                    if ((bitvec & test_bit) != 0u)
+                    {
+                        rs.push_back(1);
+                    }
+                    else
+                    {
+                        rs.push_back(0);
+                    }
+                }
+
+                return rs;
+            }
 
             auto hole_punch(size_t enumeration_idx, size_t enumeration_sz) -> std::vector<double>
             {
@@ -773,12 +1092,65 @@ namespace stock_solution
                     best_metric = AGGREGATION_OPTION_MIN;
                 }
 
-                FeatureTimePoint * first    = map_ptr_2->second.data();
-                FeatureTimePoint * last     = std::next(first, map_ptr_2->second.size());
+                FeatureTimePoint * tmp_first    = map_ptr_2->second.data();
+                FeatureTimePoint * tmp_last     = std::next(tmp_first, map_ptr_2->second.size());
+                auto [first, last]              = this->binary_interval(tmp_first, tmp_last, epoch_timepoint_first, epoch_timepoint_last);
+                size_t first_idx                = std::distance(tmp_first, first);
+                size_t last_idx                 = std::distance(tmp_first, last);
 
                 if (std::distance(first, last) == 0u)
                 {
                     return std::nullopt;
+                }
+
+                if (auto precomputed_map_ptr = this->precomputed_map.find(ticker_name); precomputed_map_ptr != this->precomputed_map.end())
+                {
+                    if (auto precomputed_map_ptr_2 = precomputed_map_ptr->second.find(feature_name); precomputed_map_ptr_2 != precomputed_map_ptr->second.end())
+                    {
+                        switch (best_metric)
+                        {
+                            case AGGREGATION_OPTION_MAX:
+                            {
+                                if (precomputed_map_ptr_2->second.max_reducer_resource != nullptr)
+                                {
+                                    return precomputed_map_ptr_2->second.max_reducer_resource->get({first_idx, last_idx - first_idx});
+                                }
+
+                                break;
+                            }
+                            case AGGREGATION_OPTION_MIN:
+                            {
+                                if (precomputed_map_ptr_2->second.min_reducer_resource != nullptr)
+                                {
+                                    return precomputed_map_ptr_2->second.min_reducer_resource->get({first_idx, last_idx - first_idx});
+                                }
+
+                                break;
+                            }
+                            case AGGREGATION_OPTION_AVG:
+                            {
+                                if (precomputed_map_ptr_2->second.sum_reducer_resource != nullptr)
+                                {
+                                    return precomputed_map_ptr_2->second.sum_reducer_resource->get({first_idx, last_idx - first_idx}) / (last_idx - first_idx);
+                                }
+
+                                break;
+                            }
+                            case AGGREGATION_OPTION_SUM:
+                            {
+                                if (precomputed_map_ptr_2->second.sum_reducer_resource != nullptr)
+                                {
+                                    return precomputed_map_ptr_2->second.sum_reducer_resource->get({first_idx, last_idx - first_idx});
+                                }
+
+                                break;
+                            }
+                            default:
+                            {
+                                std::abort();
+                            }
+                        }
+                    }
                 }
 
                 return this->reduce(best_metric,
@@ -846,10 +1218,7 @@ namespace stock_solution
 
                         if (!nxt_vec.empty())
                         {
-                            size_t enumeration_idx      = Base10ExponentialRadixer{}.enumerate(nxt_vec.front());
-                            size_t enumeration_sz       = Base10ExponentialRadixer{}.enumeration_size();
-                            std::vector<double> tmp_vec = this->hole_punch(enumeration_idx, enumeration_sz);
-
+                            std::vector<double> tmp_vec = this->double_to_bool_vector(nxt_vec.front());
                             std::copy(tmp_vec.begin(), tmp_vec.end(), std::back_inserter(feature_vec));
                         }
 
@@ -877,10 +1246,7 @@ namespace stock_solution
 
                         if (!nxt_vec.empty())
                         {
-                            size_t enumeration_idx      = Base10ExponentialRadixer{}.enumerate(nxt_vec.front());
-                            size_t enumeration_sz       = Base10ExponentialRadixer{}.enumeration_size();
-                            std::vector<double> tmp_vec = this->hole_punch(enumeration_idx, enumeration_sz);
-
+                            std::vector<double> tmp_vec = this->double_to_bool_vector(nxt_vec.front());
                             std::copy(tmp_vec.begin(), tmp_vec.end(), std::back_inserter(feature_vec));
                         }
 
@@ -892,14 +1258,16 @@ namespace stock_solution
 
                         if (!nxt_vec.empty())
                         {
-                            auto [suffix_vec_2, nxt_vec_2]  = SequenceCompressor{}.suffix_lossless_compress({std::next(nxt_vec.begin()), nxt_vec.end()});
+                            if (nxt_vec.size() > 1)
+                            {
+                                nxt_vec[0] = nxt_vec[1];
+                            }
+
+                            auto [suffix_vec_2, nxt_vec_2]  = SequenceCompressor{}.suffix_lossless_compress({nxt_vec.begin(), nxt_vec.end()});
 
                             if (!nxt_vec_2.empty())
                             {
-                                size_t enumeration_idx      = Base10ExponentialRadixer{}.enumerate(nxt_vec_2.front());
-                                size_t enumeration_sz       = Base10ExponentialRadixer{}.enumeration_size();
-                                std::vector<double> tmp_vec = this->hole_punch(enumeration_idx, enumeration_sz);
-
+                                std::vector<double> tmp_vec = this->double_to_bool_vector(nxt_vec_2.front());
                                 std::copy(tmp_vec.begin(), tmp_vec.end(), std::back_inserter(feature_vec));
                             }
 
@@ -913,6 +1281,146 @@ namespace stock_solution
                 }
 
                 return feature_vec;
+            }
+
+            auto sqrdiff_analyze(const std::vector<double>& feature_vec) -> FeatureAnalyticReport
+            {
+                std::vector<std::vector<std::pair<double, double>>> timeslice_2d_vec = this->get_timeslice_vector_since({});
+                size_t first = 0u;
+                FeatureAnalyticReport report{};
+
+                auto get_suffix_sentiment_score = [&](const std::vector<size_t>& suffix_vec)
+                {
+                    if (suffix_vec.size() <= 1)
+                    {
+                        return 0;
+                    }
+
+                    size_t back_suffix_idx      = suffix_vec[suffix_vec.size() - 1];
+                    size_t prev_back_suffix_idx = suffix_vec[suffix_vec.size() - 2];
+
+                    if (back_suffix_idx > prev_back_suffix_idx)
+                    {
+                        return 1;
+                    }
+                    else
+                    {
+                        return -1;
+                    }
+                };
+
+                auto sqrdiff_first_order_defeaturize = [&](const std::vector<double>& suffix_encoded_vec)
+                {
+                    size_t tentative_first          = this->double_to_bool_vector({}).size();
+                    size_t actual_first             = std::min(suffix_encoded_vec.size(), tentative_first);
+                    size_t suffix_feature_arr_sz    = suffix_encoded_vec.size() - actual_first;
+                    size_t suffix_arr_sz            = std::sqrt(suffix_feature_arr_sz);
+
+                    if (suffix_arr_sz != this->focal_discretization_sz)
+                    {
+                        throw std::runtime_error("sqrdiff calculation went wrong");
+                    }
+
+                    std::vector<size_t> suffix_vec  = {};
+                    double confident_score          = 0;
+
+                    for (size_t i = 0u; i < suffix_arr_sz; ++i)
+                    {
+                        size_t hole_first   = actual_first + i * suffix_arr_sz;
+                        size_t hole_last    = hole_first + suffix_arr_sz;
+
+                        if (hole_last > suffix_encoded_vec.size())
+                        {
+                            throw std::runtime_error("sqrdiff calculation went wrong");
+                        }
+
+                        size_t idx          = std::distance(std::next(feature_vec.begin(), hole_first),
+                                                            std::max_element(std::next(feature_vec.begin(), hole_first), std::next(feature_vec.begin(), hole_last)));
+
+                        suffix_vec.push_back(idx);
+
+                        for (size_t j = hole_first; j < hole_last; ++j)
+                        {
+                            if (j == idx)
+                            {
+                                confident_score += std::pow(suffix_encoded_vec[j] - 1, 2) * i;
+                            }
+                            else
+                            {
+                                confident_score += std::pow(suffix_encoded_vec[j], 2) * i;
+                            }
+                        }
+                    }
+ 
+                    return std::make_pair(std::move(suffix_vec), confident_score);
+                };
+
+                auto sqrdiff_second_order_defeaturize = [&](const std::vector<double>& suffix_encoded_vec)
+                {
+                    size_t half_sz = suffix_encoded_vec.size() / 2;
+                    std::vector<double> half_encoded_vec(suffix_encoded_vec.begin(), std::next(suffix_encoded_vec.begin(), half_sz));
+
+                    return sqrdiff_first_order_defeaturize(half_encoded_vec);
+                };
+
+                auto sqrdiff_defeaturize = [&](const std::vector<double>& suffix_encoded_vec)
+                {
+                    switch (this->featurization_option)
+                    {
+                        case FEATURIZATION_FIRST_ORDER_BINARY_SUFFIX:
+                        {
+                            return sqrdiff_first_order_defeaturize(suffix_encoded_vec);
+                        }
+                        case FEATURIZATION_SECOND_ORDER_BINARY_SUFFIX:
+                        {
+                            return sqrdiff_second_order_defeaturize(suffix_encoded_vec);
+                        }
+                        default:
+                        {
+                            std::abort();
+                        }
+                    }
+                };
+
+                size_t chunk_sz = this->feature_name_vec.size() * timeslice_2d_vec.size();
+
+                if (chunk_sz == 0u)
+                {
+                    return report;
+                }
+
+                size_t slice_sz = feature_vec.size() / chunk_sz;
+
+                for (const std::string& feature_name: this->feature_name_vec)
+                {
+                    for (size_t i = 0u; i < timeslice_2d_vec.size(); ++i)
+                    {
+                        size_t focal_idx                    = i;
+                        size_t last                         = first + slice_sz;
+
+                        std::vector<double> score_vec(std::next(feature_vec.begin(), first), std::next(feature_vec.begin(), last));
+                        first                               = last;
+
+                        std::vector<size_t> suffix;
+                        double confident_score;
+
+                        std::tie(suffix, confident_score)   = sqrdiff_defeaturize(score_vec);
+                        intmax_t suffix_sentiment_score     = get_suffix_sentiment_score(suffix);
+
+                        report.analytic_point_vec.push_back
+                        (
+                            FeatureAnalyticPoint
+                            {
+                                .feature_id         = feature_name,
+                                .focal_idx          = focal_idx,
+                                .bear_or_bull       = static_cast<bool>(suffix_sentiment_score > 0),
+                                .confident_score    = confident_score
+                            }
+                        );
+                    }
+                }
+
+                return report;
             }
     };
 

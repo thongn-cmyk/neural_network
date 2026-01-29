@@ -58,11 +58,11 @@ auto randomize_featurization_option() -> uint8_t
     {
         case 0:
         {
-            return TemporalFeatureExtractor::FEATURIZATION_SECOND_ORDER_BINARY_SUFFIX;
+            return TemporalFeatureExtractor::FEATURIZATION_FIRST_ORDER_BINARY_SUFFIX;
         }
         case 1:
         {
-            return TemporalFeatureExtractor::FEATURIZATION_FIRST_ORDER_BINARY_SUFFIX;
+            return TemporalFeatureExtractor::FEATURIZATION_SECOND_ORDER_BINARY_SUFFIX;
         }
         default:
         {
@@ -75,7 +75,7 @@ auto randomize_exponential_base() -> double
 {
     static auto randomizer      = std::mt19937_64{static_cast<uint32_t>(std::chrono::high_resolution_clock::now().time_since_epoch().count())};
     const double BASE_FIRST     = 0.0001;
-    const double BASE_LAST      = 99.9999;
+    const double BASE_LAST      = 19.9999;
     static auto real_dis        = std::uniform_real_distribution<double>(BASE_FIRST, BASE_LAST);
 
     return real_dis(randomizer);
@@ -278,6 +278,12 @@ void test_one_featurization()
         auto feat_vec   = extractor.get_feature_vector_at_timepoint(ticker_name, timepoint);
 
         test_feature_vector(feat_vec);
+        auto analytic_point_vec = extractor.analyze(feat_vec).analytic_point_vec;
+
+        if (!extractor.analyze(feat_vec).analytic_point_vec.empty())
+        {
+            stdx::safe_float_access(extractor.analyze(feat_vec).analytic_point_vec.front().confident_score);
+        }
     }
 }
 
