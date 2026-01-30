@@ -503,7 +503,7 @@ namespace tensor_matrix_operation
         //(1): every approximatable function by using calculus (slope and friends) must take a form of Taylor Series, with real coefficients
         //(2): a base approximation is only stable if operated on a group of less than or equal to k dimensions, for k is some number
         //(3): a function is only Taylor-Series-complete without exploding the coefficient space if we use the method x = x + f(x) and y = y + x (with the slack-one buffer that we proved the other day)
-        //(4): a vertical shrink of a function is sufficient for x = x + f(x), with interchangable finite range and domain, every vertically shrinked function reflects one point on the radian coordiante
+        //(4): a vertical shrink of a function is sufficient for x = x + f(x), with interchangable finite range and domain, every vertically shrinked function reflects one point on the radian coordinate
 
     //
 
@@ -628,14 +628,13 @@ namespace tensor_matrix_operation
 
             if (i + 1 != rotation_sz)
             {
-                size_t positional_idx = 0u;
-
                 for (const auto& focused_matrix: focused_matrix_vec)
                 {
                     stdx::transparent_vector<std::shared_ptr<Matrix>, Allocator> focal_matrix_vec       = focal_split_matrix(focused_matrix, focal_sz, allocator);
                     stdx::transparent_vector<std::shared_ptr<Matrix>, Allocator> transformed_focal_vec(allocator);
                     const size_t saved_coeff_arr_offset_0                                               = coeff_arr_offset;
                     const size_t saved_shape_coeff_arr_offset_0                                         = shape_coeff_arr_offset;
+                    size_t positional_idx                                                               = 0u;
 
                     for (const auto& focal: focal_matrix_vec)
                     {
@@ -675,7 +674,6 @@ namespace tensor_matrix_operation
                                                                                                                               accum_suffix_map,
                                                                                                                               allocator);
             stdx::transparent_vector<std::shared_ptr<Matrix>, Allocator> accum_matrix_vec(allocator);
-            size_t positional_idx = 0u;
 
             for (const auto& focused_matrix: focused_deparameterized_matrix_vec)
             {
@@ -683,6 +681,7 @@ namespace tensor_matrix_operation
                 stdx::transparent_vector<std::shared_ptr<Matrix>, Allocator> incremental_vec(allocator);
                 const size_t saved_coeff_arr_offset_1                                                   = coeff_arr_offset;
                 const size_t saved_shape_coeff_arr_offset_1                                             = shape_coeff_arr_offset;
+                size_t positional_idx                                                                   = 0u;
 
                 for (const auto& focal: focal_deparamed_matrix_vec)
                 {

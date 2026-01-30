@@ -10,6 +10,7 @@
 #include "conventional_randomizer.h"
 #include <unordered_map>
 #include <unordered_set>
+#include "the_host_matrix.h"
 
 using namespace stock_solution;
 
@@ -103,10 +104,12 @@ auto randomize_timepoint() -> std::chrono::time_point<std::chrono::system_clock>
 
     static auto focal_randomizer    = conventional_randomizer::ApplicationRandomizerObject{};
     uint64_t now_tick               = std::chrono::system_clock::now().time_since_epoch().count();
-    operating_float_t perc          = focal_randomizer.ld_randomize_focal_2() * focal_randomizer.ld_randomize_focal_2();
+    operating_float_t perc          = focal_randomizer.ld_randomize_percentage_focal() * focal_randomizer.ld_randomize_percentage_focal();
     uint64_t tick                   = std::clamp(static_cast<uint64_t>(now_tick * perc), uint64_t{0u}, now_tick);
     uint64_t new_tick               = now_tick - tick;
 
+    std::cout << "new_tick > " << new_tick << std::endl;
+    
     return std::chrono::time_point<std::chrono::system_clock>(typename decltype(std::chrono::system_clock::now())::duration(new_tick));
 }
 
@@ -256,18 +259,123 @@ void test_feature_vector(const std::vector<double>& feature_vec)
     }
 }
 
+auto get_value(const std::vector<TickerData>& ticker_data_vec,
+               std::chrono::time_point<std::chrono::system_clock> first,
+               std::chrono::time_point<std::chrono::system_clock> last,
+               const std::string& feature_name) -> std::optional<double>
+{
+    std::optional<double> result = std::nullopt;
+
+    for (const auto& ticker_data: ticker_data_vec)
+    {
+        if (ticker_data.timestamp >= first && ticker_data.timestamp < last && ticker_data.feature_name == feature_name)
+        {
+            if (!result.has_value())
+            {
+                result = ticker_data.feature_value;
+            }
+
+            if (result.value() > ticker_data.feature_value)
+            {
+                result = ticker_data.feature_value;
+            }
+        }
+    }
+
+    return result;
+}
+
+auto get_unit_duration(uint8_t focal_unit) -> std::chrono::nanoseconds
+{
+    using namespace std::chrono;
+
+    switch (focal_unit)
+    {
+        case TemporalFeatureExtractor::FOCAL_UNIT_MICROSECOND:
+        {
+            return duration_cast<nanoseconds>(microseconds(1));
+        }
+        case TemporalFeatureExtractor::FOCAL_UNIT_MILLISECOND:
+        {
+            return duration_cast<nanoseconds>(milliseconds(1));
+        }
+        case TemporalFeatureExtractor::FOCAL_UNIT_SECOND:
+        {
+            return duration_cast<nanoseconds>(seconds(1));
+        }
+        case TemporalFeatureExtractor::FOCAL_UNIT_MINUTE:
+        {
+            return duration_cast<nanoseconds>(minutes(1));
+        }
+        case TemporalFeatureExtractor::FOCAL_UNIT_DAY:
+        {
+            return duration_cast<nanoseconds>(days(1));
+        }
+        default:
+        {
+            std::cout << "bad unit" << std::endl;
+            std::abort();
+        }
+    }
+}
+
+auto get_previous_timepoint(std::chrono::time_point<std::chrono::system_clock> timepoint,
+                            size_t focal_idx,
+                            size_t discrete_idx,
+                            uint8_t focal_unit,
+                            double exp_base,
+                            size_t discretization_sz) -> std::chrono::time_point<std::chrono::system_clock>
+{
+
+    std::vector<std::pair<double, double>> window_vec   = {};
+    double focal_value                                  = std::pow(exp_base, focal_idx);
+    auto first                                          = timepoint - (get_unit_duration(focal_unit) * focal_value);
+
+    if (first < decltype(first)(typename decltype(first)::duration(0)))
+    {
+        first = decltype(first)(typename decltype(first)::duration(0));
+    }
+
+    auto last                                           = timepoint;
+    uint64_t first_epoch                                = std::chrono::duration_cast<std::chrono::nanoseconds>(first.time_since_epoch()).count();
+    uint64_t last_epoch                                 = std::chrono::duration_cast<std::chrono::nanoseconds>(last.time_since_epoch()).count();
+    uint64_t lapse                                      = last_epoch - first_epoch;
+    uint64_t interval_sz                                = lapse / discretization_sz;
+    uint64_t tentative_first                            = first_epoch + discrete_idx * interval_sz;
+    auto final_first                                    = decltype(first)(typename decltype(first)::duration(tentative_first));
+
+    return std::chrono::time_point_cast<typename std::chrono::time_point<std::chrono::system_clock>::duration>(final_first);
+}
+
+auto to_str(std::optional<double> value) -> std::string
+{
+    if (!value.has_value())
+    {
+        return "nullopt";
+    }
+
+    return std::to_string(value.value());
+}
+
 void test_one_featurization()
 {
     TemporalFeatureExtractor extractor{};
     std::vector<TickerData> ticker_data = randomize_ticker_data();
 
-    extractor.set_focal_unit(randomize_focal_unit())
-             .set_focal_exponential_base(randomize_exponential_base())
-             .set_focal_step(randomize_focal_step())
-             .set_featurization_option(randomize_featurization_option())
-             .set_focal_discretization_size(randomize_discretization_step())
+    uint8_t focal_unit                          = randomize_focal_unit();
+    double exp_base                             = randomize_exponential_base();
+    size_t focal_step                           = randomize_focal_step();
+    uint8_t featurization_option                = randomize_featurization_option();
+    size_t discretization_sz                    = randomize_discretization_step();
+    std::vector<std::string> feature_name_list  = get_random_feature_name_list(ticker_data);
+
+    extractor.set_focal_unit(focal_unit)
+             .set_focal_exponential_base(exp_base)
+             .set_focal_step(focal_step)
+             .set_featurization_option(featurization_option)
+             .set_focal_discretization_size(discretization_sz)
              .set_data(ticker_data)
-             .set_feature_name_list(get_random_feature_name_list(ticker_data))
+             .set_feature_name_list(feature_name_list)
              .compute();
 
     std::vector<std::string> ticker_name_list = randomize_ticker_name_list(ticker_data);
@@ -275,14 +383,34 @@ void test_one_featurization()
     for (const std::string& ticker_name: ticker_name_list)
     {
         auto timepoint  = randomize_timepoint();
-        auto feat_vec   = extractor.get_feature_vector_at_timepoint(ticker_name, timepoint);
+        std::unordered_map<std::string, std::vector<std::vector<std::optional<double>>>> feat_vec = extractor.get_raw_feature_vector_at_timepoint_x(ticker_name, timepoint);
 
-        test_feature_vector(feat_vec);
-        auto analytic_point_vec = extractor.analyze(feat_vec).analytic_point_vec;
-
-        if (!extractor.analyze(feat_vec).analytic_point_vec.empty())
+        for (const auto& [feature_name, feature_2d_vec] : feat_vec)
         {
-            stdx::safe_float_access(extractor.analyze(feat_vec).analytic_point_vec.front().confident_score);
+            for (size_t i = 0u; i < feature_2d_vec.size(); ++i)
+            {
+                for (size_t j = 0u; j < feature_2d_vec[i].size(); ++j)
+                {
+                    auto last_timepoint         = timepoint;
+                    auto first_timepoint        = get_previous_timepoint(last_timepoint, i, j, focal_unit, exp_base, discretization_sz);
+                    std::optional<double> value = get_value(ticker_data, first_timepoint, last_timepoint, feature_name);
+
+                    // if (value != feature_2d_vec[i][j])
+                    // {
+                    //     std::cout << "mayday, mismatched value" << "<>" << to_str(value) << "<>" << to_str(feature_2d_vec[i][j]) << std::endl;
+                    //     std::abort();
+                    // }
+
+                    std::cout << first_timepoint.time_since_epoch().count() << "<first>" << last_timepoint.time_since_epoch().count() << "<last>" << std::endl;
+                }
+            }
+        }
+
+        auto feat_vec_2 = extractor.get_feature_vector_at_timepoint(ticker_name, timepoint);
+
+        if (!extractor.analyze(feat_vec_2).analytic_point_vec.empty())
+        {
+            stdx::safe_float_access(extractor.analyze(feat_vec_2).analytic_point_vec.front().confident_score);
         }
     }
 }
@@ -309,5 +437,10 @@ void test_featurization()
 
 int main()
 {
-    test_featurization();    
+    test_featurization();
+
+    // the_host_matrix::TheHostMatrixFactory{}.set_entropy({})
+    //                                        .set_compute({})
+    //                                        .set_vector_size({})
+    //                                        .get()->project({}).front();
 }

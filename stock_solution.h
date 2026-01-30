@@ -18,6 +18,7 @@
 #include <numeric>
 #include <functional>
 #include "matrix_optimizer.h"
+#include "the_host_matrix.h"
 
 namespace stock_solution
 {
@@ -162,7 +163,7 @@ namespace stock_solution
             {
                 stdx::safe_float_range_access(managing_interval.data(), managing_interval.size());
 
-                this->actual_sz     = this->get_tree_size(managing_interval.size());
+                this->actual_sz     = this->get_base_size(managing_interval.size());
                 this->interval_tree = this->make_interval_tree_from(managing_interval, reducer, this->actual_sz);
                 this->virtual_sz    = managing_interval.size();
                 this->reducer       = reducer;
@@ -205,7 +206,7 @@ namespace stock_solution
 
         private:
 
-            auto get_tree_size(size_t managing_interval_sz) -> size_t
+            auto get_base_size(size_t managing_interval_sz) -> size_t
             {
                 return size_t{1} << stdx::ulog2(stdx::ceil2(managing_interval_sz));
             }
@@ -276,22 +277,23 @@ namespace stock_solution
             template <class ReducerLike>
             auto make_interval_tree_from(const std::vector<double>& managing_interval,
                                          ReducerLike&& reducer,
-                                         size_t tree_sz) -> std::vector<std::optional<double>>
+                                         size_t base_sz) -> std::vector<std::optional<double>>
             {
-                if (!stdx::is_pow2(tree_sz))
+                if (!stdx::is_pow2(base_sz))
                 {
-                    throw std::invalid_argument("bad tree size, not pow 2 tree size");
+                    throw std::invalid_argument("bad base size, not pow 2 size");
                 }
 
-                if (managing_interval.size() > tree_sz)
+                if (managing_interval.size() > base_sz)
                 {
                     throw std::invalid_argument("bad managing interval size, unfit tree size");
                 }
 
+                size_t tree_sz  = base_sz * 2 + 1;
                 std::vector<std::optional<double>> interval_tree(tree_sz, std::nullopt);
 
                 size_t first    = 0u;
-                size_t last     = tree_sz;
+                size_t last     = base_sz;
                 size_t idx      = 0u;
 
                 this->make_interval_tree_helper(interval_tree,
@@ -437,9 +439,11 @@ namespace stock_solution
 
         private:
 
+            using epoch_t = __uint128_t;
+
             struct FeatureTimePoint
             {
-                double epoch_timepoint;
+                epoch_t epoch_timepoint;
                 double feature_value;
             };
 
@@ -481,10 +485,10 @@ namespace stock_solution
             {
                 switch (focal_unit)
                 {
-                    case FOCAL_UNIT_MICROSECOND: 
-                    case FOCAL_UNIT_MILLISECOND: 
-                    case FOCAL_UNIT_SECOND: 
-                    case FOCAL_UNIT_MINUTE: 
+                    case FOCAL_UNIT_MICROSECOND:
+                    case FOCAL_UNIT_MILLISECOND:
+                    case FOCAL_UNIT_SECOND:
+                    case FOCAL_UNIT_MINUTE:
                     case FOCAL_UNIT_DAY:
                     {
                         this->focal_unit = focal_unit;
@@ -532,8 +536,8 @@ namespace stock_solution
             {
                 switch (featurization_option)
                 {
-                    case FEATURIZATION_SECOND_ORDER_BINARY_SUFFIX: 
-                    case FEATURIZATION_FIRST_ORDER_BINARY_SUFFIX: 
+                    case FEATURIZATION_SECOND_ORDER_BINARY_SUFFIX:
+                    case FEATURIZATION_FIRST_ORDER_BINARY_SUFFIX:
                     {
                         this->featurization_option = featurization_option;
                         break;
@@ -644,11 +648,11 @@ namespace stock_solution
             {
                 this->feature_map.clear();
 
-                std::unordered_map<std::string, std::unordered_map<std::string, std::map<double, double>>> intermediate_map{};
+                std::unordered_map<std::string, std::unordered_map<std::string, std::map<epoch_t, double>>> intermediate_map{};
 
                 for (const TickerData& ticker_data: this->ticker_data_vec)
                 {
-                    double lapse_since_epoch = std::chrono::duration_cast<std::chrono::nanoseconds>(ticker_data.timestamp.time_since_epoch()).count();
+                    epoch_t lapse_since_epoch = std::chrono::duration_cast<std::chrono::nanoseconds>(ticker_data.timestamp.time_since_epoch()).count();
 
                     if (std::isnan(lapse_since_epoch))
                     {
@@ -706,13 +710,19 @@ namespace stock_solution
                 }
             }
 
+            auto get_raw_feature_vector_at_timepoint_x(const std::string& ticker_name,
+                                                       std::chrono::time_point<std::chrono::system_clock> timepoint) -> std::unordered_map<std::string, std::vector<std::vector<std::optional<double>>>>
+            {
+                return this->get_raw_feature_vector_at_timepoint(ticker_name, timepoint);
+            }
+
             auto analyze(const std::vector<double>& feature_vec) -> FeatureAnalyticReport
             {
                 switch (this->analytic_option)
                 {
                     case ANALYTIC_SQUARE_DIFFERENCE:
                     {
-                        return sqrdiff_analyze(feature_vec);
+                        return this->sqrdiff_analyze(feature_vec);
                     }
                     default:
                     {
@@ -793,19 +803,19 @@ namespace stock_solution
                 }
             }
 
-            auto get_timeslice_vector_since(std::chrono::time_point<std::chrono::system_clock> timepoint) -> std::vector<std::vector<std::pair<double, double>>>
+            auto get_timeslice_vector_since(std::chrono::time_point<std::chrono::system_clock> timepoint) -> std::vector<std::vector<std::pair<epoch_t, epoch_t>>>
             {
                 if (timepoint < decltype(timepoint)(typename decltype(timepoint)::duration(0)))
                 {
                     throw std::invalid_argument("bad timepoint, negative timepoint");
                 }
 
-                std::vector<std::vector<std::pair<double, double>>> result{};
+                std::vector<std::vector<std::pair<epoch_t, epoch_t>>> result{};
                 std::chrono::nanoseconds unit_dur = this->get_unit_duration();
 
                 for (size_t i = 0u; i < this->focal_sz; ++i)
                 {
-                    std::vector<std::pair<double, double>> window_vec   = {};
+                    std::vector<std::pair<epoch_t, epoch_t>> window_vec = {};
                     double focal_value                                  = std::pow(this->focal_base, i);
 
                     auto first                                          = timepoint - (unit_dur * focal_value);
@@ -844,7 +854,7 @@ namespace stock_solution
             //front() < x <= back()
             //return back()
 
-            auto binary_seek_first_helper(FeatureTimePoint * first, FeatureTimePoint * last, double epoch_timepoint) -> FeatureTimePoint *
+            auto binary_seek_first_helper(FeatureTimePoint * first, FeatureTimePoint * last, epoch_t epoch_timepoint) -> FeatureTimePoint *
             {
                 size_t sz = std::distance(first, last);
 
@@ -864,7 +874,7 @@ namespace stock_solution
                 return this->binary_seek_first_helper(nxt_point, last, epoch_timepoint);
             }
 
-            auto binary_seek_first(FeatureTimePoint * first, FeatureTimePoint * last, double epoch_timepoint) -> FeatureTimePoint *
+            auto binary_seek_first(FeatureTimePoint * first, FeatureTimePoint * last, epoch_t epoch_timepoint) -> FeatureTimePoint *
             {
                 intmax_t chk_sz = std::distance(first, last);
 
@@ -895,18 +905,18 @@ namespace stock_solution
                     return last;
                 }
 
-                if (sz <= 2u)
+                if (sz < 2u)
                 {
                     std::abort();
                 }
 
-                return this->binary_seek_first_helper(first, last, epoch_timepoint);
+                return this->binary_seek_first_helper(first, last, epoch_timepoint);                
             }
 
             //front() <= x < back()
             //return back()
 
-            auto binary_seek_last_helper(FeatureTimePoint * first, FeatureTimePoint * last, double epoch_timepoint) -> FeatureTimePoint *
+            auto binary_seek_last_helper(FeatureTimePoint * first, FeatureTimePoint * last, epoch_t epoch_timepoint) -> FeatureTimePoint *
             {
                 size_t sz = std::distance(first, last);
 
@@ -926,7 +936,7 @@ namespace stock_solution
                 return this->binary_seek_last_helper(first, std::next(nxt_point), epoch_timepoint);
             }
 
-            auto binary_seek_last(FeatureTimePoint * first, FeatureTimePoint * last, double epoch_timepoint) -> FeatureTimePoint *
+            auto binary_seek_last(FeatureTimePoint * first, FeatureTimePoint * last, epoch_t epoch_timepoint) -> FeatureTimePoint *
             {
                 intmax_t chk_sz = std::distance(first, last);
 
@@ -953,11 +963,30 @@ namespace stock_solution
                 }
 
                 if (epoch_timepoint >= std::prev(last)->epoch_timepoint)
-                {
-                    return last;
+                {                    
+                    if (epoch_timepoint > std::prev(last)->epoch_timepoint)
+                    {
+                        return last;
+                    }
+                    else
+                    {  
+                        size_t iterable_sz = sz;
+
+                        for (size_t i = 0u; i < iterable_sz; ++i)
+                        {
+                            size_t back_idx = (sz - 1u) - i;
+
+                            if (first[back_idx].epoch_timepoint < epoch_timepoint)
+                            {
+                                return std::next(first, back_idx + 1u);
+                            }
+                        }
+
+                        return first;
+                    }
                 }
 
-                if (sz <= 2u)
+                if (sz < 2u)
                 {
                     std::abort();
                 }
@@ -967,8 +996,8 @@ namespace stock_solution
 
             auto binary_interval(FeatureTimePoint * first,
                                  FeatureTimePoint * last,
-                                 double epoch_timepoint_first,
-                                 double epoch_timepoint_last) -> std::pair<std::add_pointer_t<FeatureTimePoint>, std::add_pointer_t<FeatureTimePoint>>
+                                 epoch_t epoch_timepoint_first,
+                                 epoch_t epoch_timepoint_last) -> std::pair<std::add_pointer_t<FeatureTimePoint>, std::add_pointer_t<FeatureTimePoint>>
             {
                 FeatureTimePoint * finding_first    = this->binary_seek_first(first, last, epoch_timepoint_first);
                 FeatureTimePoint * finding_last     = this->binary_seek_last(first, last, epoch_timepoint_last);
@@ -1062,8 +1091,8 @@ namespace stock_solution
 
             auto get_best_feature_for_window(const std::string& ticker_name,
                                              const std::string& feature_name,
-                                             double epoch_timepoint_first,
-                                             double epoch_timepoint_last) -> std::optional<double>
+                                             epoch_t epoch_timepoint_first,
+                                             epoch_t epoch_timepoint_last) -> std::optional<double>
             {
                 //this is complicated, let's leetcode this
 
@@ -1094,6 +1123,7 @@ namespace stock_solution
 
                 FeatureTimePoint * tmp_first    = map_ptr_2->second.data();
                 FeatureTimePoint * tmp_last     = std::next(tmp_first, map_ptr_2->second.size());
+
                 auto [first, last]              = this->binary_interval(tmp_first, tmp_last, epoch_timepoint_first, epoch_timepoint_last);
                 size_t first_idx                = std::distance(tmp_first, first);
                 size_t last_idx                 = std::distance(tmp_first, last);
@@ -1161,7 +1191,7 @@ namespace stock_solution
             auto get_raw_feature_vector_at_timepoint(const std::string& ticker_name,
                                                      std::chrono::time_point<std::chrono::system_clock> timepoint) -> std::unordered_map<std::string, std::vector<std::vector<std::optional<double>>>>
             {
-                std::vector<std::vector<std::pair<double, double>>> timeslice_2d_vec                = this->get_timeslice_vector_since(timepoint);
+                std::vector<std::vector<std::pair<epoch_t, epoch_t>>> timeslice_2d_vec              = this->get_timeslice_vector_since(timepoint);
                 std::unordered_map<std::string, std::vector<std::vector<std::optional<double>>>> rs = {};
 
                 for (const std::string& feature_name: this->feature_name_vec)
@@ -1285,7 +1315,7 @@ namespace stock_solution
 
             auto sqrdiff_analyze(const std::vector<double>& feature_vec) -> FeatureAnalyticReport
             {
-                std::vector<std::vector<std::pair<double, double>>> timeslice_2d_vec = this->get_timeslice_vector_since({});
+                std::vector<std::vector<std::pair<epoch_t, epoch_t>>> timeslice_2d_vec = this->get_timeslice_vector_since({});
                 size_t first = 0u;
                 FeatureAnalyticReport report{};
 
@@ -1424,92 +1454,6 @@ namespace stock_solution
             }
     };
 
-    class MatrixMaker
-    {
-        public:
-
-            static inline constexpr uint8_t LOW_COMPUTE     = 0u;
-            static inline constexpr uint8_t MID_COMPUTE     = 1u;
-            static inline constexpr uint8_t HIGH_COMPUTE    = 2u;
-
-            static inline constexpr uint8_t LOW_STORAGE     = 0u;
-            static inline constexpr uint8_t MID_STORAGE     = 1u;
-            static inline constexpr uint8_t HIGH_STORAGE    = 2u;
-
-        private:
-
-            uint8_t compute_option;
-            uint8_t storage_option;
-            size_t in_vector_sz;
-            size_t out_vector_sz;
-
-        public:
-
-            MatrixMaker(): compute_option(LOW_COMPUTE),
-                           storage_option(LOW_STORAGE),
-                           in_vector_sz(0u),
-                           out_vector_sz(0u){}
-
-            auto set_compute(uint8_t option) -> MatrixMaker&
-            {
-                switch (option)
-                {
-                    case LOW_COMPUTE:
-                    case MID_COMPUTE:
-                    case HIGH_COMPUTE:
-                    {
-                        this->compute_option = option;
-                        break;
-                    }
-                    default:
-                    {
-                        throw std::invalid_argument("bad compute option, enumeration out of range");
-                    }
-                }
-
-                return *this;
-            }
-
-            auto set_storage(uint8_t option) -> MatrixMaker&
-            {
-                switch (option)
-                {
-                    case LOW_STORAGE:
-                    case MID_STORAGE:
-                    case HIGH_STORAGE:
-                    {
-                        this->storage_option = option;
-                        break;
-                    }
-                    default:
-                    {
-                        throw std::invalid_argument("bad storage option, enumeration out of range");
-                    }
-                }
-
-                return *this;
-            }
-
-            auto set_in_vector_size(size_t sz) -> MatrixMaker&
-            {
-                this->in_vector_sz = sz;
-
-                return *this;
-            }
-
-            auto set_out_vector_size(size_t sz) -> MatrixMaker&
-            {
-                this->out_vector_sz = sz;
-
-                return *this;
-            }
-
-            auto get() -> std::unique_ptr<the_matrix::MatrixInterface>
-            {
-                return {};
-            }
-    };
-
     class OneOneMatrixEncoder
     {
         private:
@@ -1593,10 +1537,9 @@ namespace stock_solution
         uint8_t extractor_analytic_option;
         uint64_t extractor_focal_discretization_sz;
 
+        uint8_t matrix_maker_entropy_option;
         uint8_t matrix_maker_compute_option;
-        uint8_t matrix_maker_storage_option;
-        uint64_t matrix_maker_in_vector_sz;
-        uint64_t matrix_maker_out_vector_sz;
+        uint64_t matrix_maker_vector_sz;
 
         std::vector<uint64_t> matrix_encoder_shape;
         uint64_t matrix_encoder_flat_sz;
@@ -1614,8 +1557,8 @@ namespace stock_solution
                       extractor_focal_unit, extractor_focal_exponential_base,
                       extractor_focal_step, extractor_featurization_option,
                       extractor_analytic_option, extractor_focal_discretization_sz,
-                      matrix_maker_compute_option, matrix_maker_storage_option,
-                      matrix_maker_in_vector_sz, matrix_maker_out_vector_sz,
+                      matrix_maker_entropy_option, matrix_maker_compute_option,
+                      matrix_maker_vector_sz,
                       matrix_encoder_shape, matrix_encoder_flat_sz,
                       matrix_logit_vec,
                       training_first, training_last,
@@ -1629,8 +1572,8 @@ namespace stock_solution
                       extractor_focal_unit, extractor_focal_exponential_base,
                       extractor_focal_step, extractor_featurization_option,
                       extractor_analytic_option, extractor_focal_discretization_sz,
-                      matrix_maker_compute_option, matrix_maker_storage_option,
-                      matrix_maker_in_vector_sz, matrix_maker_out_vector_sz,
+                      matrix_maker_entropy_option, matrix_maker_compute_option,
+                      matrix_maker_vector_sz,
                       matrix_encoder_shape, matrix_encoder_flat_sz,
                       matrix_logit_vec,
                       training_first, training_last,
@@ -1820,10 +1763,9 @@ namespace stock_solution
                     .extractor_analytic_option          = this->get_analytic_option(),
                     .extractor_focal_discretization_sz  = stdx::throw_integer_cast<uint64_t>(this->get_focal_discretization_size()),
 
+                    .matrix_maker_entropy_option        = this->get_matrix_maker_entropy_option(),
                     .matrix_maker_compute_option        = this->get_matrix_maker_compute_option(),
-                    .matrix_maker_storage_option        = this->get_matrix_maker_storage_option(),
-                    .matrix_maker_in_vector_sz          = stdx::throw_integer_cast<uint64_t>(this->get_matrix_maker_in_vector_size()),
-                    .matrix_maker_out_vector_sz         = stdx::throw_integer_cast<uint64_t>(this->get_matrix_maker_out_vector_size()),
+                    .matrix_maker_vector_sz             = stdx::throw_integer_cast<uint64_t>(this->get_matrix_maker_vector_size()),
 
                     .matrix_encoder_shape               = stdx::to_castable_vector_initializer(this->get_encoder_shape()),
                     .matrix_encoder_flat_sz             = stdx::throw_integer_cast<uint64_t>(this->get_encoder_flat_size()),
@@ -1848,21 +1790,26 @@ namespace stock_solution
                 return std::accumulate(shape.begin(), shape.end(), size_t{1}, std::multiplies<size_t>{});
             }
 
+            auto get_matrix_maker_entropy_option() -> uint8_t
+            {
+                return the_host_matrix::TheHostMatrixFactory::LOW_ENTROPY;
+            }
+
             auto get_matrix_maker_compute_option() -> uint8_t
             {
                 switch (this->compute_option)
                 {
                     case LOW_COMPUTE:
                     {
-                        return MatrixMaker::LOW_COMPUTE;
+                        return the_host_matrix::TheHostMatrixFactory::LOW_COMPUTE;
                     }
                     case MID_COMPUTE:
                     {
-                        return MatrixMaker::MID_COMPUTE;
+                        return the_host_matrix::TheHostMatrixFactory::MID_COMPUTE;
                     }
                     case HIGH_COMPUTE:
                     {
-                        return MatrixMaker::HIGH_COMPUTE;
+                        return the_host_matrix::TheHostMatrixFactory::HIGH_COMPUTE;
                     }
                     default:
                     {
@@ -1871,42 +1818,17 @@ namespace stock_solution
                 }
             }
 
-            auto get_matrix_maker_storage_option() -> uint8_t
+            auto get_matrix_maker_vector_size() -> size_t
             {
-                switch (this->storage_option)
-                {
-                    case LOW_STORAGE:
-                    {
-                        return MatrixMaker::LOW_STORAGE;
-                    }
-                    case MID_STORAGE:
-                    {
-                        return MatrixMaker::MID_STORAGE;
-                    }
-                    case HIGH_STORAGE:
-                    {
-                        return MatrixMaker::HIGH_STORAGE;
-                    }
-                    default:
-                    {
-                        std::abort();
-                    }
-                }
-            }
-
-            auto get_matrix_maker_in_vector_size() -> size_t
-            {
-                return this->get_size_from_shape(get_encoder_shape());
-            }
-
-            auto get_matrix_maker_out_vector_size() -> size_t
-            {
-                return this->get_size_from_shape(get_encoder_shape());
+                return this->get_size_from_shape(this->get_encoder_shape());
             }
 
             auto get_encoder_shape() -> std::vector<size_t>
             {
-                return {};
+                return the_host_matrix::TheHostMatrixFactory{}.set_entropy(this->get_matrix_maker_entropy_option())
+                                                              .set_compute(this->get_matrix_maker_compute_option())
+                                                              .set_vector_size(this->get_encoder_flat_size())
+                                                              .get_matrix_shape();
             }
 
             auto get_encoder_flat_size() -> size_t
@@ -1931,11 +1853,10 @@ namespace stock_solution
 
             auto get_transform_matrix() -> std::unique_ptr<the_matrix::MatrixInterface>
             {
-                return MatrixMaker{}.set_compute(this->get_matrix_maker_compute_option())
-                                    .set_storage(this->get_matrix_maker_storage_option())
-                                    .set_in_vector_size(this->get_matrix_maker_in_vector_size())
-                                    .set_out_vector_size(this->get_matrix_maker_out_vector_size())
-                                    .get();
+                return the_host_matrix::TheHostMatrixFactory{}.set_compute(this->get_matrix_maker_compute_option())
+                                                              .set_entropy(this->get_matrix_maker_entropy_option())
+                                                              .set_vector_size(this->get_matrix_maker_vector_size())
+                                                              .get();
             }
 
             auto get_optimizer_optimization_epoch_size() -> size_t
@@ -2203,7 +2124,7 @@ namespace stock_solution
 
             auto get_analytic_option() -> uint8_t
             {
-                return {};
+                return TemporalFeatureExtractor::ANALYTIC_SQUARE_DIFFERENCE;
             }
 
             auto get_focal_discretization_size() -> size_t
@@ -2280,11 +2201,10 @@ namespace stock_solution
                                 .set_feature_name_list(data.extractor_feature_name_list)
                                 .set_analytic_option(data.extractor_analytic_option);
 
-                this->transformer   = MatrixMaker{}.set_compute(data.matrix_maker_compute_option)
-                                                   .set_storage(data.matrix_maker_storage_option)
-                                                   .set_in_vector_size(data.matrix_maker_in_vector_sz)
-                                                   .set_out_vector_size(data.matrix_maker_out_vector_sz)
-                                                   .get();
+                this->transformer   = the_host_matrix::TheHostMatrixFactory{}.set_compute(data.matrix_maker_compute_option)
+                                                                             .set_entropy(data.matrix_maker_entropy_option)
+                                                                             .set_vector_size(data.matrix_maker_vector_sz)
+                                                                             .get();
 
                 this->encoder       = std::make_unique<OneOneMatrixEncoder>(stdx::to_castable_vector_initializer(data.matrix_encoder_shape), data.matrix_encoder_flat_sz);
             }
