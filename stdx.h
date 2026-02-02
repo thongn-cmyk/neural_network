@@ -24,6 +24,21 @@
 
 namespace stdx
 {
+    struct reflectible_monostate
+    {
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector) const
+        {
+            (void) reflector;
+        }
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector)
+        {
+            (void) reflector;
+        }
+    };
+
     template <class T, std::enable_if_t<std::is_unsigned_v<T>, bool> = true>
     constexpr auto ulog2(T val) noexcept -> size_t
     {

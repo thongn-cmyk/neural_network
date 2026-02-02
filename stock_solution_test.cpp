@@ -260,8 +260,8 @@ void test_feature_vector(const std::vector<double>& feature_vec)
 }
 
 auto get_value(const std::vector<TickerData>& ticker_data_vec,
-               std::chrono::time_point<std::chrono::system_clock> first,
-               std::chrono::time_point<std::chrono::system_clock> last,
+               std::chrono::time_point<std::chrono::system_clock, std::chrono::nanoseconds> first,
+               std::chrono::time_point<std::chrono::system_clock, std::chrono::nanoseconds> last,
                const std::string& feature_name) -> std::optional<double>
 {
     std::optional<double> result = std::nullopt;
@@ -319,12 +319,13 @@ auto get_unit_duration(uint8_t focal_unit) -> std::chrono::nanoseconds
     }
 }
 
-auto get_previous_timepoint(std::chrono::time_point<std::chrono::system_clock> timepoint,
+auto get_previous_timepoint(std::chrono::time_point<std::chrono::system_clock, std::chrono::nanoseconds> timepoint,
                             size_t focal_idx,
                             size_t discrete_idx,
                             uint8_t focal_unit,
                             double exp_base,
-                            size_t discretization_sz) -> std::chrono::time_point<std::chrono::system_clock>
+                            size_t discretization_sz) -> std::pair<std::chrono::time_point<std::chrono::system_clock, std::chrono::nanoseconds>,
+                                                                   std::chrono::time_point<std::chrono::system_clock, std::chrono::nanoseconds>>
 {
 
     std::vector<std::pair<double, double>> window_vec   = {};
@@ -341,10 +342,24 @@ auto get_previous_timepoint(std::chrono::time_point<std::chrono::system_clock> t
     uint64_t last_epoch                                 = std::chrono::duration_cast<std::chrono::nanoseconds>(last.time_since_epoch()).count();
     uint64_t lapse                                      = last_epoch - first_epoch;
     uint64_t interval_sz                                = lapse / discretization_sz;
-    uint64_t tentative_first                            = first_epoch + discrete_idx * interval_sz;
-    auto final_first                                    = decltype(first)(typename decltype(first)::duration(tentative_first));
 
-    return std::chrono::time_point_cast<typename std::chrono::time_point<std::chrono::system_clock>::duration>(final_first);
+    uint64_t tentative_first                            = first_epoch + discrete_idx * interval_sz;
+    uint64_t tentative_last                             = tentative_first + interval_sz;
+
+    if (discrete_idx + 1u == discretization_sz)
+    {
+        tentative_last = last_epoch;
+    }
+
+    std::cout << "first1 > " << tentative_first << "<> last1 > " << tentative_last << std::endl;
+
+    using timepoint_t = std::chrono::time_point<std::chrono::system_clock, std::chrono::nanoseconds>;
+
+    auto final_first                                    = timepoint_t(std::chrono::nanoseconds(tentative_first));
+    auto final_last                                     = timepoint_t(std::chrono::nanoseconds(tentative_last));
+
+    return std::make_pair(std::chrono::time_point_cast<typename std::chrono::time_point<std::chrono::system_clock, std::chrono::nanoseconds>::duration>(final_first),
+                          std::chrono::time_point_cast<typename std::chrono::time_point<std::chrono::system_clock, std::chrono::nanoseconds>::duration>(final_last));
 }
 
 auto to_str(std::optional<double> value) -> std::string
@@ -391,17 +406,18 @@ void test_one_featurization()
             {
                 for (size_t j = 0u; j < feature_2d_vec[i].size(); ++j)
                 {
-                    auto last_timepoint         = timepoint;
-                    auto first_timepoint        = get_previous_timepoint(last_timepoint, i, j, focal_unit, exp_base, discretization_sz);
-                    std::optional<double> value = get_value(ticker_data, first_timepoint, last_timepoint, feature_name);
+                    auto last_timepoint             = timepoint;
+                    auto [local_first, local_last]  = get_previous_timepoint(last_timepoint, i, j, focal_unit, exp_base, discretization_sz);
 
-                    // if (value != feature_2d_vec[i][j])
-                    // {
-                    //     std::cout << "mayday, mismatched value" << "<>" << to_str(value) << "<>" << to_str(feature_2d_vec[i][j]) << std::endl;
-                    //     std::abort();
-                    // }
+                    std::optional<double> value     = get_value(ticker_data, local_first, local_last, feature_name);
 
-                    std::cout << first_timepoint.time_since_epoch().count() << "<first>" << last_timepoint.time_since_epoch().count() << "<last>" << std::endl;
+                    if (value != feature_2d_vec[i][j])
+                    {
+                        std::cout << "mayday, mismatched value" << "<>" << to_str(value) << "<>" << to_str(feature_2d_vec[i][j]) << std::endl;
+                        std::abort();
+                    }
+
+                    // std::cout << local_first.time_since_epoch().count() << "<first>" << local_last.time_since_epoch().count() << "<last>" << std::endl;
                 }
             }
         }

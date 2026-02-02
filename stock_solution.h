@@ -439,7 +439,7 @@ namespace stock_solution
 
         private:
 
-            using epoch_t = __uint128_t;
+            using epoch_t = uint64_t;
 
             struct FeatureTimePoint
             {
@@ -846,6 +846,7 @@ namespace stock_solution
 
                     window_vec.back().second = last_epoch;
                     result.push_back(std::move(window_vec));
+
                 }
 
                 return result;
@@ -969,20 +970,8 @@ namespace stock_solution
                         return last;
                     }
                     else
-                    {  
-                        size_t iterable_sz = sz;
-
-                        for (size_t i = 0u; i < iterable_sz; ++i)
-                        {
-                            size_t back_idx = (sz - 1u) - i;
-
-                            if (first[back_idx].epoch_timepoint < epoch_timepoint)
-                            {
-                                return std::next(first, back_idx + 1u);
-                            }
-                        }
-
-                        return first;
+                    {
+                        return this->binary_seek_first(first, last, epoch_timepoint);
                     }
                 }
 

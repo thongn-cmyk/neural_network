@@ -69,7 +69,7 @@ namespace conventional_randomizer
                 }
 
                 PromotedFloatType discrete_unit = (static_cast<PromotedFloatType>(last) - first) / discretization_sz;
-                PromotedFloatType rs = discrete_unit * (this->randomizer_machine() % discretization_sz);
+                PromotedFloatType rs            = first + discrete_unit * (this->randomizer_machine() % discretization_sz);
 
                 return stdx::float_clamp<FloatType>(rs, first, last);
             }
@@ -106,7 +106,8 @@ namespace conventional_randomizer
                     throw std::invalid_argument("bad randomize_exponential_float base sign");
                 }
 
-                return std::pow(base, this->randomize_fixed_point_float(exponent_first, exponent_last, discretization_sz, promotion_tag));
+                auto exp = this->randomize_fixed_point_float(exponent_first, exponent_last, discretization_sz, promotion_tag);
+                return std::pow(base, exp);
             }
 
             auto flip_a_coin() -> bool
