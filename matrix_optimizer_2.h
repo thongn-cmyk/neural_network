@@ -136,7 +136,7 @@ namespace matrix_optimizer_2
                                                     std::chrono::nanoseconds cron_duration)
             {
                 this->base          = std::make_shared<ParallelDeviationCalculator>(std::move(session));
-                this->cron_reosurce = cron_subsystem::register_cronjob(this->base, cron_duration);
+                this->cron_reosurce = cron_subsystem::register_periodic_cronjob(this->base, cron_duration);
             }
 
             auto get(const generic_matrix_factory::GenericMatrixResource& resource) -> mdc_float_t

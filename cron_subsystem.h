@@ -6,6 +6,12 @@
 
 namespace cron_subsystem
 {
+    static inline constexpr uint8_t CRON_KIND_DEDICATED     = 0u;
+    static inline constexpr uint8_t CRON_KIND_SHARED        = 1u;
+
+    static inline constexpr uint8_t CRON_CHECK_BUSY         = 0u;
+    static inline constexpr uint8_t CRON_CHECK_SLEEPY       = 1u;
+
     class UpdatableInterface
     {
         public:
@@ -25,8 +31,10 @@ namespace cron_subsystem
 
     }
 
-    void register_interval_cronjob(const std::shared_ptr<UpdatableInterface>& updatable,
-                                   std::chrono::nanoseconds dur) -> std::shared_ptr<void>
+    void register_periodic_cronjob(const std::shared_ptr<UpdatableInterface>& updatable,
+                                   std::chrono::nanoseconds dur,
+                                   uint8_t cron_kind    = CRON_KIND_SHARED,
+                                   uint8_t cron_check   = CRON_CHECK_SLEEPY) -> std::shared_ptr<void>
     {
 
     }

@@ -758,6 +758,37 @@ namespace stdx
                 accessor(value);
             }
     };
+
+    template <class T, class Signature = void>
+    class shared_ptr_singleton_container
+    {
+        private:
+
+            static inline std::shared_ptr<T> value{};
+            static inline std::unique_ptr<fair_mutex::fair_atomic_flag> mtx = fair_mutex::make_unique_fair_atomic_flag();
+
+        public:
+
+            template <class ...Args>
+            static inline void initialize(Args&& ...args)
+            {
+                fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*mtx);
+                value = std::make_shared<T>(std::forward<Args>(args)...);
+            }
+
+            static inline void deinitialize()
+            {
+                fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*mtx);
+                value = nullptr;
+            }
+
+            static inline auto get() -> std::shared_ptr<T>
+            {
+                fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*mtx);
+                return value;
+            }
+    };
+
 }
 
 #endif

@@ -616,11 +616,6 @@ namespace the_host_matrix
                 throw std::runtime_error("configuration error, vector size and entropy option mismatched");
             }
 
-            auto get_background_semantic() -> std::string
-            {
-                return {};
-            }
-
             auto get() -> std::unique_ptr<the_matrix::MatrixInterface>
             {
                 return make_the_matrix(this->get_matrix_shape(),

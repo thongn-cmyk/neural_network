@@ -2354,6 +2354,11 @@ namespace dg::network_compact_serializer::archive{
 
 namespace dg::network_compact_serializer{
 
+    constexpr auto get_dgstd_serialization_identifier() -> std::string
+    {
+        return {};
+    }
+
     template <class SizeType, class T>
     constexpr auto wrap_container(T&& container) noexcept -> dg::network_compact_serializer::types_space::ContainerWrapper<T, SizeType>{
 

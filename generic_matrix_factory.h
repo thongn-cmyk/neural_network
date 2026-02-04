@@ -39,18 +39,17 @@ namespace generic_matrix_factory
         uint8_t compute_option;
         uint64_t vector_sz;
         std::vector<tensor_model::tensor_std_float_t> logit_vec;
-        std::string background_semantic;
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector) const
         {
-            reflector(entropy_option, compute_option, vector_sz, logit_vec, background_semantic);
+            reflector(entropy_option, compute_option, vector_sz, logit_vec);
         }
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector)
         {
-            reflector(entropy_option, compute_option, vector_sz, logit_vec, background_semantic);
+            reflector(entropy_option, compute_option, vector_sz, logit_vec);
         }
     };
 
@@ -60,18 +59,17 @@ namespace generic_matrix_factory
         uint8_t compute_option;
         uint64_t vector_sz;
         std::vector<tensor_model::tensor_std_float_t> logit_vec;
-        std::string background_semantic;
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector) const
         {
-            reflector(entropy_option, compute_option, vector_sz, logit_vec, background_semantic);
+            reflector(entropy_option, compute_option, vector_sz, logit_vec);
         }
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector)
         {
-            reflector(entropy_option, compute_option, vector_sz, logit_vec, background_semantic);
+            reflector(entropy_option, compute_option, vector_sz, logit_vec);
         }
     };
 
@@ -194,8 +192,7 @@ namespace generic_matrix_factory
                     .entropy_option         = internal_matrix->get_configuration().entropy_option,
                     .compute_option         = internal_matrix->get_configuration().compute_option,
                     .vector_sz              = internal_matrix->get_configuration().vector_sz,
-                    .logit_vec              = internal_matrix->get_coefficient_vector(),
-                    .background_semantic    = get_matrix_factory_from_base_configuration(internal_matrix->get_configuration()).get_background_semantic()
+                    .logit_vec              = internal_matrix->get_coefficient_vector()
                 };
             }
 
@@ -207,11 +204,6 @@ namespace generic_matrix_factory
                     .compute_option = resource.compute_option,
                     .vector_sz      = resource.vector_sz
                 };
-
-                if (get_matrix_factory_from_base_configuration(config).get_background_semantic() != resource.background_semantic)
-                {
-                    throw incompatible_exception();
-                }
 
                 std::unique_ptr<the_matrix::MatrixInterface> matrix = get_matrix_from_base_configuration(config);
 
