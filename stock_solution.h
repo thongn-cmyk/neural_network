@@ -31,6 +31,11 @@ namespace stock_solution
     //and we'd want to predict the next second to be on the candlesticks
 
     //ideally, we'd want to buy immediately and sell to a higher bidder, or cut loss in the next second
+    //we'd try something tmr, just for the proof of concept, we'd dry run if it could turn 1$ -> 1M
+    //I'm positive at this point that we could literally put everything in the matrix for consensus
+    //the problem is still that we'd have to have an exponential input -> output window + entropy scope for the matrix, larger context requires multiple previous transformation means next input
+    //this requires two matrices, the action matrix and the mind matrix
+    //or we'd just have one very big matrix, because essentially we could logically mask the input, to reduce the ambiguity
 
     struct TickerData
     {
@@ -914,82 +919,13 @@ namespace stock_solution
                 return this->binary_seek_first_helper(first, last, epoch_timepoint);                
             }
 
-            //front() <= x < back()
-            //return back()
-
-            auto binary_seek_last_helper(FeatureTimePoint * first, FeatureTimePoint * last, epoch_t epoch_timepoint) -> FeatureTimePoint *
-            {
-                size_t sz = std::distance(first, last);
-
-                if (sz == 2u)
-                {
-                    return std::next(first);
-                }
-
-                size_t mid_sz                   = sz / 2;
-                FeatureTimePoint * nxt_point    = std::next(first, mid_sz);
-
-                if (epoch_timepoint >= nxt_point->epoch_timepoint)
-                {
-                    return this->binary_seek_last_helper(nxt_point, last, epoch_timepoint);
-                }
-
-                return this->binary_seek_last_helper(first, std::next(nxt_point), epoch_timepoint);
-            }
-
-            auto binary_seek_last(FeatureTimePoint * first, FeatureTimePoint * last, epoch_t epoch_timepoint) -> FeatureTimePoint *
-            {
-                intmax_t chk_sz = std::distance(first, last);
-
-                if (chk_sz < 0)
-                {
-                    std::abort();
-                }
-
-                if (std::isnan(epoch_timepoint))
-                {
-                    throw std::invalid_argument("bad epoch timepoint, NaN");
-                }
-
-                size_t sz       = chk_sz;
-
-                if (sz == 0u)
-                {
-                    return last;
-                }
-
-                if (first->epoch_timepoint > epoch_timepoint)
-                {
-                    return first;                    
-                }
-
-                if (epoch_timepoint >= std::prev(last)->epoch_timepoint)
-                {                    
-                    if (epoch_timepoint > std::prev(last)->epoch_timepoint)
-                    {
-                        return last;
-                    }
-                    else
-                    {
-                        return this->binary_seek_first(first, last, epoch_timepoint);
-                    }
-                }
-
-                if (sz < 2u)
-                {
-                    std::abort();
-                }
-
-                return this->binary_seek_last_helper(first, last, epoch_timepoint);
-            }
-
             auto binary_interval(FeatureTimePoint * first,
                                  FeatureTimePoint * last,
                                  epoch_t epoch_timepoint_first,
                                  epoch_t epoch_timepoint_last) -> std::pair<std::add_pointer_t<FeatureTimePoint>, std::add_pointer_t<FeatureTimePoint>>
             {
                 FeatureTimePoint * finding_first    = this->binary_seek_first(first, last, epoch_timepoint_first);
-                FeatureTimePoint * finding_last     = this->binary_seek_last(first, last, epoch_timepoint_last);
+                FeatureTimePoint * finding_last     = this->binary_seek_first(first, last, epoch_timepoint_last);
                 intmax_t tentative_sz               = std::distance(finding_first, finding_last);
                 intmax_t sz                         = std::max(intmax_t{0}, tentative_sz);
 

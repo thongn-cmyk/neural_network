@@ -716,74 +716,85 @@ namespace connectivity_subsystem
 
             class InternalResolutor: public virtual cron_subsystem::UpdatableInterface
             {
-                SlaveConfiguration slave_config;
-                std::shared_ptr<ConnectionPingerInterface> connection_pinger;
-                std::shared_ptr<std::atomic<bool>> is_alive_flag;
-                std::optional<std::chrono::time_point<std::chrono::system_clock>> last_updated;
-                std::optional<std::chrono::time_point<std::chrono::system_clock>> since;
+                private:
 
-                InternalResolutor(SlaveConfiguration slave_config,
-                                  std::shared_ptr<ConnectionPingerInterface> connection_pinger,
-                                  std::shared_ptr<std::atomic<bool>> is_alive_flag,
-                                  std::optional<std::chrono::time_point<std::chrono::system_clock>> last_updated,
-                                  std::optional<std::chrono::time_point<std::chrono::system_clock>> since) noexcept: slave_config(std::move(slave_config)),
-                                                                                                                     connection_pinger(std::move(connection_pinger)),
-                                                                                                                     is_alive_flag(std::move(is_alive_flag)),
-                                                                                                                     last_updated(last_updated),
-                                                                                                                     since(since){}
+                    SlaveConfiguration slave_config;
+                    std::shared_ptr<ConnectionPingerInterface> connection_pinger;
+                    std::shared_ptr<std::atomic<bool>> is_alive_flag;
+                    std::optional<std::chrono::time_point<std::chrono::system_clock>> last_updated;
+                    std::optional<std::chrono::time_point<std::chrono::system_clock>> since;
 
-                void update()
-                {
-                    if (!this->is_alive_flag->load(std::memory_order_relaxed))
+                public:
+
+                    InternalResolutor(SlaveConfiguration slave_config,
+                                      std::shared_ptr<ConnectionPingerInterface> connection_pinger,
+                                      std::shared_ptr<std::atomic<bool>> is_alive_flag,
+                                      std::optional<std::chrono::time_point<std::chrono::system_clock>> last_updated,
+                                      std::optional<std::chrono::time_point<std::chrono::system_clock>> since) noexcept: slave_config(std::move(slave_config)),
+                                                                                                                         connection_pinger(std::move(connection_pinger)),
+                                                                                                                         is_alive_flag(std::move(is_alive_flag)),
+                                                                                                                         last_updated(last_updated),
+                                                                                                                         since(since){}
+
+                    void update()
                     {
-                        return;
-                    }
+                        if (!this->is_alive_flag->load(std::memory_order_relaxed))
+                        {
+                            return;
+                        }
 
-                    if (!this->last_updated.has_value())
-                    {
-                        this->last_updated  = std::chrono::system_clock::now();
-                        this->since         = this->last_updated;
+                        if (!this->last_updated.has_value())
+                        {
+                            this->last_updated  = std::chrono::system_clock::now();
+                            this->since         = this->last_updated;
 
-                        return;
-                    }
+                            return;
+                        }
 
-                    {
-                        std::chrono::nanoseconds lapsed = std::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now() - this->last_updated.value());
+                        {
+                            std::chrono::nanoseconds lapsed = std::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now() - this->last_updated.value());
 
-                        if (lapsed >= this->slave_config.connection_timeout_dur)
+                            if (lapsed >= this->slave_config.connection_timeout_dur)
+                            {
+                                this->is_alive_flag->exchange(false, std::memory_order_relaxed);
+                                return;
+                            }
+                        }
+
+                        {
+                            std::chrono::nanoseconds lapsed = std::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now() - this->since.value());
+
+                            if (lapsed >= this->slave_config.abs_timeout_dur)
+                            {
+                                this->is_alive_flag->exchange(false, std::memory_order_relaxed);
+                                return;
+                            }
+                        }
+
+                        try
+                        {
+                            this->connection_pinger->ping(this->slave_config.master_payload);
+                        }
+                        catch (const connection_not_found_error& e)
                         {
                             this->is_alive_flag->exchange(false, std::memory_order_relaxed);
                             return;
                         }
-                    }
-
-                    {
-                        std::chrono::nanoseconds lapsed = std::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now() - this->since.value());
-
-                        if (lapsed >= this->slave_config.abs_timeout_dur)
+                        catch (const std::exception& e)
                         {
                             this->is_alive_flag->exchange(false, std::memory_order_relaxed);
+
+                            logging_subsystem::log(logging_subsystem::LogFactory{}.topic("connectivity_subsystem")
+                                                                                  .topic("SlaveConnection")
+                                                                                  .header("Daemon pinger encountered an error")
+                                                                                  .add_content_fron_exception_pointer(std::current_exception())
+                                                                                  .get());
+
                             return;
                         }
-                    }
 
-                    try
-                    {
-                        this->connection_pinger->ping(this->slave_config.master_payload);
+                        this->last_updated = std::chrono::system_clock::now();
                     }
-                    catch (const connection_not_found_error& e)
-                    {
-                        this->is_alive_flag->exchange(false, std::memory_order_relaxed);
-                        return;
-                    }
-                    catch (const std::exception& e)
-                    {
-                        this->is_alive_flag->exchange(false, std::memory_order_relaxed);
-                        throw;
-                    }
-
-                    this->last_updated = std::chrono::system_clock::now();
-                }
             };
     };
 }

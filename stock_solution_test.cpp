@@ -107,8 +107,6 @@ auto randomize_timepoint() -> std::chrono::time_point<std::chrono::system_clock>
     operating_float_t perc          = focal_randomizer.ld_randomize_percentage_focal() * focal_randomizer.ld_randomize_percentage_focal();
     uint64_t tick                   = std::clamp(static_cast<uint64_t>(now_tick * perc), uint64_t{0u}, now_tick);
     uint64_t new_tick               = now_tick - tick;
-
-    std::cout << "new_tick > " << new_tick << std::endl;
     
     return std::chrono::time_point<std::chrono::system_clock>(typename decltype(std::chrono::system_clock::now())::duration(new_tick));
 }
@@ -142,7 +140,7 @@ auto randomize_string_vec(size_t sz) -> std::vector<std::string>
 auto randomize_ticker_vec() -> std::vector<std::string>
 {
     static auto randomizer          = std::bind(std::uniform_int_distribution<size_t>{}, std::mt19937_64{static_cast<uint32_t>(std::chrono::high_resolution_clock::now().time_since_epoch().count())});
-    const size_t TICKER_SZ_RANGE    = size_t{1} << 4;
+    const size_t TICKER_SZ_RANGE    = size_t{1} << 3;
 
     return randomize_string_vec(randomizer() % TICKER_SZ_RANGE + 1u);
 }
@@ -150,7 +148,7 @@ auto randomize_ticker_vec() -> std::vector<std::string>
 auto randomize_feature_vec() -> std::vector<std::string>
 {
     static auto randomizer          = std::bind(std::uniform_int_distribution<size_t>{}, std::mt19937_64{static_cast<uint32_t>(std::chrono::high_resolution_clock::now().time_since_epoch().count())});
-    const size_t FEATURE_SZ_RANGE   = size_t{1} << 4;
+    const size_t FEATURE_SZ_RANGE   = size_t{1} << 3;
 
     return randomize_string_vec(randomizer() % FEATURE_SZ_RANGE + 1u);
 }
@@ -160,7 +158,7 @@ auto randomize_ticker_data() -> std::vector<TickerData>
     static auto randomizer                  = std::mt19937_64{static_cast<uint32_t>(std::chrono::high_resolution_clock::now().time_since_epoch().count())};
     const double BASE_FIRST                 = 0.0001;
     const double BASE_LAST                  = 99.9999;
-    const size_t TICKER_SZ_RANGE            = size_t{1} << 4;
+    const size_t TICKER_SZ_RANGE            = size_t{1} << 3;
 
     static auto uint_dis                    = std::uniform_int_distribution<size_t>{};
     static auto real_dis                    = std::uniform_real_distribution<double>{};
@@ -169,16 +167,29 @@ auto randomize_ticker_data() -> std::vector<TickerData>
     std::vector<TickerData> result          = std::vector<TickerData>{};
     std::vector<std::string> ticker_vec     = randomize_ticker_vec();
     std::vector<std::string> feature_vec    = randomize_feature_vec();
+    std::unordered_set<std::string> met_set = {};
 
     for (size_t i = 0u; i < ticker_sz; ++i)
     {
-        result.push_back(TickerData
+        auto ticker_data  = TickerData
         {
             .ticker_name    = ticker_vec[uint_dis(randomizer) % ticker_vec.size()],
             .feature_name   = feature_vec[uint_dis(randomizer) % feature_vec.size()],
             .feature_value  = real_dis(randomizer),
             .timestamp      = randomize_timepoint()
-        });
+        };
+
+        auto footprint = dg::network_compact_serializer::serialize<std::string>(std::make_tuple(ticker_data.ticker_name,
+                                                                                                ticker_data.feature_name,
+                                                                                                std::chrono::duration_cast<std::chrono::nanoseconds>(ticker_data.timestamp.time_since_epoch()).count()));
+
+        if (met_set.contains(footprint))
+        {
+            continue;
+        }
+
+        met_set.insert(footprint);
+        result.push_back(ticker_data);
     }
 
     return result;
@@ -260,16 +271,55 @@ void test_feature_vector(const std::vector<double>& feature_vec)
 }
 
 auto get_value(const std::vector<TickerData>& ticker_data_vec,
-               std::chrono::time_point<std::chrono::system_clock, std::chrono::nanoseconds> first,
-               std::chrono::time_point<std::chrono::system_clock, std::chrono::nanoseconds> last,
+               const std::string& ticker_name,
+               uint64_t first,
+               uint64_t last,
                const std::string& feature_name) -> std::optional<double>
 {
     std::optional<double> result = std::nullopt;
 
     for (const auto& ticker_data: ticker_data_vec)
     {
-        if (ticker_data.timestamp >= first && ticker_data.timestamp < last && ticker_data.feature_name == feature_name)
+        if (std::chrono::duration_cast<std::chrono::nanoseconds>(ticker_data.timestamp.time_since_epoch()).count() >= first 
+            && std::chrono::duration_cast<std::chrono::nanoseconds>(ticker_data.timestamp.time_since_epoch()).count() < last 
+            && ticker_data.ticker_name == ticker_name
+            && ticker_data.feature_name == feature_name)
         {
+            if (!result.has_value())
+            {
+                result = ticker_data.feature_value;
+            }
+
+            if (result.value() > ticker_data.feature_value)
+            {
+                result = ticker_data.feature_value;
+            }
+        }
+    }
+
+    return result;
+}
+
+
+auto inspect(const std::vector<TickerData>& ticker_data_vec,
+               const std::string& ticker_name,
+               uint64_t first,
+               uint64_t last,
+               const std::string& feature_name) -> std::optional<double>
+{
+    std::optional<double> result = std::nullopt;
+
+    for (const auto& ticker_data: ticker_data_vec)
+    {
+        if (std::chrono::duration_cast<std::chrono::nanoseconds>(ticker_data.timestamp.time_since_epoch()).count() >= first 
+            && std::chrono::duration_cast<std::chrono::nanoseconds>(ticker_data.timestamp.time_since_epoch()).count() < last 
+            && ticker_data.ticker_name == ticker_name
+            && ticker_data.feature_name == feature_name)
+        {
+
+            std::cout << "inspect 1, ticker_name > " << ticker_name << "<> feature_name > " << feature_name << "<> first > " << std::chrono::duration_cast<std::chrono::nanoseconds>(ticker_data.timestamp.time_since_epoch()).count()
+                      << "<> last > " << std::chrono::duration_cast<std::chrono::nanoseconds>(ticker_data.timestamp.time_since_epoch()).count() << std::endl;
+
             if (!result.has_value())
             {
                 result = ticker_data.feature_value;
@@ -324,8 +374,7 @@ auto get_previous_timepoint(std::chrono::time_point<std::chrono::system_clock, s
                             size_t discrete_idx,
                             uint8_t focal_unit,
                             double exp_base,
-                            size_t discretization_sz) -> std::pair<std::chrono::time_point<std::chrono::system_clock, std::chrono::nanoseconds>,
-                                                                   std::chrono::time_point<std::chrono::system_clock, std::chrono::nanoseconds>>
+                            size_t discretization_sz) -> std::pair<uint64_t, uint64_t>
 {
 
     std::vector<std::pair<double, double>> window_vec   = {};
@@ -351,15 +400,7 @@ auto get_previous_timepoint(std::chrono::time_point<std::chrono::system_clock, s
         tentative_last = last_epoch;
     }
 
-    std::cout << "first1 > " << tentative_first << "<> last1 > " << tentative_last << std::endl;
-
-    using timepoint_t = std::chrono::time_point<std::chrono::system_clock, std::chrono::nanoseconds>;
-
-    auto final_first                                    = timepoint_t(std::chrono::nanoseconds(tentative_first));
-    auto final_last                                     = timepoint_t(std::chrono::nanoseconds(tentative_last));
-
-    return std::make_pair(std::chrono::time_point_cast<typename std::chrono::time_point<std::chrono::system_clock, std::chrono::nanoseconds>::duration>(final_first),
-                          std::chrono::time_point_cast<typename std::chrono::time_point<std::chrono::system_clock, std::chrono::nanoseconds>::duration>(final_last));
+    return {tentative_first, tentative_last};
 }
 
 auto to_str(std::optional<double> value) -> std::string
@@ -397,8 +438,8 @@ void test_one_featurization()
 
     for (const std::string& ticker_name: ticker_name_list)
     {
-        auto timepoint  = randomize_timepoint();
-        std::unordered_map<std::string, std::vector<std::vector<std::optional<double>>>> feat_vec = extractor.get_raw_feature_vector_at_timepoint_x(ticker_name, timepoint);
+        auto timepoint                                                                              = randomize_timepoint();
+        std::unordered_map<std::string, std::vector<std::vector<std::optional<double>>>> feat_vec   = extractor.get_raw_feature_vector_at_timepoint_x(ticker_name, timepoint);
 
         for (const auto& [feature_name, feature_2d_vec] : feat_vec)
         {
@@ -409,7 +450,7 @@ void test_one_featurization()
                     auto last_timepoint             = timepoint;
                     auto [local_first, local_last]  = get_previous_timepoint(last_timepoint, i, j, focal_unit, exp_base, discretization_sz);
 
-                    std::optional<double> value     = get_value(ticker_data, local_first, local_last, feature_name);
+                    std::optional<double> value     = get_value(ticker_data, ticker_name, local_first, local_last, feature_name);
 
                     if (value != feature_2d_vec[i][j])
                     {
@@ -417,7 +458,7 @@ void test_one_featurization()
                         std::abort();
                     }
 
-                    // std::cout << local_first.time_since_epoch().count() << "<first>" << local_last.time_since_epoch().count() << "<last>" << std::endl;
+                    // std::cout << local_first << "<first>" << local_last << "<last>" << std::endl;
                 }
             }
         }
@@ -433,7 +474,7 @@ void test_one_featurization()
 
 void test_featurization()
 {
-    const size_t TEST_SZ    = size_t{1} << 20;
+    const size_t TEST_SZ    = size_t{1} << 24;
     const size_t COUT_SZ    = size_t{1} << 10;
 
     std::cout << "__BEGIN_FEATURIZATION_TEST__" << std::endl;
