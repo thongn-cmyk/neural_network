@@ -217,8 +217,8 @@ namespace activation
 
                 if (interval_first + 1 == interval_last)
                 {
-                    tree_arr[root_idx] = 0;
-                    return 0;
+                    tree_arr[root_idx] = 0u;
+                    return 0u;
                 }
 
                 size_t range_sz     = interval_last - interval_first;

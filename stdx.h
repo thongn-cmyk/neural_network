@@ -717,6 +717,12 @@ namespace stdx
         return result_vec;
     }
 
+    template <class ...Args>
+    inline void high_resolution_sleep(std::chrono::duration<Args...> dur)
+    {
+        std::this_thread::sleep_for(dur);
+    }
+
     template <class T, class Allocator = std::allocator<char>>
     using transparent_vector = std::vector<T, typename std::allocator_traits<Allocator>::template rebind_alloc<T>>;
 

@@ -139,10 +139,7 @@ namespace thread_x
         }
         catch (...)
         {
-            worker->poison();
-            std::atomic_signal_fence(std::memory_order_seq_cst);
-            thr->join();
-            throw;
+            std::abort();
         }
 
         return std::unique_ptr<void, decltype(destructor)>

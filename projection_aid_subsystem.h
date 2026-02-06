@@ -1760,13 +1760,13 @@ namespace projection_aid_subsystem
             {
                 this->check_and_throw_run_requirements();
 
-                coroutine_x::add_coroutine(std::make_unique<CoroutineRunner>(this->training_data,
-                                                                             this->client_vec,
-                                                                             this->pipe_sz,
-                                                                             this->is_completed,
-                                                                             this->ingestion_exception_container,
-                                                                             this->is_interrupted),
-                                           coroutine_x::NETWORK_COROUTINE);
+                coroutine_x::run_detached(std::make_unique<CoroutineRunner>(this->training_data,
+                                                                            this->client_vec,
+                                                                            this->pipe_sz,
+                                                                            this->is_completed,
+                                                                            this->ingestion_exception_container,
+                                                                            this->is_interrupted),
+                                          coroutine_x::NETWORK_COROUTINE);
 
                 this->is_run = true;
             }
@@ -1834,7 +1834,7 @@ namespace projection_aid_subsystem
                                                                                         i(0u),
                                                                                         is_hit_otherwise(false){}
 
-                    void next() noexcept
+                    auto next() noexcept -> bool
                     {
                         try
                         {
@@ -1848,7 +1848,7 @@ namespace projection_aid_subsystem
                                 this->promise_vec.front()->wait();
                                 this->promise_vec.pop_front();
 
-                                return;
+                                return true;
                             }
 
                             auto [inp, out]     = this->training_data->next();
@@ -1877,6 +1877,8 @@ namespace projection_aid_subsystem
                         {
                             this->hit_otherwise();
                         }
+
+                        return true;
                     }
 
                     auto has_next() noexcept -> bool

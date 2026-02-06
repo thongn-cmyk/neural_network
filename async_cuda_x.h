@@ -511,6 +511,7 @@ namespace async_cuda_x
     void init()
     {
         singleton_object::get() = LauncherFactory::get_cuda_async_launcher();
+        std::atomic_thread_fence(std::memory_order_seq_cst);
     }
 
     // static volatile int lazy_initializer = []
@@ -521,6 +522,7 @@ namespace async_cuda_x
 
     void deinit() noexcept
     {
+        std::atomic_thread_fence(std::memory_order_seq_cst);
         singleton_object::get() = nullptr;
     }
 

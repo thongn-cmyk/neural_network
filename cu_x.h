@@ -452,10 +452,7 @@ namespace cu_x
         }
         catch (...)
         {
-            corruption_worker->stop();
-            std::atomic_signal_fence(std::memory_order_seq_cst);
-            thr->join();
-            throw;
+            std::abort();
         }
 
         return std::unique_ptr<void, decltype(destructor)>
@@ -521,6 +518,7 @@ namespace cu_x
                             std::chrono::nanoseconds worker_check_interval)
     {
         corruption_instance::get() = CorruptionReportCenterFactory::get_corruption_report_center(grace_period, worker_check_interval);
+        std::atomic_thread_fence(std::memory_order_seq_cst);
     }
 
     // static volatile int lazy_report_center_initializer = []
@@ -535,6 +533,7 @@ namespace cu_x
 
     void deinit_report_center()
     {
+        std::atomic_thread_fence(std::memory_order_seq_cst);
         corruption_instance::get() = nullptr;
     }
 

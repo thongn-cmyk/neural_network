@@ -434,8 +434,7 @@ namespace connectivity_subsystem
                 try
                 {
                     this->is_alive_flag = std::make_shared<std::atomic<bool>>(true);
-                    auto resolutor_obj  = std::make_shared<InternalResolutor>(config,
-                                                                              this->controller,
+                    auto resolutor_obj  = std::make_shared<InternalResolutor>(this->controller,
                                                                               this->connection_id,
                                                                               this->is_alive_flag,
                                                                               std::nullopt,
@@ -786,8 +785,9 @@ namespace connectivity_subsystem
 
                             logging_subsystem::log(logging_subsystem::LogFactory{}.topic("connectivity_subsystem")
                                                                                   .topic("SlaveConnection")
-                                                                                  .header("Daemon pinger encountered an error")
-                                                                                  .add_content_fron_exception_pointer(std::current_exception())
+                                                                                  .topic("Daemon pinger encountered an error")
+                                                                                  .message(std::current_exception())
+                                                                                  .error()
                                                                                   .get());
 
                             return;

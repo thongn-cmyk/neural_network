@@ -25,6 +25,8 @@ namespace async_x
     {
         singleton_container::get() = thread_x::ThreadPoolFactory::get_normal_thread_pool_manager(container_sz);
         singleton_container::get()->set_thread_worker(worker_sz);
+
+        std::atomic_thread_fence(std::memory_order_seq_cst);
     }
 
     // static volatile int lazy_initializer = []
@@ -39,6 +41,8 @@ namespace async_x
 
     void deinit()
     {
+        std::atomic_thread_fence(std::memory_order_seq_cst);
+
         singleton_container::get() = nullptr;
     }
 
