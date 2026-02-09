@@ -219,9 +219,9 @@ namespace the_cuda_matrix
             tensor_std_float_t pe_amplitude_decay_rate;
             tensor_std_float_t pe_frequency_multiplier_decay_rate;
 
-        public:
-
             using self = TheCudaMatrix;
+
+        public:
 
             TheCudaMatrix(std::vector<size_t> shape_vec,
                           std::vector<size_t> focal_sz_vec,

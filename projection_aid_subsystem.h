@@ -11,6 +11,18 @@ namespace projection_aid_subsystem
 {
     using namespace float_def;
 
+    //when I design system, especially server-client, there are certain problems that we'd need to solve
+
+    //the number of tasks in pool
+    //the way of processing the tasks in pool
+        //if the task is local + compute-bound => serial
+        //if the task is network or fileio bound -> parallel, asynchronously
+
+    //the operatable window (how to config to hit the SUCCESS spot)
+    //the worst-case scenerio self-recovery to the operatable compute-window
+
+    //worst-case scenerio self-recovery requires to have somewhat a timeout system, such is that after waiting a certain time, the resolutors would auto-reject the incoming requests and bring itself back to equilibrium
+
     struct Remote
     {
         std::string ipv6;

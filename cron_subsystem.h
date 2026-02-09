@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 #include <stdlib.h>
+#include <chrono>
+#include <memory>
 
 namespace cron_subsystem
 {
@@ -31,7 +33,7 @@ namespace cron_subsystem
 
     }
 
-    void register_periodic_cronjob(const std::shared_ptr<UpdatableInterface>& updatable,
+    auto register_periodic_cronjob(const std::shared_ptr<UpdatableInterface>& updatable,
                                    std::chrono::nanoseconds dur,
                                    uint8_t cron_kind    = CRON_KIND_SHARED,
                                    uint8_t cron_check   = CRON_CHECK_SLEEPY) -> std::shared_ptr<void>
