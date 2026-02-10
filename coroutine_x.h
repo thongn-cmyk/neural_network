@@ -13,6 +13,7 @@
 #include <deque>
 #include <semaphore>
 #include <thread>
+#include "cron_subsystem.h"
 
 namespace coroutine_x
 {
@@ -43,16 +44,7 @@ namespace coroutine_x
             virtual auto next() noexcept -> bool = 0;
     };
 
-    class UpdatableInterface
-    {
-        public:
-
-            virtual ~UpdatableInterface() noexcept = default;
-
-            virtual void update() noexcept = 0;
-    };
-
-    class CoroutineableManagerInterface: public virtual UpdatableInterface
+    class CoroutineableManagerInterface: public virtual cron_subsystem::UpdatableInterface
     {
         public:
 
@@ -203,7 +195,7 @@ namespace coroutine_x
                 return waiting_item;
             }
 
-            void update() noexcept
+            void update()
             {
                 fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*this->mtx);
 
@@ -510,121 +502,10 @@ namespace coroutine_x
         );
     }
 
-    class PeriodicUpdateWorker
-    {
-        private:
-
-            std::shared_ptr<UpdatableInterface> updatable;
-            std::chrono::nanoseconds periodic_dur;
-            std::atomic<bool> poison_pill;
-            std::atomic<bool> run_broke_pill;
-
-            static inline constexpr size_t POISON_CHK_INTERVAL = 8u;
-
-        public:
-
-            PeriodicUpdateWorker(std::shared_ptr<UpdatableInterface> updatable,
-                                 std::chrono::nanoseconds periodic_dur)
-            {
-                if (updatable == nullptr)
-                {
-                    throw std::invalid_argument("bad updatable, null");
-                }
-
-                if (periodic_dur < std::chrono::nanoseconds(0))
-                {
-                    throw std::invalid_argument("bad temporal duration, negative");
-                }
-
-                this->updatable         = std::move(updatable);
-                this->periodic_dur      = periodic_dur;
-                this->poison_pill       = false;
-                this->run_broke_pill    = false;
-            }
-
-            void run() noexcept
-            {
-                if (this->run_broke_pill.exchange(true, std::memory_order_relaxed))
-                {
-                    std::abort();
-                }
-
-                size_t local_counter = 0u;
-
-                while (true)
-                {
-                    if (local_counter == POISON_CHK_INTERVAL)
-                    {
-                        if (this->poison_pill.load(std::memory_order_relaxed))
-                        {
-                            break;
-                        }
-
-                        local_counter = 0u;
-                    }
-
-                    local_counter += 1u;
-
-                    this->updatable->update();
-                    stdx::high_resolution_sleep(this->periodic_dur);
-                }
-            }
-
-            void poison() noexcept
-            {
-                this->poison_pill.exchange(true, std::memory_order_relaxed);
-            }
-    };
-
-    struct PeriodicUpdateWorkerResource
-    {
-        std::shared_ptr<PeriodicUpdateWorker> worker;
-        std::shared_ptr<std::thread> thr;
-    };
-
     auto get_periodic_update_worker(std::shared_ptr<CoroutineableManagerInterface> manager,
                                     std::chrono::nanoseconds periodic_dur = COROUTINE_DELAY) -> std::shared_ptr<void>
     {
-        auto destructor = [](void * arg) noexcept
-        {
-            PeriodicUpdateWorkerResource * worker_pack = static_cast<PeriodicUpdateWorkerResource *>(arg); //safe memory access, by shared_ptr<> acquisition of arg when reaches 0 only, I'm afraid that std does not understand what they wrote
-            worker_pack->worker->poison(); //poison fine, we are holding right address, and followed by a mutex acquisition
-            std::atomic_signal_fence(std::memory_order_seq_cst);
-            worker_pack->thr->join(); //join fine, we are holding right memory reference due to the shared_ptr<> and we are the sole operator of the std::thread
-
-            delete worker_pack;
-        };
-
-        std::shared_ptr<PeriodicUpdateWorker> worker = std::make_shared<PeriodicUpdateWorker>(manager, periodic_dur);
-        auto worker_runner = [=]() noexcept
-        {
-            worker->run();
-        };
-
-        std::shared_ptr<std::thread> thr    = std::make_shared<std::thread>(worker_runner);
-        PeriodicUpdateWorkerResource * worker_pack;
-
-        try
-        {
-            worker_pack = new PeriodicUpdateWorkerResource
-            {
-                PeriodicUpdateWorkerResource
-                {
-                    .worker = worker,
-                    .thr    = thr
-                }
-            };
-        }
-        catch (...)
-        {
-            std::abort();
-        }
-
-        return std::unique_ptr<void, decltype(destructor)>
-        (
-            static_cast<void * >(worker_pack),
-            destructor
-        );
+        return cron_subsystem::register_periodic_cronjob(manager, periodic_dur);
     }
 
     auto get_container(std::vector<std::shared_ptr<void>>&& container) -> std::shared_ptr<void>

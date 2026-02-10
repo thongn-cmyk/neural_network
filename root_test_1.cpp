@@ -20,10 +20,18 @@ using namespace float_def;
 
 class SomeEquation: public virtual time_machine::TimeMachineInterface
 {
+    private:
+
+        size_t counter;
+
     public:
+
+        SomeEquation(): counter(0u){}
 
         auto f(std_float_t x) -> tm_float_t
         {
+            this->counter += 1;
+
             if (x > 10)
             {
                 return stdx::generic_nan();
@@ -35,6 +43,11 @@ class SomeEquation: public virtual time_machine::TimeMachineInterface
             }
 
             return std::numeric_limits<tm_float_t>::infinity();
+        }
+
+        auto get_count() -> size_t
+        {
+            return this->counter;
         }
 };
 
@@ -84,6 +97,7 @@ void test_some_equation()
     }
 
     std::cout << "<> actual_y > " << y.value() << "<> at " << x.value() << std::endl;
+    std::cout << "<> TEST_SZ > " << TEST_SZ << "<> eqn_call_sz > " << some_eqn.get_count() << std::endl;
 }
 
 void test_some_equation_2()
@@ -148,10 +162,11 @@ void test_some_equation_2()
     }
 
     std::cout << "<> actual_y > " << y.value() << "<> at " << x.value() << std::endl;
+    std::cout << "<> TEST_SZ > " << TEST_SZ << "<> eqn_call_sz > " << some_eqn.get_count() << std::endl;
 }
 
 int main()
 {
-    test_some_equation();
     test_some_equation_2();
+    test_some_equation();
 }

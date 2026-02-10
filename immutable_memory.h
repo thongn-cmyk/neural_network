@@ -18,6 +18,7 @@ namespace immutable_memory
         public:
 
             virtual ~MemoryAllocatorInterface() noexcept = default;
+
             virtual auto allocate_from_view(std::string_view buffer_view) -> std::shared_ptr<void> = 0;
     };
 
@@ -54,7 +55,7 @@ namespace immutable_memory
 
             virtual ~MemoryLifetimeManagerInterface() noexcept = default;
 
-            virtual void punch_lifetime(const std::shared_ptr<void>& immutable_reference, std::chrono::nanoseconds lifetime) = 0;
+            virtual void extend_lifetime(const std::shared_ptr<void>& immutable_reference, std::chrono::nanoseconds lifetime) = 0;
             virtual auto get_expired_memory_vector() -> std::vector<std::shared_ptr<void>> = 0;
     };
 
@@ -390,16 +391,13 @@ namespace immutable_memory
     {
         private:
 
-            using randomizer_t = decltype(std::bind(std::uniform_int_distribution<size_t>(), std::mt19937_64{static_cast<uint32_t>(0u)}));
-
             std::vector<std::unique_ptr<CudaImmutableMemoryCache>> base_vec;
-            randomizer_t randomizer;
         
         public:
 
             DistributedCudaImmutableMemoryCache(std::shared_ptr<MemoryAllocatorInterface> allocator,
                                                 size_t auto_evict_memory_threshold,
-                                                size_t concurrency_sz): randomizer(std::bind(std::uniform_int_distribution<size_t>(), std::mt19937_64{static_cast<uint32_t>(std::chrono::system_clock::now().time_since_epoch().count())}))
+                                                size_t concurrency_sz)
             {
                 if (concurrency_sz == 0u)
                 {
@@ -443,6 +441,170 @@ namespace immutable_memory
             }
     };
 
+    class MemoryLifetimeManager: public virtual MemoryLifetimeManagerInterface
+    {
+        private:
+
+            struct LifetimeBucket
+            {
+                std::shared_ptr<void> immutable_reference;
+                std::chrono::time_point<std::chrono::system_clock> expiry;
+            };
+
+            std::vector<std::unique_ptr<LifetimeBucket>> lifetime_bucket_vec;
+            std::unordered_map<uintptr_t, LifetimeBucket *> reverse_map;
+            std::unique_ptr<fair_mutex::fair_atomic_flag> mtx;
+
+            auto get_lifetime_bucket_comparator()
+            {
+                auto greater = [](const std::unique_ptr<LifetimeBucket>& lhs, const std::unique_ptr<LifetimeBucket>& rhs)
+                {
+                    return lhs->expiry > rhs->expiry;
+                };
+
+                return greater;
+            }
+
+        public:
+            
+            MemoryLifetimeManager(): lifetime_bucket_vec(),
+                                     reverse_map(),
+                                     mtx(fair_mutex::make_unique_fair_atomic_flag()){}
+
+            void extend_lifetime(const std::shared_ptr<void>& immutable_reference, std::chrono::nanoseconds lifetime)
+            {
+                fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*this->mtx);
+
+                uintptr_t reference_addr    = reinterpret_cast<uintptr_t>(immutable_reference.get());
+                auto map_ptr                = this->reverse_map.find(reference_addr);
+                auto expiry                 = std::chrono::time_point_cast<typename std::chrono::time_point<std::chrono::system_clock>::duration>(std::chrono::system_clock::now() + lifetime);
+
+                if (map_ptr == this->reverse_map.end())
+                {
+                    this->lifetime_bucket_vec.push_back
+                    (
+                        std::make_unique<LifetimeBucket>
+                        (
+                            LifetimeBucket
+                            {
+                                .immutable_reference = immutable_reference,
+                                .expiry = expiry
+                            }
+                        )
+                    );
+
+                    LifetimeBucket * bucket_reference = this->lifetime_bucket_vec.back().get();
+                    std::push_heap(this->lifetime_bucket_vec.begin(), this->lifetime_bucket_vec.end(), this->get_lifetime_bucket_comparator());
+
+                    try
+                    {
+                        auto [new_map_ptr, _] = this->reverse_map.insert({reference_addr, bucket_reference});
+                        map_ptr = new_map_ptr;
+                    }
+                    catch (...)
+                    {
+                        std::abort();
+                    }
+                }
+
+                map_ptr->second->expiry = std::max(expiry, map_ptr->second->expiry);
+            }
+
+            auto get_expired_memory_vector() -> std::vector<std::shared_ptr<void>>
+            {
+                fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*this->mtx);
+
+                std::vector<std::shared_ptr<void>> result{};
+                std::chrono::time_point<std::chrono::system_clock> bar = std::chrono::system_clock::now();
+
+                try
+                {
+                    while (true)
+                    {
+                        if (this->lifetime_bucket_vec.empty())
+                        {
+                            return result;
+                        }
+
+                        if (this->lifetime_bucket_vec.front()->expiry >= bar)
+                        {
+                            return result;
+                        }
+
+                        uintptr_t reference_addr = reinterpret_cast<uintptr_t>(this->lifetime_bucket_vec.front()->immutable_reference.get());
+                        this->reverse_map.erase(reference_addr);
+
+                        std::pop_heap(this->lifetime_bucket_vec.begin(), this->lifetime_bucket_vec.end(), this->get_lifetime_bucket_comparator());
+                        auto loose_bucket = std::move(this->lifetime_bucket_vec.back());
+                        this->lifetime_bucket_vec.pop_back();
+                        result.push_back(std::move(loose_bucket->immutable_reference));
+                    }
+                }
+                catch (...)
+                {
+                    std::abort();
+                }
+
+                return result;
+            }
+    };
+
+    class DistributedMemoryLifetimeManager: public virtual MemoryLifetimeManagerInterface
+    {
+        private:
+
+            using randomizer_t = decltype(std::bind(std::uniform_int_distribution<size_t>(), std::mt19937_64{static_cast<uint32_t>(0u)}));
+
+            std::vector<std::unique_ptr<MemoryLifetimeManagerInterface>> base_vec;
+            randomizer_t randomizer;
+
+        public:
+
+            DistributedMemoryLifetimeManager(std::vector<std::unique_ptr<MemoryLifetimeManagerInterface>>&& base_vec): randomizer(std::bind(std::uniform_int_distribution<size_t>(), std::mt19937_64{static_cast<uint32_t>(std::chrono::system_clock::now().time_since_epoch().count())}))
+            {
+                if (base_vec.empty())
+                {
+                    throw std::invalid_argument("bad base vector, 0");
+                }
+
+                this->base_vec = std::move(base_vec);
+            }
+                                                
+            void extend_lifetime(const std::shared_ptr<void>& immutable_reference, std::chrono::nanoseconds lifetime)
+            {
+                if (this->base_vec.size() == 0u)
+                {
+                    std::abort();
+                }
+
+                size_t idx = reinterpret_cast<uintptr_t>(immutable_reference.get()) % this->base_vec.size();
+                this->base_vec[idx]->extend_lifetime(immutable_reference, lifetime);
+            }
+
+            auto get_expired_memory_vector() -> std::vector<std::shared_ptr<void>>
+            {
+                size_t seed = this->randomizer();
+                std::vector<std::shared_ptr<void>> result{};
+
+                for (size_t i = 0u; i < this->base_vec.size(); ++i)
+                {
+                    size_t offset = (seed + i) % this->base_vec.size();
+
+                    try
+                    {
+                        auto tmp = this->base_vec[i]->get_expired_memory_vector();
+                        std::copy(std::make_move_iterator(tmp.begin()), std::make_move_iterator(tmp.end()), std::back_inserter(result));
+                    }
+                    catch (...)
+                    {
+                        std::abort();
+                    }
+                }
+
+                return result;
+            }
+    };
+
     class EvictionWorker: public virtual cron_subsystem::UpdatableInterface
     {
         private:
@@ -450,7 +612,7 @@ namespace immutable_memory
             std::shared_ptr<ImmutableMemoryCacheInterface> memory_cache;
             std::shared_ptr<MemoryLifetimeManagerInterface> memory_manager;
             std::chrono::nanoseconds reentrant_lifetime;
-        
+
         public:
 
             EvictionWorker(std::shared_ptr<ImmutableMemoryCacheInterface> memory_cache,
@@ -471,7 +633,7 @@ namespace immutable_memory
 
                         if (!was_evicted)
                         {
-                            this->memory_manager->punch_lifetime(evictable, this->reentrant_lifetime);
+                            this->memory_manager->extend_lifetime(evictable, this->reentrant_lifetime);
                         }
                     }
                 }   
@@ -516,7 +678,7 @@ namespace immutable_memory
 
                 try
                 {
-                    this->memory_lifetime_manager->punch_lifetime(immutable_reference, this->lifetime);
+                    this->memory_lifetime_manager->extend_lifetime(immutable_reference, this->lifetime);
                 }
                 catch (...)
                 {
@@ -541,7 +703,7 @@ namespace immutable_memory
 
                 try
                 {
-                    this->memory_lifetime_manager->punch_lifetime(immutable_reference, this->lifetime);
+                    this->memory_lifetime_manager->extend_lifetime(immutable_reference, this->lifetime);
                 }
                 catch (...)
                 {
@@ -558,6 +720,79 @@ namespace immutable_memory
             void release_memory(const MemoryReference& memory_reference) noexcept
             {
                 this->base->release_memory(memory_reference);                
+            }
+    };
+
+    class Factory
+    {
+        private:
+
+            static auto get_normal_lifetime_manager(size_t concurrent_sz) -> std::unique_ptr<MemoryLifetimeManagerInterface>
+            {
+                std::vector<std::unique_ptr<MemoryLifetimeManagerInterface>> base_vec{};
+
+                for (size_t i = 0u; i < concurrent_sz; ++i)
+                {
+                    base_vec.push_back(std::make_unique<MemoryLifetimeManager>());
+                }
+
+                return std::make_unique<DistributedMemoryLifetimeManager>(std::move(base_vec));
+            }
+
+            static auto get_normal_internal_immutable_memory_cache(const std::shared_ptr<MemoryAllocatorInterface>& allocator,
+                                                                   size_t auto_evict_byte_sz,
+                                                                   size_t concurrent_sz) -> std::unique_ptr<ImmutableMemoryCacheInterface>
+            {
+                return std::make_unique<DistributedCudaImmutableMemoryCache>(allocator, auto_evict_byte_sz, concurrent_sz);
+            }
+
+            static auto get_normal_daemon_worker(const std::shared_ptr<MemoryLifetimeManagerInterface>& lifetime_manager,
+                                                 const std::shared_ptr<ImmutableMemoryCacheInterface>& memory_cache,
+                                                 std::chrono::nanoseconds memory_lifetime,
+                                                 std::chrono::nanoseconds cron_periodic_dur) -> std::shared_ptr<void>
+            {
+                const std::chrono::nanoseconds MIN_MEMORY_LIFETIME      = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::milliseconds(1));
+                const std::chrono::nanoseconds MAX_MEMORY_LIFETIME      = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::hours(1));
+                const std::chrono::nanoseconds MIN_CRON_PERIODIC_DUR    = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::milliseconds(1));
+                const std::chrono::nanoseconds MAX_CRON_PERIODIC_DUR    = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(1));
+
+                if (lifetime_manager == nullptr)
+                {
+                    throw std::invalid_argument("bad lifetime manager, null");
+                }
+
+                if (memory_cache == nullptr)
+                {
+                    throw std::invalid_argument("bad memory_cache, null");
+                }
+
+                memory_lifetime     = std::clamp(memory_lifetime, MIN_MEMORY_LIFETIME, MAX_MEMORY_LIFETIME);
+                cron_periodic_dur   = std::clamp(cron_periodic_dur, MIN_CRON_PERIODIC_DUR, MAX_CRON_PERIODIC_DUR);
+
+                return cron_subsystem::register_periodic_cronjob(std::make_unique<EvictionWorker>(memory_cache, lifetime_manager, memory_lifetime),
+                                                                 cron_periodic_dur);
+            }
+
+        public:
+
+            static auto get_normal_immutable_memory_cache(std::chrono::nanoseconds memory_lifetime,
+                                                          std::chrono::nanoseconds cron_periodic_dur,
+                                                          size_t auto_evict_byte_sz,
+                                                          size_t concurrent_sz,
+                                                          const std::shared_ptr<MemoryAllocatorInterface>& allocator) -> std::unique_ptr<ExternalImmutableMemoryCacheInterface>
+            {
+                const std::chrono::nanoseconds MIN_LIFETIME = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::milliseconds(1));
+                const std::chrono::nanoseconds MAX_LIFETIME = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::hours(1));
+
+                memory_lifetime                                                     = std::clamp(memory_lifetime, MIN_LIFETIME, MAX_LIFETIME);
+                std::shared_ptr<MemoryLifetimeManagerInterface> lifetime_manager    = get_normal_lifetime_manager(concurrent_sz);
+                std::shared_ptr<ImmutableMemoryCacheInterface> memory_cache         = get_normal_internal_immutable_memory_cache(allocator, auto_evict_byte_sz, concurrent_sz);
+                std::shared_ptr<void> daemon_worker                                 = get_normal_daemon_worker(lifetime_manager, memory_cache, memory_lifetime, cron_periodic_dur);
+
+                return std::make_unique<SelfManagedExternalImmutableMemoryCache>(std::move(lifetime_manager),
+                                                                                 std::move(memory_cache),
+                                                                                 std::move(daemon_worker),
+                                                                                 memory_lifetime);
             }
     };
 }

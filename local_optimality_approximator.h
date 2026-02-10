@@ -189,6 +189,65 @@ namespace local_optimality_approximator
         return best_x.value();
     }
 
+    template <class Function, class FloatType, class XDeviationGenerator, class DerivativeExtractor = decltype(get_derivative_at_lambda<FloatType>)>
+    constexpr auto dynamic_short_sight_and_slope_newton_first_order_approx(Function&& f,
+                                                                           FloatType x,
+                                                                           size_t iteration_sz,
+                                                                           XDeviationGenerator&& deviation_generator,
+                                                                           const DerivativeExtractor& derivative_extractor = get_derivative_at_lambda<FloatType>) -> FloatType
+    {
+        static_assert(std::is_floating_point_v<FloatType>);
+
+        FloatType cand                      = x;
+
+        std::optional<FloatType> best_x     = std::nullopt;
+        std::optional<FloatType> best_y     = std::nullopt;
+
+        for (size_t i = 0u; i < iteration_sz; ++i)
+        {
+            if (std::isnan(cand))
+            {
+                break;
+            }
+
+            FloatType slope             = derivative_extractor(f, cand, 1u, i);
+
+            if (std::isnan(slope))
+            {
+                break;
+            }
+
+            FloatType elevated_value    = f(cand);
+
+            if (std::isnan(elevated_value))
+            {
+                break;
+            }
+
+            if (!best_y.has_value())
+            {
+                best_y  = elevated_value;
+                best_x  = cand;
+            }
+
+            if (std::abs(best_y.value()) > std::abs(elevated_value))
+            {
+                best_y  = elevated_value;
+                best_x  = cand;
+            }
+
+            FloatType previous_delta_x  = elevated_value / slope;
+            cand                        -= deviation_clamp<float_def::most_byte_width_float_t<FloatType, decltype(deviation_generator(i))>>(previous_delta_x, deviation_generator(i));
+        }
+
+        if (!best_x.has_value())
+        {
+            return x;
+        }
+
+        return best_x.value();
+    }
+
     template <class Function, class FloatType, class FloatType2, class DerivativeExtractor = decltype(get_derivative_at_lambda<FloatType>)>
     constexpr auto short_sight_newton_first_order_approx(Function&& f,
                                                          FloatType x,
@@ -423,6 +482,115 @@ namespace local_optimality_approximator
         return rs->second;
     }
 
+    template <class Function, class FloatType, class XDeviationGenerator, class DerivativeExtractor = decltype(get_derivative_at_lambda<FloatType>)>
+    constexpr auto dynamic_short_sight_and_slope_newton_second_order_approx(Function&& f,
+                                                                            FloatType x,
+                                                                            size_t iteration_sz,
+                                                                            XDeviationGenerator&& deviation_generator,
+                                                                            const DerivativeExtractor& derivative_extractor = get_derivative_at_lambda<FloatType>,
+                                                                            const std::unique_ptr<std::unordered_map<FloatType, FloatType>>& cache_map = std::make_unique<std::unordered_map<FloatType, FloatType>>()) -> FloatType
+    {
+        static_assert(std::is_floating_point_v<FloatType>);
+
+        if (iteration_sz == 0u)
+        {
+            return x;
+        }
+
+        if (std::isnan(x))
+        {
+            return x;
+        }
+
+        if (auto cache_ptr = cache_map->find(x); cache_ptr != cache_map->end())
+        {
+            return cache_ptr->second;
+        }
+
+        FloatType a         = derivative_extractor(f, x, 2u, iteration_sz) / static_cast<FloatType>(2);
+
+        if (std::isnan(a))
+        {
+            return x;
+        }
+
+        FloatType b         = derivative_extractor(f, x, 1u, iteration_sz);
+
+        if (std::isnan(b))
+        {
+            return x;
+        }
+
+        FloatType c         = derivative_extractor(f, x, 0u, iteration_sz);
+
+        if (std::isnan(c))
+        {
+            return x;
+        }
+
+        FloatType d2        = b * b - 4 * a * c;
+
+        if (std::isnan(d2))
+        {
+            return x;
+        }
+
+        FloatType d;
+
+        if (d2 < 0)
+        {
+            c   = static_cast<FloatType>(1) / static_cast<FloatType>(4) * b * b / a;
+
+            if (std::isnan(c))
+            {
+                return x;
+            }
+
+            d2  = 0;
+            d   = 0;
+        }
+        else
+        {
+            d   = std::sqrt(d2);            
+        }
+
+        if (std::isnan(d))
+        {
+            return x;
+        }
+
+        FloatType tentative_rel_x1  = (-b + d) / (a * 2);
+        FloatType tentative_rel_x2  = (-b - d) / (a * 2);
+
+        FloatType x1                = x + deviation_clamp<float_def::most_byte_width_float_t<FloatType, decltype(deviation_generator(iteration_sz))>>(tentative_rel_x1, deviation_generator(iteration_sz));
+        FloatType x2                = x + deviation_clamp<float_def::most_byte_width_float_t<FloatType, decltype(deviation_generator(iteration_sz))>>(tentative_rel_x2, deviation_generator(iteration_sz));
+
+        FloatType xx1               = dynamic_short_sight_and_slope_newton_second_order_approx(f, x1, iteration_sz - 1u, deviation_generator, derivative_extractor, cache_map);
+        FloatType xx2               = dynamic_short_sight_and_slope_newton_second_order_approx(f, x2, iteration_sz - 1u, deviation_generator, derivative_extractor, cache_map);
+
+        auto is_less = [](const auto& lhs, const auto& rhs)
+        {
+            return stdx::nan_cmp(lhs.first, rhs.first) < 0;
+        };
+
+        std::array<std::pair<FloatType, FloatType>, 5u> cand_arr{std::make_pair(std::abs(f(x)), x),
+                                                                 std::make_pair(std::abs(f(x1)), x1),
+                                                                 std::make_pair(std::abs(f(x2)), x2),
+                                                                 std::make_pair(std::abs(f(xx1)), xx1),
+                                                                 std::make_pair(std::abs(f(xx2)), xx2)};
+
+        auto rs = std::min_element(cand_arr.begin(), cand_arr.end(), is_less);
+
+        if (std::isnan(rs->first))
+        {
+            cache_map->insert({x, x});
+            return x;
+        }
+
+        cache_map->insert({x, rs->second});
+        return rs->second;
+    }
+
     template <class Function, class FloatType, class FloatType2, class DerivativeExtractor = decltype(get_derivative_at_lambda<FloatType>)>
     constexpr auto short_sight_newton_second_order_approx(Function&& f,
                                                           FloatType x,
@@ -600,8 +768,109 @@ namespace local_optimality_approximator
                                                                      x_deviation_generator,
                                                                      derivative_func);
             }
+
+        private:
+
+            auto get_deviation_range_vector() -> std::vector<PromotedFloatType>
+            {
+                std::vector<PromotedFloatType> rs(this->iteration_sz);
+
+                for (size_t i = 0u; i < this->iteration_sz; ++i)
+                {
+                    if (i == 0u)
+                    {
+                        rs[i] = this->reliable_x_deviation_range;
+                    }
+                    else
+                    {
+                        rs[i] = rs[i - 1] * static_cast<PromotedFloatType>(1 - this->randomizer.ld_randomize_percentage_focal());
+                    }
+                }
+
+                return rs;
+            }
+    };
+
+    template <class PromotedFloatType = std_float_t>
+    class FirstOrderConvergingShortSightAndSlopeNewtonNaiveOptimalityApproximator: public virtual OptimalityApproximatorInterface
+    {
+        private:
+
+            size_t iteration_sz;
+            std_float_t reliable_x_a_range;
+            std_float_t reliable_x_deviation_range;
+            conventional_randomizer::ApplicationRandomizerObject randomizer;
+
+        public:
+
+            static_assert(std::is_floating_point_v<PromotedFloatType>);
+
+            FirstOrderConvergingShortSightAndSlopeNewtonNaiveOptimalityApproximator(size_t iteration_sz,
+                                                                                    std_float_t reliable_x_a_range,
+                                                                                    std_float_t reliable_x_deviation_range,
+                                                                                    conventional_randomizer::ApplicationRandomizerObject randomizer) noexcept: iteration_sz(iteration_sz),
+                                                                                                                                                               reliable_x_a_range(reliable_x_a_range),
+                                                                                                                                                               reliable_x_deviation_range(reliable_x_deviation_range),
+                                                                                                                                                               randomizer(std::move(randomizer)){}
+
+            auto approx_x(time_machine::TimeMachineInterface& time_machine, std_float_t x) -> std_float_t
+            {
+                auto lambda_wrapped_time_machine = [&time_machine](std_float_t t)
+                {
+                    return time_machine.f(t);
+                };
+
+                std::vector<PromotedFloatType> x_a_range_vec        = this->get_a_range_vector();
+                std::vector<PromotedFloatType> deviation_range_vec  = this->get_deviation_range_vector();
+                auto derivative_func                                = [&]<class Function>(Function&& f, PromotedFloatType x, size_t derivative_order, size_t i)
+                {
+                    if (i >= x_a_range_vec.size())
+                    {
+                        std::abort();
+                    }
+
+                    PromotedFloatType x_a = x_a_range_vec[i];
+
+                    return get_derivative_at(f, x, derivative_order, x_a);
+                };
+
+                auto x_deviation_generator                          = [&](size_t i) noexcept
+                {
+                    if (i >= deviation_range_vec.size())
+                    {
+                        std::abort();
+                    }
+
+                    return deviation_range_vec[i];
+                };
+
+                return dynamic_short_sight_and_slope_newton_first_order_approx(lambda_wrapped_time_machine,
+                                                                               x,
+                                                                               this->iteration_sz,
+                                                                               x_deviation_generator,
+                                                                               derivative_func);
+            }
         
         private:
+
+            auto get_a_range_vector() -> std::vector<PromotedFloatType>
+            {
+                std::vector<PromotedFloatType> rs(this->iteration_sz);
+
+                for (size_t i = 0u; i < this->iteration_sz; ++i)
+                {
+                    if (i == 0u)
+                    {
+                        rs[i] = this->reliable_x_a_range;
+                    }
+                    else
+                    {
+                        rs[i] = rs[i - 1] * static_cast<PromotedFloatType>(1 - this->randomizer.ld_randomize_percentage_focal());
+                    }
+                }
+
+                return rs;
+            }
 
             auto get_deviation_range_vector() -> std::vector<PromotedFloatType>
             {
@@ -810,6 +1079,110 @@ namespace local_optimality_approximator
             }
     };
 
+    template <class PromotedFloatType = std_float_t>
+    class SecondOrderConvergingShortSightAndSlopeNewtonNaiveOptimalityApproximator: public virtual OptimalityApproximatorInterface
+    {
+        private:
+
+            size_t iteration_sz;
+            std_float_t reliable_x_a_range;
+            std_float_t reliable_x_deviation_range;
+            conventional_randomizer::ApplicationRandomizerObject randomizer;
+        
+        public:
+
+            static_assert(std::is_floating_point_v<PromotedFloatType>);
+
+            SecondOrderConvergingShortSightAndSlopeNewtonNaiveOptimalityApproximator(size_t iteration_sz,
+                                                                                     std_float_t reliable_x_a_range,
+                                                                                     std_float_t reliable_x_deviation_range,
+                                                                                     conventional_randomizer::ApplicationRandomizerObject randomizer) noexcept: iteration_sz(iteration_sz),
+                                                                                                                                                                reliable_x_a_range(reliable_x_a_range),
+                                                                                                                                                                reliable_x_deviation_range(reliable_x_deviation_range),
+                                                                                                                                                                randomizer(std::move(randomizer)){}
+
+            auto approx_x(time_machine::TimeMachineInterface& time_machine, std_float_t x) -> std_float_t
+            {
+                auto lambda_wrapped_time_machine = [&time_machine](std_float_t t)
+                {
+                    return time_machine.f(t);
+                };
+
+                std::vector<PromotedFloatType> x_a_range_vec        = this->get_x_a_range_vector();
+                std::vector<PromotedFloatType> deviation_range_vec  = this->get_deviation_range_vector();
+                auto derivative_func                                = [&]<class Function>(Function&& func, PromotedFloatType x, size_t derivative_order, size_t iteration_ptr)
+                {
+                    size_t i = this->iteration_sz - iteration_ptr;
+
+                    if (i >= x_a_range_vec.size())
+                    {
+                        std::abort();
+                    }
+
+                    PromotedFloatType x_a = x_a_range_vec[i];
+
+                    return get_derivative_at(func, x, derivative_order, x_a);
+                };
+                auto x_deviation_generator                          = [&](size_t iteration_ptr) noexcept
+                {
+                    size_t i = this->iteration_sz - iteration_ptr;
+
+                    if (i >= deviation_range_vec.size())
+                    {
+                        std::abort();
+                    }
+
+                    return deviation_range_vec[i];
+                };
+
+                return dynamic_short_sight_and_slope_newton_second_order_approx(lambda_wrapped_time_machine,
+                                                                                x,
+                                                                                this->iteration_sz,
+                                                                                x_deviation_generator,
+                                                                                derivative_func);
+            }
+        
+        private:
+
+            auto get_x_a_range_vector() -> std::vector<PromotedFloatType>
+            {
+                std::vector<PromotedFloatType> rs(this->iteration_sz);
+
+                for (size_t i = 0u; i < this->iteration_sz; ++i)
+                {
+                    if (i == 0u)
+                    {
+                        rs[i] = this->reliable_x_a_range;
+                    }
+                    else
+                    {
+                        rs[i] = rs[i - 1] * static_cast<PromotedFloatType>(1 - this->randomizer.ld_randomize_percentage_focal());
+                    }
+                }
+
+                return rs;
+            }
+
+            auto get_deviation_range_vector() -> std::vector<PromotedFloatType>
+            {
+                std::vector<PromotedFloatType> rs(this->iteration_sz);
+
+                for (size_t i = 0u; i < this->iteration_sz; ++i)
+                {
+                    if (i == 0u)
+                    {
+                        rs[i] = this->reliable_x_deviation_range;
+                    }
+                    else
+                    {
+                        rs[i] = rs[i - 1] * static_cast<PromotedFloatType>(1 - this->randomizer.ld_randomize_percentage_focal());
+                    }
+                }
+
+                return rs;
+            }
+    };
+
     class OptimalityApproximatorFactory
     {
         private:
@@ -974,6 +1347,49 @@ namespace local_optimality_approximator
             }
 
             template <class PromotedFloatType = std_float_t>
+            static auto get_first_order_converging_short_sight_and_slope_newton_naive_optimality_approximator(std_float_t x_a = stdx::to_precise_float_conversion_initializer<double>(0.001),
+                                                                                                              std_float_t reliable_x_deviation = stdx::to_precise_float_conversion_initializer<double>(10)) -> std::unique_ptr<OptimalityApproximatorInterface>
+            {
+                static_assert(std::is_floating_point_v<PromotedFloatType>);
+
+                const size_t ITERATION_SZ_FIRST             = 0u;
+                const size_t ITERATION_SZ_LAST              = 4u;
+
+                const std_float_t MIN_X_A                   = std::numeric_limits<std_float_t>::min();
+                const std_float_t MAX_X_A                   = stdx::to_precise_float_conversion_initializer<double>(1);
+
+                const std_float_t MIN_RELIABLE_X_DEVIATION  = stdx::to_precise_float_conversion_initializer<double>(0);
+                const std_float_t MAX_RELIABLE_X_DEVIATION  = stdx::to_precise_float_conversion_initializer<double>(size_t{1} << 20);
+
+                size_t iteration_sz                         = size_t{1} << Randomizer::randomize_uint(ITERATION_SZ_FIRST, ITERATION_SZ_LAST);
+
+                if (std::isnan(x_a))
+                {
+                    throw std::invalid_argument("bad derivative deviation, NaN");
+                }
+
+                if (std::clamp(x_a, MIN_X_A, MAX_X_A) != x_a)
+                {
+                    throw std::invalid_argument("bad derivative deviation, value out of range");
+                }
+
+                if (std::isnan(reliable_x_deviation) )
+                {
+                    throw std::invalid_argument("bad local optimality reliable_x_deviation, NaN");
+                }
+
+                if (std::clamp(reliable_x_deviation, MIN_RELIABLE_X_DEVIATION, MAX_RELIABLE_X_DEVIATION) != reliable_x_deviation)
+                {
+                    throw std::invalid_argument("bad local optimality reliable_x_deviation, value out of range");
+                }
+
+                return std::make_unique<FirstOrderConvergingShortSightAndSlopeNewtonNaiveOptimalityApproximator<PromotedFloatType>>(iteration_sz,
+                                                                                                                                    x_a,
+                                                                                                                                    reliable_x_deviation,
+                                                                                                                                    conventional_randomizer::ApplicationRandomizerObject());
+            }
+
+            template <class PromotedFloatType = std_float_t>
             static auto get_second_order_newton_naive_optimality_approximator(std_float_t x_a = stdx::to_precise_float_conversion_initializer<double>(0.001)) -> std::unique_ptr<OptimalityApproximatorInterface>
             {
                 static_assert(std::is_floating_point_v<PromotedFloatType>);
@@ -1127,6 +1543,50 @@ namespace local_optimality_approximator
                                                                                                                              x_a,
                                                                                                                              reliable_x_deviation,
                                                                                                                              conventional_randomizer::ApplicationRandomizerObject());
+
+            }
+
+            template <class PromotedFloatType = std_float_t>
+            static auto get_second_order_converging_short_sight_and_slope_newton_naive_optimality_approximator(std_float_t x_a = stdx::to_precise_float_conversion_initializer<double>(0.001),
+                                                                                                               std_float_t reliable_x_deviation = stdx::to_precise_float_conversion_initializer<double>(10)) -> std::unique_ptr<OptimalityApproximatorInterface>
+            {
+                static_assert(std::is_floating_point_v<PromotedFloatType>);
+
+                const size_t ITERATION_SZ_FIRST             = 0u;
+                const size_t ITERATION_SZ_LAST              = 4u;
+
+                const std_float_t MIN_X_A                   = std::numeric_limits<std_float_t>::min();
+                const std_float_t MAX_X_A                   = stdx::to_precise_float_conversion_initializer<double>(1);
+
+                const std_float_t MIN_RELIABLE_X_DEVIATION  = stdx::to_precise_float_conversion_initializer<double>(0);
+                const std_float_t MAX_RELIABLE_X_DEVIATION  = stdx::to_precise_float_conversion_initializer<double>(size_t{1} << 20);
+
+                size_t iteration_sz                         = size_t{1} << Randomizer::randomize_uint(ITERATION_SZ_FIRST, ITERATION_SZ_LAST);
+
+                if (std::isnan(x_a))
+                {
+                    throw std::invalid_argument("bad derivative deviation, NaN");
+                }
+
+                if (std::clamp(x_a, MIN_X_A, MAX_X_A) != x_a)
+                {
+                    throw std::invalid_argument("bad derivative deviation, value out of range");
+                }
+
+                if (std::isnan(reliable_x_deviation))
+                {
+                    throw std::invalid_argument("bad local optimality reliable_x_deviation, NaN");
+                }
+
+                if (std::clamp(reliable_x_deviation, MIN_RELIABLE_X_DEVIATION, MAX_RELIABLE_X_DEVIATION) != reliable_x_deviation)
+                {
+                    throw std::invalid_argument("bad local optimality reliable_x_deviation, value out of range");
+                }
+
+                return std::make_unique<SecondOrderConvergingShortSightAndSlopeNewtonNaiveOptimalityApproximator<PromotedFloatType>>(iteration_sz,
+                                                                                                                                     x_a,
+                                                                                                                                     reliable_x_deviation,
+                                                                                                                                     conventional_randomizer::ApplicationRandomizerObject());
 
             }
     };

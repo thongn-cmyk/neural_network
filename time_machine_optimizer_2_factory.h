@@ -706,6 +706,10 @@ namespace global_optimality_approximator
                 "first_order_converging_short_range_mid",
                 "first_order_converging_short_range_high",
 
+                "first_order_converging_short_range_and_slope_decimal",
+                "first_order_converging_short_range_and_slope_mid",
+                "first_order_converging_short_range_and_slope_high",
+
                 "first_order_free_range",
 
                 "second_order_chaotic_short_range_decimal",
@@ -715,6 +719,10 @@ namespace global_optimality_approximator
                 "second_order_converging_short_range_decimal",
                 "second_order_converging_short_range_mid",
                 "second_order_converging_short_range_high",
+
+                "second_order_converging_short_range_and_slope_decimal",
+                "second_order_converging_short_range_and_slope_mid",
+                "second_order_converging_short_range_and_slope_high",
 
                 "second_order_free_range"
             };
@@ -1719,6 +1727,53 @@ namespace global_optimality_approximator
 
             //
 
+            auto get_first_order_converging_short_range_and_slope_decimal_optimizer() -> std::unique_ptr<local_optimality_approximator::OptimalityApproximatorInterface>
+            {
+                const size_t DECIMAL_POW_FIRST          = 1u;
+                const size_t DECIMAL_POW_LAST           = 10u;
+                size_t decimal_pow                      = this->raw_randomizer.randomize_uint(DECIMAL_POW_FIRST, DECIMAL_POW_LAST);
+                const std_float_t x_a                   = std::max(std::pow(std_float_t{10}, -static_cast<std_float_t>(decimal_pow)), std::numeric_limits<std_float_t>::min());
+
+                const std_float_t min_deviation         = std::numeric_limits<std_float_t>::min();
+                const std_float_t max_deviation         = stdx::to_precise_float_conversion_initializer<double>(size_t{1});
+                const std_float_t tentative_deviation   = this->app_randomizer.ld_randomize_focal_2();
+                const std_float_t deviation             = std::clamp(tentative_deviation, min_deviation, max_deviation);
+
+                return local_optimality_approximator::OptimalityApproximatorFactory::get_first_order_converging_short_sight_and_slope_newton_naive_optimality_approximator<PromotedFloatType>(x_a, deviation);
+            }
+
+            auto get_first_order_converging_short_range_and_slope_mid_optimizer() -> std::unique_ptr<local_optimality_approximator::OptimalityApproximatorInterface>
+            {
+                const size_t DECIMAL_POW_FIRST          = 1u;
+                const size_t DECIMAL_POW_LAST           = 10u;
+                size_t decimal_pow                      = this->raw_randomizer.randomize_uint(DECIMAL_POW_FIRST, DECIMAL_POW_LAST);
+                const std_float_t x_a                   = std::max(std::pow(std_float_t{10}, -static_cast<std_float_t>(decimal_pow)), std::numeric_limits<std_float_t>::min());
+
+                const std_float_t min_deviation         = std::numeric_limits<std_float_t>::min();
+                const std_float_t max_deviation         = stdx::to_precise_float_conversion_initializer<double>(size_t{1} << 4);
+                const std_float_t tentative_deviation   = this->app_randomizer.ld_randomize_focal();
+                const std_float_t deviation             = std::clamp(tentative_deviation, min_deviation, max_deviation);
+
+                return local_optimality_approximator::OptimalityApproximatorFactory::get_first_order_converging_short_sight_and_slope_newton_naive_optimality_approximator<PromotedFloatType>(x_a, deviation);
+            }
+
+            auto get_first_order_converging_short_range_and_slope_high_optimizer() -> std::unique_ptr<local_optimality_approximator::OptimalityApproximatorInterface>
+            {
+                const size_t DECIMAL_POW_FIRST          = 1u;
+                const size_t DECIMAL_POW_LAST           = 10u;
+                size_t decimal_pow                      = this->raw_randomizer.randomize_uint(DECIMAL_POW_FIRST, DECIMAL_POW_LAST);
+                const std_float_t x_a                   = std::max(std::pow(std_float_t{10}, -static_cast<std_float_t>(decimal_pow)), std::numeric_limits<std_float_t>::min());
+
+                const std_float_t min_deviation         = std::numeric_limits<std_float_t>::min();
+                const std_float_t max_deviation         = stdx::to_precise_float_conversion_initializer<double>(size_t{1} << 18);
+                const std_float_t tentative_deviation   = this->app_randomizer.ld_randomize_focal();
+                const std_float_t deviation             = std::clamp(tentative_deviation, min_deviation, max_deviation);
+
+                return local_optimality_approximator::OptimalityApproximatorFactory::get_first_order_converging_short_sight_and_slope_newton_naive_optimality_approximator<PromotedFloatType>(x_a, deviation);
+            }
+
+            //
+
             auto get_first_order_free_range_optimizer() -> std::unique_ptr<local_optimality_approximator::OptimalityApproximatorInterface>
             {
                 const size_t DECIMAL_POW_FIRST  = 1u;
@@ -1821,6 +1876,53 @@ namespace global_optimality_approximator
                 const std_float_t deviation             = std::clamp(tentative_deviation, min_deviation, max_deviation);
 
                 return local_optimality_approximator::OptimalityApproximatorFactory::get_second_order_converging_short_sight_newton_naive_optimality_approximator<PromotedFloatType>(x_a, deviation);
+            }
+
+            //
+
+            auto get_second_order_converging_short_range_and_slope_decimal_optimizer() -> std::unique_ptr<local_optimality_approximator::OptimalityApproximatorInterface>
+            {
+                const size_t DECIMAL_POW_FIRST          = 1u;
+                const size_t DECIMAL_POW_LAST           = 10u;
+                size_t decimal_pow                      = this->raw_randomizer.randomize_uint(DECIMAL_POW_FIRST, DECIMAL_POW_LAST);
+                const std_float_t x_a                   = std::max(std::pow(std_float_t{10}, -static_cast<std_float_t>(decimal_pow)), std::numeric_limits<std_float_t>::min());
+
+                const std_float_t min_deviation         = std::numeric_limits<std_float_t>::min();
+                const std_float_t max_deviation         = stdx::to_precise_float_conversion_initializer<double>(size_t{1});
+                const std_float_t tentative_deviation   = this->app_randomizer.ld_randomize_focal_2();
+                const std_float_t deviation             = std::clamp(tentative_deviation, min_deviation, max_deviation);
+
+                return local_optimality_approximator::OptimalityApproximatorFactory::get_second_order_converging_short_sight_and_slope_newton_naive_optimality_approximator<PromotedFloatType>(x_a, deviation);
+            }
+
+            auto get_second_order_converging_short_range_and_slope_mid_optimizer() -> std::unique_ptr<local_optimality_approximator::OptimalityApproximatorInterface>
+            {
+                const size_t DECIMAL_POW_FIRST          = 1u;
+                const size_t DECIMAL_POW_LAST           = 10u;
+                size_t decimal_pow                      = this->raw_randomizer.randomize_uint(DECIMAL_POW_FIRST, DECIMAL_POW_LAST);
+                const std_float_t x_a                   = std::max(std::pow(std_float_t{10}, -static_cast<std_float_t>(decimal_pow)), std::numeric_limits<std_float_t>::min());
+
+                const std_float_t min_deviation         = std::numeric_limits<std_float_t>::min();
+                const std_float_t max_deviation         = stdx::to_precise_float_conversion_initializer<double>(size_t{1} << 4);
+                const std_float_t tentative_deviation   = this->app_randomizer.ld_randomize_focal();
+                const std_float_t deviation             = std::clamp(tentative_deviation, min_deviation, max_deviation);
+
+                return local_optimality_approximator::OptimalityApproximatorFactory::get_second_order_converging_short_sight_and_slope_newton_naive_optimality_approximator<PromotedFloatType>(x_a, deviation);
+            }
+
+            auto get_second_order_converging_short_range_and_slope_high_optimizer() -> std::unique_ptr<local_optimality_approximator::OptimalityApproximatorInterface>
+            {
+                const size_t DECIMAL_POW_FIRST          = 1u;
+                const size_t DECIMAL_POW_LAST           = 10u;
+                size_t decimal_pow                      = this->raw_randomizer.randomize_uint(DECIMAL_POW_FIRST, DECIMAL_POW_LAST);
+                const std_float_t x_a                   = std::max(std::pow(std_float_t{10}, -static_cast<std_float_t>(decimal_pow)), std::numeric_limits<std_float_t>::min());
+
+                const std_float_t min_deviation         = std::numeric_limits<std_float_t>::min();
+                const std_float_t max_deviation         = stdx::to_precise_float_conversion_initializer<double>(size_t{1} << 18);
+                const std_float_t tentative_deviation   = this->app_randomizer.ld_randomize_focal();
+                const std_float_t deviation             = std::clamp(tentative_deviation, min_deviation, max_deviation);
+
+                return local_optimality_approximator::OptimalityApproximatorFactory::get_second_order_converging_short_sight_and_slope_newton_naive_optimality_approximator<PromotedFloatType>(x_a, deviation);
             }
 
             //
@@ -2121,6 +2223,18 @@ namespace global_optimality_approximator
                 {
                     return generator(this->get_first_order_converging_short_range_high_optimizer());
                 }
+                else if (LOCAL_OPTIMIZATION_CHOICE_VEC[front_value] == "first_order_converging_short_range_and_slope_decimal")
+                {
+                    return generator(this->get_first_order_converging_short_range_and_slope_decimal_optimizer());
+                }
+                else if (LOCAL_OPTIMIZATION_CHOICE_VEC[front_value] == "first_order_converging_short_range_and_slope_mid")
+                {
+                    return generator(this->get_first_order_converging_short_range_and_slope_mid_optimizer());
+                }
+                else if (LOCAL_OPTIMIZATION_CHOICE_VEC[front_value] == "first_order_converging_short_range_and_slope_high")
+                {
+                    return generator(this->get_first_order_converging_short_range_and_slope_high_optimizer());
+                }
                 else if (LOCAL_OPTIMIZATION_CHOICE_VEC[front_value] == "first_order_free_range")
                 {
                     return generator(this->get_first_order_free_range_optimizer());
@@ -2148,6 +2262,18 @@ namespace global_optimality_approximator
                 else if (LOCAL_OPTIMIZATION_CHOICE_VEC[front_value] == "second_order_converging_short_range_high")
                 {
                     return generator(this->get_second_order_converging_short_range_high_optimizer());
+                }
+                else if (LOCAL_OPTIMIZATION_CHOICE_VEC[front_value] == "second_order_converging_short_range_and_slope_decimal")
+                {
+                    return generator(this->get_second_order_converging_short_range_and_slope_decimal_optimizer());
+                }
+                else if (LOCAL_OPTIMIZATION_CHOICE_VEC[front_value] == "second_order_converging_short_range_and_slope_mid")
+                {
+                    return generator(this->get_second_order_converging_short_range_and_slope_mid_optimizer());
+                }
+                else if (LOCAL_OPTIMIZATION_CHOICE_VEC[front_value] == "second_order_converging_short_range_and_slope_high")
+                {
+                    return generator(this->get_second_order_converging_short_range_and_slope_high_optimizer());
                 }
                 else if (LOCAL_OPTIMIZATION_CHOICE_VEC[front_value] == "second_order_free_range")
                 {

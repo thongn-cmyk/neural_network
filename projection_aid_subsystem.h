@@ -11,18 +11,6 @@ namespace projection_aid_subsystem
 {
     using namespace float_def;
 
-    //when I design system, especially server-client, there are certain problems that we'd need to solve
-
-    //the number of tasks in pool
-    //the way of processing the tasks in pool
-        //if the task is local + compute-bound => serial
-        //if the task is network or fileio bound -> parallel, asynchronously
-
-    //the operatable window (how to config to hit the SUCCESS spot)
-    //the worst-case scenerio self-recovery to the operatable compute-window
-
-    //worst-case scenerio self-recovery requires to have somewhat a timeout system, such is that after waiting a certain time, the resolutors would auto-reject the incoming requests and bring itself back to equilibrium
-
     struct Remote
     {
         std::string ipv6;
@@ -46,8 +34,7 @@ namespace projection_aid_subsystem
         private:
 
             std::vector<std::pair<std::shared_ptr<tensor_model::Matrix>, std::shared_ptr<tensor_model::Matrix>>> training_data;
-            std::vector<generic_matrix_factory::GenericMatrixResource> matrix_resource_vec;
-            std::unique_ptr<matrix_deviation_calculator::MatrixDeviationCalculatorInterface> deviation_calculator;
+            std::vector<generic_deviation_projector_factory::GenericDeviationProjectorResource> matrix_resource_vec;
 
         public:
 
@@ -75,14 +62,9 @@ namespace projection_aid_subsystem
                 this->training_data.clear();
             }
 
-            void set_matrix_resource(const std::vector<generic_matrix_factory::GenericMatrixResource>& matrix_resource_vec)
+            void set_matrix_resource(const std::vector<generic_deviation_projector_factory::GenericDeviationProjectorResource>& matrix_resource_vec)
             {
                 this->matrix_resource_vec = matrix_resource_vec;
-            }
-            
-            void set_deviation_calculator(generic_matrix_deviation_calculator_factory::matrix_deviation_calculator_t kind)
-            {
-                this->deviation_calculator = generic_matrix_deviation_calculator_factory::Factory::get_from_generic_codex(kind);
             }
 
             auto get() -> std::vector<mdc_float_t>
@@ -96,21 +78,8 @@ namespace projection_aid_subsystem
 
                 for (const auto& matrix_resource: this->matrix_resource_vec)
                 {
-                    std::unique_ptr<the_matrix::MatrixInterface> the_matrix = this->wrap_matrix(generic_matrix_factory::GenericMatrixLoader{}.load_resource(matrix_resource));
-
-                    std::vector<std::shared_ptr<tensor_model::Matrix>> inp_vec{};
-                    std::vector<std::shared_ptr<tensor_model::Matrix>> out_vec{};
-                    std::vector<std::shared_ptr<tensor_model::Matrix>> expected_vec{};
-
-                    for (const auto& [inp, out]: this->training_data)
-                    {
-                        inp_vec.push_back(inp);
-                        expected_vec.push_back(out);
-                    }
-
-                    out_vec = the_matrix->project(inp_vec);
-
-                    rs_vec.push_back(this->deviation_calculator->get_deviation(stdx::zip(out_vec, expected_vec)));
+                    std::unique_ptr<matrix_deviation_calculator::MatrixDeviationCalculatorInterface> deviation_calculator = generic_deviation_projector_factory::GenericDeviationProjectorResourceLoader{}.load_resource(matrix_resource);
+                    rs_vec.push_back(deviation_calculator->get_deviation(this->training_data));
                 }
 
                 return rs_vec;
@@ -157,7 +126,7 @@ namespace projection_aid_subsystem
                 this->base.clear_training_data();
             }
 
-            void set_matrix_resource(const std::vector<generic_matrix_factory::GenericMatrixResource>& matrix_resource_vec)
+            void set_matrix_resource(const std::vector<generic_deviation_projector_factory::GenericDeviationProjectorResource>& matrix_resource_vec)
             {
                 fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*this->mtx);
 
@@ -167,18 +136,6 @@ namespace projection_aid_subsystem
                 }
 
                 this->base.set_matrix_resource(matrix_resource_vec);
-            }
-
-            void set_deviation_calculator(generic_matrix_deviation_calculator_factory::matrix_deviation_calculator_t kind)
-            {
-                fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*this->mtx);
-
-                if (this->was_explicitly_destroyed)
-                {
-                    throw std::runtime_error("invalid operation, closed client box");
-                }
-
-                this->base.set_deviation_calculator(kind);
             }
 
             auto get() -> std::vector<mdc_float_t>
@@ -224,22 +181,6 @@ namespace projection_aid_subsystem
                 return this->connection->is_alive();
             }
     };
-
-    //I was thinking about a relay system, for master to talk to masters, build a heap of communication, essentially to increase bandwidth + reduce latency of the broadcasting matrices (its only 1 or 2 MB)
-    //it's complicated how we should build this
-    //we'll solve that tomorrow, I think that is two_distinct_responsibilities, but not sure of the reduction process, it's somewhat coupled into this projection aid subssytem, so it's best to just ... solve it all right here
-
-    //I have spent 1 year to tune the REST controller to 10GB/s, it's complicated
-    //but it's actually about non-waiting and reactive response
-    //the latency is probably ~10-20ms but we'd want to shorten the tree of requests tmr, which we'd discuss in depth
-    //I dont really want to talk about who owns what, what is in filesystem or RAM
-    //it's a filesystem and a management system that is out of the scope of this project
-    //we'd try to fix the session and the connectivity instead of being paranoid about things, worst case, save it and re-ingest the data from files
-
-    //I think it's better to just ... have another subsystem to build a tree of hierarchy where we'd want for the immediate leaf node to manage the leaf node, which means that only the immediate would open the APIClient_2
-    //so our model is master_2 -> master_2
-    //                master_2 -> master_1 (master_1 holds client_box)
-    //it's settled, we'd implement that today
 
     class ClientManager: public virtual cron_subsystem::UpdatableInterface
     {
@@ -538,7 +479,7 @@ namespace projection_aid_subsystem
     struct SetMatrixResourceRequest
     {
         uint64_t client_id;
-        std::vector<generic_matrix_factory::GenericMatrixResource> matrix_resource_vec;
+        std::vector<generic_deviation_projector_factory::GenericDeviationProjectorResource> matrix_resource_vec;
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector) const
@@ -554,42 +495,6 @@ namespace projection_aid_subsystem
     };
 
     struct SetMatrixResourceResponse
-    {
-        projection_aid_subsystem::exception_t result;
-        std::string err_verbal_description;
-
-        template <class Reflector>
-        void dg_reflect(const Reflector& reflector) const
-        {
-            reflector(result, err_verbal_description);
-        }
-
-        template <class Reflector>
-        void dg_reflect(const Reflector& reflector)
-        {
-            reflector(result, err_verbal_description);
-        }
-    };
-
-    struct SetDeviationCalculatorRequest
-    {
-        uint64_t client_id;
-        generic_matrix_deviation_calculator_factory::matrix_deviation_calculator_t kind;
-
-        template <class Reflector>
-        void dg_reflect(const Reflector& reflector) const
-        {
-            reflector(client_id, kind);
-        }
-
-        template <class Reflector>
-        void dg_reflect(const Reflector& reflector)
-        {
-            reflector(client_id, kind);
-        }
-    };
-
-    struct SetDeviationCalculatorResponse
     {
         projection_aid_subsystem::exception_t result;
         std::string err_verbal_description;
@@ -640,6 +545,31 @@ namespace projection_aid_subsystem
         {
             reflector(result, err_verbal_description);
         }
+    };
+
+    //we only enforce one thing, timestamp to do system-calibration, such is that after the timeout + 1 packet request time, we'd be back to calibration
+
+    class RequestTrafficController: public virtual internal_rest_controller::RequestFiltererInterface
+    {
+        private:
+
+            std::chrono::nanoseconds timeout;
+
+        public:
+
+            RequestTrafficController(std::chrono::nanoseconds timeout): timeout(timeout){}
+
+            auto thru(const internal_rest_controller::Request& request) -> internal_rest_controller::exception_t
+            {
+                std::chrono::time_point<std::chrono::utc_clock> bar = std::chrono::utc_clock::now() - this->timeout;
+
+                if (request.since < bar)
+                {
+                    return internal_rest_controller::SUCCESS;                    
+                }
+
+                return internal_rest_controller::TIMEOUT;
+            }
     };
 
     class OpenClientResolver: public virtual internal_rest_controller::ResolvableInterface
@@ -940,74 +870,6 @@ namespace projection_aid_subsystem
             }
     };
 
-    class SetDeviationCalculatorResolver: public virtual internal_rest_controller::ResolvableInterface
-    {
-        private:
-
-            std::shared_ptr<SelfObservedClientManager> client_manager;
-
-        public:
-
-            SetDeviationCalculatorResolver(std::shared_ptr<SelfObservedClientManager> client_manager) noexcept: client_manager(std::move(client_manager)){}
-
-            auto resolve(const internal_rest_controller::Request& request) -> internal_rest_controller::Response
-            {
-                if (request.serialization_kind != dg::network_compact_serializer::get_dgstd_serialization_identifier())
-                {
-                    throw std::invalid_argument("unexpected request, bad serialization method");
-                }
-
-                SetDeviationCalculatorRequest semantic_request = dg::network_compact_serializer::dgstd_deserialize<SetDeviationCalculatorRequest>(request.content);
-                SetDeviationCalculatorResponse semantic_response;
-
-                std::shared_ptr<ConnectionBoundClientBox> client_box = this->client_manager->get_client_box(semantic_request.client_id);
-
-                if (client_box == nullptr)
-                {
-                    semantic_response = SetDeviationCalculatorResponse
-                    {
-                        .result = CLIENT_NOT_FOUND_ERROR_CODE,
-                        .err_verbal_description = "client not found"
-                    };
-                }
-                else
-                {
-                    try
-                    {
-                        client_box->set_deviation_calculator(semantic_request.kind);
-
-                        semantic_response = SetDeviationCalculatorResponse
-                        {
-                            .result = SUCCESS,
-                            .err_verbal_description = ""
-                        };
-                    }
-                    catch (const std::invalid_argument& e)
-                    {
-                        semantic_response = SetDeviationCalculatorResponse
-                        {
-                            .result = INVALID_ARGUMENT_ERROR_CODE,
-                            .err_verbal_description = std::string(e.what())
-                        };
-                    }
-                    catch (const std::exception& e)
-                    {
-                        semantic_response = SetDeviationCalculatorResponse
-                        {
-                            .result = RUNTIME_ERROR_CODE,
-                            .err_verbal_description = std::string(e.what())
-                        };
-                    }
-                }
-
-                return internal_rest_controller::Response
-                {
-                    .content = dg::network_compact_serializer::dgstd_serialize<std::string>(semantic_response),
-                    .serialization_kind = dg::network_compact_serializer::get_dgstd_serialization_identifier()
-                };
-            }
-    };
-
     class GetDeviationResolver: public virtual internal_rest_controller::ResolvableInterface
     {
         private:
@@ -1074,28 +936,39 @@ namespace projection_aid_subsystem
             }
     };
 
+    static inline const std::chrono::nanoseconds REQUEST_PROCESS_WINDOW = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::minutes(1));
+
     void init()
     {
-        ClientManagerSingleton::initialize();
+        std::shared_ptr<SelfObservedClientManager> client_manager = std::make_shared<SelfObservedClientManager>();
 
-        internal_rest_controller::hook(RestConfiguration::get_open_client_url(), std::make_unique<OpenClientResolver>(ClientManagerSingleton::get()));
-        internal_rest_controller::hook(RestConfiguration::get_close_client_url(), std::make_unique<CloseClientResolver>(ClientManagerSingleton::get()));
-        internal_rest_controller::hook(RestConfiguration::get_add_training_data_url(), std::make_unique<AddTrainingDataResolver>(ClientManagerSingleton::get()));
-        internal_rest_controller::hook(RestConfiguration::get_set_matrix_resource_resolver_url(), std::make_unique<SetMatrixResourceResolver>(ClientManagerSingleton::get()));
-        internal_rest_controller::hook(RestConfiguration::get_set_deviation_calculator_resolver_url(), std::make_unique<SetDeviationCalculatorResolver>(ClientManagerSingleton::get()));
-        internal_rest_controller::hook(RestConfiguration::get_get_deviation_resolver_url(), std::make_unique<GetDeviationResolver>(ClientManagerSingleton::get()));
+        internal_rest_controller::hook(RestConfiguration::get_open_client_url(), std::make_unique<OpenClientResolver>(client_manager));
+        internal_rest_controller::bind_filter(RestConfiguration::get_open_client_url(), std::make_unique<RequestTrafficController>(REQUEST_PROCESS_WINDOW));
+
+        internal_rest_controller::hook(RestConfiguration::get_close_client_url(), std::make_unique<CloseClientResolver>(client_manager));
+        internal_rest_controller::bind_filter(RestConfiguration::get_close_client_url(), std::make_unique<RequestTrafficController>(REQUEST_PROCESS_WINDOW));
+
+        internal_rest_controller::hook(RestConfiguration::get_add_training_data_url(), std::make_unique<AddTrainingDataResolver>(client_manager));
+        internal_rest_controller::bind_filter(RestConfiguration::get_add_training_data_url(), std::make_unique<RequestTrafficController>(REQUEST_PROCESS_WINDOW));
+
+        internal_rest_controller::hook(RestConfiguration::get_set_matrix_resource_url(), std::make_unique<SetMatrixResourceResolver>(client_manager));
+        internal_rest_controller::bind_filter(RestConfiguration::get_set_matrix_resource_url(), std::make_unique<RequestTrafficController>(REQUEST_PROCESS_WINDOW));
+
+        internal_rest_controller::hook(RestConfiguration::get_set_deviation_calculator_url(), std::make_unique<SetDeviationCalculatorResolver>(client_manager));
+        internal_rest_controller::bind_filter(RestConfiguration::get_set_deviation_calculator_url(), std::make_unique<RequestTrafficController>(REQUEST_PROCESS_WINDOW));
+
+        internal_rest_controller::hook(RestConfiguration::get_get_deviation_url(), std::make_unique<GetDeviationResolver>(client_manager));
+        internal_rest_controller::bind_filter(RestConfiguration::get_get_deviation_url(), std::make_unique<RequestTrafficController>(REQUEST_PROCESS_WINDOW));
     }
 
     void deinit() noexcept
     {
-        internal_rest_controller::unhook(RestConfiguration::get_get_deviation_resolver_url());
-        internal_rest_controller::unhook(RestConfiguration::get_set_deviation_calculator_resolver_url());
-        internal_rest_controller::unhook(RestConfiguration::get_set_matrix_resource_resolver_url());
+        internal_rest_controller::unhook(RestConfiguration::get_get_deviation_url());
+        internal_rest_controller::unhook(RestConfiguration::get_set_deviation_calculator_url());
+        internal_rest_controller::unhook(RestConfiguration::get_set_matrix_resource_url());
         internal_rest_controller::unhook(RestConfiguration::get_add_training_data_url());
         internal_rest_controller::unhook(RestConfiguration::get_close_client_url());
         internal_rest_controller::unhook(RestConfiguration::get_open_client_url());
-
-        ClientManagerSingleton::deinitialize();
     }
 
     //----
@@ -1268,7 +1141,7 @@ namespace projection_aid_subsystem
             }
 
             void set_matrix_resource_2(const Remote& remote, uint64_t client_id,
-                                       const std::vector<generic_matrix_factory::GenericMatrixResource>& matrix_resource_vec) -> std::unique_ptr<internal_rest_controller::Promise<void>>
+                                       const std::vector<generic_deviation_projector_factory::GenericDeviationProjectorResource>& matrix_resource_vec) -> std::unique_ptr<internal_rest_controller::Promise<void>>
             {
                 internal_rest_controller::Url url = RestConfiguration::get_set_matrix_resource_url(remote);
                 SetMatrixResourceRequest request
@@ -1309,44 +1182,9 @@ namespace projection_aid_subsystem
             }
 
             void set_matrix_resource(const Remote& remote, uint64_t client_id,
-                                     const std::vector<generic_matrix_factory::GenericMatrixResource>& matrix_resource_vec)
+                                     const std::vector<generic_deviation_projector_factory::GenericDeviationProjectorResource>& matrix_resource_vec)
             {
                 this->set_matrix_resource_2(remote, client_id, matrix_resource_vec)->wait();
-            }
-
-            void set_deviation_calculator(const Remote& remote, uint64_t client_id,
-                                          generic_matrix_deviation_calculator_factory::matrix_deviation_calculator_t kind)
-            {
-                internal_rest_controller::Url url = RestConfiguration::get_set_deviation_calculator_url(remote);
-                SetDeviationCalculatorRequest request
-                {
-                    .client_id  = client_id,
-                    .kind       = kind
-                };
-                std::string request_payload                         = dg::network_compact_serializer::dgstd_serialize<std::string>(request);
-                internal_rest_controller::ClientRequest request     = internal_rest_controller::RequestFactory{}.url(url)
-                                                                                                                .payload(request_payload)
-                                                                                                                .serialization_method(dg::network_compact_serializer::get_dgstd_serialization_identifier())
-                                                                                                                .get();
-
-                internal_rest_controller::ClientResponse response   = this->client.set_request(request).get();
-
-                if (response.serialization_kind != dg::network_compact_serializer::get_dgstd_serialization_identifier())
-                {
-                    throw std::runtime_error("unexpected serialization format");
-                }
-
-                SetDeviationCalculatorResponse semantic_response = dg::network_compact_serializer::dgstd_deserialize<SetDeviationCalculatorResponse>(response.content);
-
-                if (semantic_response.result != SUCCESS)
-                {
-                    if (semantic_response.result == INVALID_ARGUMENT_ERROR_CODE)
-                    {
-                        throw std::invalid_argument(semantic_response.err_verbal_description);
-                    }
-
-                    throw std::runtime_error(semantic_response.err_verbal_description);
-                }
             }
 
             auto get(const Remote& remote, uint64_t client_id) -> std::vector<mdc_float_t>
@@ -1460,7 +1298,7 @@ namespace projection_aid_subsystem
                 this->base.clear_training_data(this->remote, this->client_id);
             }
 
-            void set_matrix_resource(const std::vector<generic_matrix_factory::GenericMatrixResource>& matrix_resource_vec)
+            void set_matrix_resource(const std::vector<generic_deviation_projector_factory::GenericDeviationProjectorResource>& matrix_resource_vec)
             {
                 if (!this->can_operate())
                 {
@@ -1470,7 +1308,7 @@ namespace projection_aid_subsystem
                 this->base.set_matrix_resource(this->remote, this->client_id, matrix_resource_vec);
             }
 
-            auto set_matrix_resource_2(const std::vector<generic_matrix_factory::GenericMatrixResource>& matrix_resource_vec) -> std::unique_ptr<internal_rest_controller::Promise<void>>
+            auto set_matrix_resource_2(const std::vector<generic_deviation_projector_factory::GenericDeviationProjectorResource>& matrix_resource_vec) -> std::unique_ptr<internal_rest_controller::Promise<void>>
             {
                 if (!this->can_operate())
                 {
@@ -1480,15 +1318,6 @@ namespace projection_aid_subsystem
                 return this->base.set_matrix_resource_2(matrix_resource_vec);
             }
 
-            void set_deviation_calculator(generic_matrix_deviation_calculator_factory::matrix_deviation_calculator_t kind)
-            {
-                if (!this->can_operate())
-                {
-                    throw std::runtime_error("corrupted client, client is in inoperable state");
-                }
-
-                this->base.set_deviation_calculator(this->remote, this->client_id, this->kind);
-            }
 
             auto get() -> std::vector<mdc_float_t>
             {
@@ -1574,23 +1403,17 @@ namespace projection_aid_subsystem
                 this->base.clear_training_data();
             }
 
-            void set_matrix_resource(const std::vector<generic_matrix_factory::GenericMatrixResource>& matrix_resource_vec)
+            void set_matrix_resource(const std::vector<generic_deviation_projector_factory::GenericDeviationProjectorResource>& matrix_resource_vec)
             {
                 fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*this->mtx);
                 this->base.set_matrix_reosurce(matrix_resource_vec);
             }
 
-            auto set_matrix_resource_2(const std::vector<generic_matrix_factory::GenericMatrixResource>& matrix_resource_vec) -> std::unique_ptr<internal_rest_controller::Promise<void>>
+            auto set_matrix_resource_2(const std::vector<generic_deviation_projector_factory::GenericDeviationProjectorResource>& matrix_resource_vec) -> std::unique_ptr<internal_rest_controller::Promise<void>>
             {
                 fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*this->mtx);
 
                 return this->base.set_matrix_resource_2(matrix_resource_vec);
-            }
-
-            void set_deviation_calculator(generic_matrix_deviation_calculator_factory::matrix_deviation_calculator_t kind)
-            {
-                fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*this->mtx);
-                this->base.set_deviation_calculator(kind);
             }
 
             auto get() -> std::vector<mdc_float_t>

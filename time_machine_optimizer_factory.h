@@ -90,6 +90,22 @@ namespace global_optimality_approximator
             }
 
             template <class PromotedFloatType = std_float_t>
+            static auto get_random_first_order_css3_newton_optimizer() -> std::unique_ptr<local_optimality_approximator::OptimalityApproximatorInterface>
+            {
+                const size_t DECIMAL_POW_FIRST          = 1u;
+                const size_t DECIMAL_POW_LAST           = 10u;
+                size_t decimal_pow                      = Randomizer::randomize_uint(DECIMAL_POW_FIRST, DECIMAL_POW_LAST);
+                const std_float_t x_a                   = std::max(std::pow(std_float_t{10}, -static_cast<std_float_t>(decimal_pow)), std::numeric_limits<std_float_t>::min());
+
+                const std_float_t min_deviation         = std::numeric_limits<std_float_t>::min();
+                const std_float_t max_deviation         = stdx::to_precise_float_conversion_initializer<double>(size_t{1} << 18);
+                const std_float_t tentative_deviation   = ApplicationRandomizer::ld_randomize_focal();
+                const std_float_t deviation             = std::clamp(tentative_deviation, min_deviation, max_deviation);
+
+                return local_optimality_approximator::OptimalityApproximatorFactory::get_first_order_converging_short_sight_and_slope_newton_naive_optimality_approximator<PromotedFloatType>(x_a, deviation);
+            }
+
+            template <class PromotedFloatType = std_float_t>
             static auto get_random_second_order_newton_optimizer() -> std::unique_ptr<local_optimality_approximator::OptimalityApproximatorInterface>
             {
                 const size_t DECIMAL_POW_FIRST  = 1u;
@@ -149,9 +165,25 @@ namespace global_optimality_approximator
             }
 
             template <class PromotedFloatType = std_float_t>
+            static auto get_random_second_order_css3_newton_optimizer() -> std::unique_ptr<local_optimality_approximator::OptimalityApproximatorInterface>
+            {
+                const size_t DECIMAL_POW_FIRST          = 1u;
+                const size_t DECIMAL_POW_LAST           = 10u;
+                size_t decimal_pow                      = Randomizer::randomize_uint(DECIMAL_POW_FIRST, DECIMAL_POW_LAST);
+
+                const std_float_t x_a                   = std::max(std::pow(std_float_t{10}, -static_cast<std_float_t>(decimal_pow)), std::numeric_limits<std_float_t>::min());
+                const std_float_t min_deviation         = std::numeric_limits<std_float_t>::min();
+                const std_float_t max_deviation         = stdx::to_precise_float_conversion_initializer<double>(size_t{1} << 18);
+                const std_float_t tentative_deviation   = ApplicationRandomizer::ld_randomize_focal();
+                const std_float_t deviation             = std::clamp(tentative_deviation, min_deviation, max_deviation);
+
+                return local_optimality_approximator::OptimalityApproximatorFactory::get_second_order_converging_short_sight_and_slope_newton_naive_optimality_approximator<PromotedFloatType>(x_a, deviation);
+            }
+
+            template <class PromotedFloatType = std_float_t>
             static auto get_random_local_optimality_optimizer() -> std::unique_ptr<local_optimality_approximator::OptimalityApproximatorInterface>
             {
-                const size_t ENUMERATION_SZ     = 8u;
+                const size_t ENUMERATION_SZ     = 10u;
                 const size_t optimizer_idx      = Randomizer::randomize_uint(0u, ENUMERATION_SZ);
 
                 switch (optimizer_idx)
@@ -187,6 +219,14 @@ namespace global_optimality_approximator
                     case 7:
                     {
                         return get_random_second_order_css_newton_optimizer<PromotedFloatType>();
+                    }
+                    case 8:
+                    {
+                        return get_random_first_order_css3_newton_optimizer<PromotedFloatType>();
+                    }
+                    case 9:
+                    {
+                        return get_random_second_order_css3_newton_optimizer<PromotedFloatType>();
                     }
                     default:
                     {
