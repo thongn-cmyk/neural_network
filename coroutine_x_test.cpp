@@ -71,6 +71,7 @@ void test_coroutine_no_delay()
 {
     std::cout << "__BEGIN_TEST_COROUTINE_NO_DELAY__" << std::endl;
 
+    cron_subsystem::init();
     coroutine_x::init();
 
     size_t counter          = 0u;
@@ -82,6 +83,7 @@ void test_coroutine_no_delay()
     std::cout << "counter > " << counter << " expected value > " << expected_value << std::endl;
 
     coroutine_x::deinit();
+    cron_subsystem::deinit();
 
     std::cout << "__END_TEST_COROUTINE_NO_DELAY__" << std::endl;
 }
@@ -90,6 +92,7 @@ void test_coroutine_random_delay()
 {
     std::cout << "__BEGIN_TEST_COROUTINE_RANDOM_DELAY__" << std::endl;
 
+    cron_subsystem::init();
     coroutine_x::init();
 
     size_t counter          = 0u;
@@ -101,6 +104,7 @@ void test_coroutine_random_delay()
     std::cout << "counter > " << counter << " expected value > " << expected_value << std::endl;
 
     coroutine_x::deinit();
+    cron_subsystem::deinit();
 
     std::cout << "__END_TEST_COROUTINE_RANDOM_DELAY__" << std::endl;
 }
@@ -161,6 +165,7 @@ auto get_random_coroutine_topic() -> uint8_t
 
 void test_one_coroutine_mixed()
 {
+    cron_subsystem::init();
     coroutine_x::init();
 
     static auto randomizer              = std::bind(std::uniform_int_distribution<size_t>(), std::mt19937_64{static_cast<uint32_t>(std::chrono::system_clock::now().time_since_epoch().count())});
@@ -201,6 +206,7 @@ void test_one_coroutine_mixed()
     }
 
     coroutine_x::deinit();
+    cron_subsystem::deinit();
 }
 
 void test_coroutine_mixed()

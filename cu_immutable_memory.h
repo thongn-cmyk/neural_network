@@ -4,6 +4,9 @@
 #include "cu_x.h"
 #include "immutable_memory.h"
 
+//what i'd worry is the collision of semantics, such is that one object can have multiple semantic representations that are not necessarily agreed by distinct components
+//just to prevent that, we'd have to move one level up
+
 namespace cu_immutable_memory
 {
     using MemoryReference = immutable_memory::MemoryReference;
@@ -44,14 +47,14 @@ namespace cu_immutable_memory
         SingletonObject::get() = nullptr;
     }
 
-    auto acquire_memory(const std::shared_ptr<void>& immutable_reference) noexcept -> std::optional<MemoryReference>
+    auto acquire_memory(const std::shared_ptr<char[]>& immutable_reference) noexcept -> std::optional<MemoryReference>
     {
         return SingletonObject::get()->acquire_memory(immutable_reference);
     }
 
-    auto cache_n_acquire_memory(const std::shared_ptr<void>& immutable_reference, std::string_view mem_view) -> MemoryReference
+    auto cache_n_acquire_memory(const std::shared_ptr<char[]>& immutable_reference, size_t mem_sz) -> MemoryReference
     {
-        return SingletonObject::get()->cache_n_acquire_memory(immutable_reference, mem_view);
+        return SingletonObject::get()->cache_n_acquire_memory(immutable_reference, std::string_view(immutable_reference.get(), mem_sz));
     }
 
     void release_memory(const MemoryReference& memory_reference) noexcept

@@ -250,7 +250,8 @@ namespace immutable_memory
 
                 this->reference_map.erase(map_ptr);
                 this->auto_evict_memory_sz  -= evicting_sz;
-                std::swap(this->heap_node_vec[positional_idx], this->heap_node_vec.back());
+
+                this->swap_heap_node(this->heap_node_vec[positional_idx], this->heap_node_vec.back());
                 this->heap_node_vec.pop_back();
 
                 if (positional_idx < this->heap_node_vec.size())

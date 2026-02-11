@@ -1318,7 +1318,6 @@ namespace projection_aid_subsystem
                 return this->base.set_matrix_resource_2(matrix_resource_vec);
             }
 
-
             auto get() -> std::vector<mdc_float_t>
             {
                 if (!this->can_operate())

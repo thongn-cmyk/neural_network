@@ -508,11 +508,6 @@ namespace coroutine_x
         return cron_subsystem::register_periodic_cronjob(manager, periodic_dur);
     }
 
-    auto get_container(std::vector<std::shared_ptr<void>>&& container) -> std::shared_ptr<void>
-    {
-        return std::make_shared<std::vector<std::shared_ptr<void>>>(std::move(container));
-    }
-
     class Launcher: public virtual LauncherInterface
     {
         private:
@@ -541,6 +536,13 @@ namespace coroutine_x
 
     class LauncherFactory
     {
+        private:
+
+            static auto get_shared_daemon_container(std::vector<std::shared_ptr<void>>&& container) -> std::shared_ptr<void>
+            {
+                return std::make_shared<std::vector<std::shared_ptr<void>>>(std::move(container));
+            }
+
         public:
 
             static auto get_normal_launcher() -> std::unique_ptr<LauncherInterface>
@@ -555,7 +557,7 @@ namespace coroutine_x
                     std::shared_ptr<void> muscle_worker                                     = get_muscle_worker(manager, delay_calculator);
                     std::shared_ptr<void> periodic_update_worker                            = get_periodic_update_worker(manager);
 
-                    return std::make_unique<Launcher>(manager, get_container({muscle_worker, periodic_update_worker}));
+                    return std::make_unique<Launcher>(manager, get_shared_daemon_container({muscle_worker, periodic_update_worker}));
                 }
                 catch (...)
                 {

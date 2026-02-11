@@ -187,7 +187,7 @@ namespace connectivity_subsystem
         public:
 
             virtual ~ConnectionPingerInterface() noexcept = default;
-            virtual void ping(const MasterPayload& payload) = 0;
+            virtual auto ping(const MasterPayload& payload) -> std::unique_ptr<internal_rest_controller::Promise<void>> = 0;
     };
 
     struct RestConfiguration
@@ -203,7 +203,7 @@ namespace connectivity_subsystem
         private:
 
             std::unordered_map<uint64_t, ConnectionTopic> id_topic_map;
-            uint64_t id_counter;
+            uint32_t id_counter;
             std::unique_ptr<fair_mutex::fair_atomic_flag> mtx;
 
         public:
@@ -274,6 +274,96 @@ namespace connectivity_subsystem
             }
     };
 
+    class DistributedConnectionController: public virtual ConnectionControllerInterface
+    {
+        private:
+
+            std::vector<std::unique_ptr<ConnectionController>> base_vec;
+            std::unique_ptr<std::atomic<size_t>> seed;
+
+        public:
+
+            DistributedConnectionController(uint32_t concurrency_sz)
+            {
+                if (concurrency_sz == 0u)
+                {
+                    throw std::invalid_argument("bad concurrency size, 0");
+                }
+
+                this->base_vec  = {};
+                this->seed      = std::make_unique<std::atomic<size_t>>(0u);
+
+                for (size_t i = 0u; i < concurrency_sz; ++i)
+                {
+                    this->base_vec.push_back(std::make_unique<ConnectionController>());
+                }
+            }
+
+            auto open_connection(const MasterConfiguration& config) -> uint64_t
+            {
+                if (this->base_vec.size() == 0u)
+                {
+                    std::abort();
+                }
+
+                uint32_t slot_idx           = this->seed->fetch_add(1u, std::memory_order_relaxed) % this->base_vec.size();
+                uint32_t base_connection_id = stdx::nothrow_integer_cast<uint32_t>(this->base_vec[slot_idx]->open_connection(config));
+
+                return this->encode(base_connection_id, slot_idx);
+            }
+
+            auto get_connection(uint64_t connection_id) -> std::optional<ConnectionTopic>
+            {
+                auto [base_connection_id, slot_idx] = this->decode(connection_id);
+
+                if (slot_idx >= this->base_vec.size())
+                {
+                    return std::nullopt;
+                }
+
+                return this->base_vec[slot_idx]->get_connection(base_connection_id);
+            }
+
+            void ping_connection(uint64_t connection_id, const std::string& who)
+            {
+                auto [base_connection_id, slot_idx] = this->decode(connection_id);
+
+                if (slot_idx >= this->base_vec.size())
+                {
+                    throw std::invalid_argument("bad connection id, invalid connection id");
+                }
+
+                this->base_vec[slot_idx]->ping_connection(base_connection_id, who);
+            }
+
+            void close_connection(uint64_t connection_id) noexcept
+            {
+                auto [base_connection_id, slot_idx] = this->decode(connection_id);
+
+                if (slot_idx >= this->base_vec.size())
+                {
+                    return;
+                }
+
+                this->base_vec[slot_idx]->close_connection(connection_id);
+            }
+
+        private:
+
+            constexpr auto encode(uint32_t hi, uint32_t lo) const noexcept -> uint64_t
+            {
+                return (static_cast<uint64_t>(hi) << 32) | static_cast<uint64_t>(lo);
+            }
+
+            constexpr auto decode(uint64_t encoded) const noexcept -> std::pair<uint32_t, uint32_t>
+            {
+                uint32_t lo = encoded & static_cast<uint64_t>(std::numeric_limits<uint32_t>::max());
+                uint32_t hi = encoded >> 32;
+
+                return {hi, lo};
+            }
+    };
+
     class PingResolver: public virtual internal_rest_controller::ResolvableInterface
     {
         private:
@@ -332,7 +422,7 @@ namespace connectivity_subsystem
             MasterPinger(): client(),
                             identifier(stdx::get_random_identifier()){}
 
-            void ping(const MasterPayload& payload)
+            auto ping(const MasterPayload& payload) -> std::unique_ptr<internal_rest_controller::Promise<void>>
             {
                 PingRequest ping_request
                 {
@@ -347,40 +437,46 @@ namespace connectivity_subsystem
                                                                                                               .serialization_method(dg::network_compact_serializer::get_dgstd_serialization_identifier())
                                                                                                               .get();
 
-                internal_rest_controller::ClientResponse response = this->client.set_retry_policy(internal_rest_controller::UniformRetryPolicy{}.set_break_duration(payload.ping_retry_break_dur)
-                                                                                                                                                .set_retry_count(payload.ping_retry_count)
-                                                                                                                                                .get())
-                                                                                .set_request(request)
-                                                                                .get();
-
-                if (response.serialization_kind != dg::network_compact_serializer::get_dgstd_serialization_identifier())
+                auto resolutor = [](const internal_rest_controller::ClientResponse& response)
                 {
-                    throw std::runtime_error("unexpected serialization format");
-                }
-
-                PingResponse semantic_response = dg::network_compact_serializer::dgstd_deserialize<PingResponse>(response.content);
-
-                if (semantic_response.result != SUCCESS)
-                {
-                    if (semantic_response.result == CONNECTION_NOT_FOUND_ERROR_CODE)
+                    if (response.serialization_kind != dg::network_compact_serializer::get_dgstd_serialization_identifier())
                     {
-                        throw connection_not_found_error();
+                        throw std::runtime_error("unexpected serialization format");
                     }
-                    else
+
+                    PingResponse semantic_response = dg::network_compact_serializer::dgstd_deserialize<PingResponse>(response.content);
+
+                    if (semantic_response.result != SUCCESS)
                     {
-                        std::runtime_error(semantic_response.err_verbal_description);
+                        if (semantic_response.result == CONNECTION_NOT_FOUND_ERROR_CODE)
+                        {
+                            throw connection_not_found_error();
+                        }
+                        else
+                        {
+                            std::runtime_error(semantic_response.err_verbal_description);
+                        }
                     }
-                }
+                };
+
+                return this->client.set_retry_policy(internal_rest_controller::UniformRetryPolicy{}.set_break_duration(payload.ping_retry_break_dur)
+                                                                                                   .set_retry_count(payload.ping_retry_count)
+                                                                                                   .get())
+                                   .set_request(request)
+                                   .set_resolutor(reoslutor)
+                                   .get_promise();
             }
     };
 
     struct Signature{};
 
-    using ConnectionControllerSingleton = stdx::shared_ptr_singleton_container<ConnectionController, Signature>;
+    using ConnectionControllerSingleton = stdx::shared_ptr_singleton_container<DistributedConnectionController, Signature>;
+
+    static inline constexpr size_t CONCURRENCY_SZ = 128u;
 
     void init()
     {
-        ConnectionControllerSingleton::initialize();
+        ConnectionControllerSingleton::initialize(CONCURRENCY_SZ);
         internal_rest_controller::hook(RestConfiguration::get_ping_resolver_url(), std::make_unique<PingResolver>(ConnectionControllerSingeton::get()));
     }
 
@@ -635,7 +731,6 @@ namespace connectivity_subsystem
         private:
 
             SlaveConfiguration slave_config;
-            std::shared_ptr<ConnectionPingerInterface> connection_pinger;
             std::shared_ptr<std::atomic<bool>> is_alive_flag;
             std::shared_ptr<void> cron_obj;
             bool is_closed;
@@ -656,13 +751,10 @@ namespace connectivity_subsystem
                 this->check_and_throw_configuration(config);
 
                 this->slave_config      = config;
-                this->connection_pinger = std::make_unique<MasterPinger>();
                 this->is_alive_flag     = std::make_shared<std::atomic<bool>>(true);
                 auto resolutor_obj      = std::make_shared<InternalResolutor>(slave_config,
-                                                                              this->connection_pinger,
-                                                                              this->is_alive_flag,
-                                                                              std::nullopt,
-                                                                              std::nullopt);
+                                                                              std::make_unique<MasterPinger>(),
+                                                                              this->is_alive_flag);
 
                 this->cron_obj          = cron_subsystem::register_periodic_cronjob(resolutor_obj, CRON_JOB_DURATION);
                 this->is_closed         = false;
@@ -717,23 +809,29 @@ namespace connectivity_subsystem
             {
                 private:
 
+                    struct PingPromise
+                    {
+                        std::unique_ptr<internal_rest_controller::Promise<void>> base_promise;
+                        std::chrono::time_point<std::chrono::system_clock> since;
+                    };
+
                     SlaveConfiguration slave_config;
-                    std::shared_ptr<ConnectionPingerInterface> connection_pinger;
+                    std::unique_ptr<ConnectionPingerInterface> connection_pinger;
                     std::shared_ptr<std::atomic<bool>> is_alive_flag;
                     std::optional<std::chrono::time_point<std::chrono::system_clock>> last_updated;
                     std::optional<std::chrono::time_point<std::chrono::system_clock>> since;
+                    std::optional<PingPromise> ping_promise;
 
                 public:
 
                     InternalResolutor(SlaveConfiguration slave_config,
-                                      std::shared_ptr<ConnectionPingerInterface> connection_pinger,
-                                      std::shared_ptr<std::atomic<bool>> is_alive_flag,
-                                      std::optional<std::chrono::time_point<std::chrono::system_clock>> last_updated,
-                                      std::optional<std::chrono::time_point<std::chrono::system_clock>> since) noexcept: slave_config(std::move(slave_config)),
-                                                                                                                         connection_pinger(std::move(connection_pinger)),
-                                                                                                                         is_alive_flag(std::move(is_alive_flag)),
-                                                                                                                         last_updated(last_updated),
-                                                                                                                         since(since){}
+                                      std::unique_ptr<ConnectionPingerInterface> connection_pinger,
+                                      std::shared_ptr<std::atomic<bool>> is_alive_flag) noexcept: slave_config(std::move(slave_config)),
+                                                                                                  connection_pinger(std::move(connection_pinger)),
+                                                                                                  is_alive_flag(std::move(is_alive_flag)),
+                                                                                                  last_updated(std::nullopt),
+                                                                                                  since(std::nullopt),
+                                                                                                  ping_promise(std::nullopt){}
 
                     void update()
                     {
@@ -746,6 +844,56 @@ namespace connectivity_subsystem
                         {
                             this->last_updated  = std::chrono::system_clock::now();
                             this->since         = this->last_updated;
+
+                            return;
+                        }
+
+                        if (this->ping_promise.has_value())
+                        {
+                            if (this->ping_promise->base_promise->is_completed())
+                            {
+                                try
+                                {
+                                    this->ping_promise->base_promise->wait();
+                                    this->ping_promise = std::nullopt;
+                                    this->last_updated = std::chrono::system_clock::now();
+
+                                    return;
+                                }
+                                catch (connection_not_found_error& e)
+                                {
+                                    this->is_alive_flag->exchange(false, std::memory_order_relaxed);
+                                    this->ping_promise = std::nullopt;
+
+                                    return;
+                                }
+                                catch (std::exception& e)
+                                {
+                                    this->is_alive_flag->exchange(false, std::memory_order_relaxed);
+                                    this->ping_promise = std::nullopt;
+
+                                    logging_subsystem::noexcept_log(logging_subsystem::LogFactory{}.topic("connectivity_subsystem")
+                                                                                                   .topic("SlaveConnection")
+                                                                                                   .topic("Ping response resolution encountered an error")
+                                                                                                   .message(std::current_exception())
+                                                                                                   .error()
+                                                                                                   .get());
+
+                                    return;
+                                }
+                            }
+
+                            std::chrono::nanoseconds lapsed = std::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now() - this->ping_promise->since);
+
+                            if (lapsed < this->slave_config.connection_timeout_dur)
+                            {
+                                this->last_updated = std::chrono::system_clock::now();
+                                return;
+                            }
+
+                            this->is_alive_flag->exchange(false, std::memory_order_relaxed);
+                            this->ping_promise->base_promise->detach();
+                            this->ping_promise = std::nullopt;
 
                             return;
                         }
@@ -772,23 +920,22 @@ namespace connectivity_subsystem
 
                         try
                         {
-                            this->connection_pinger->ping(this->slave_config.master_payload);
+                            this->ping_promise = PingPromise
+                            {
+                                .base_promise   = this->connection_pinger->ping(this->slave_config.master_payload),
+                                .since          = std::chrono::system_clock::now()
+                            };
                         }
-                        catch (const connection_not_found_error& e)
-                        {
-                            this->is_alive_flag->exchange(false, std::memory_order_relaxed);
-                            return;
-                        }
-                        catch (const std::exception& e)
+                        catch (std::exception& e)
                         {
                             this->is_alive_flag->exchange(false, std::memory_order_relaxed);
 
-                            logging_subsystem::log(logging_subsystem::LogFactory{}.topic("connectivity_subsystem")
-                                                                                  .topic("SlaveConnection")
-                                                                                  .topic("Daemon pinger encountered an error")
-                                                                                  .message(std::current_exception())
-                                                                                  .error()
-                                                                                  .get());
+                            logging_subsystem::noexcept_log(logging_subsystem::LogFactory{}.topic("connectivity_subsystem")
+                                                                                           .topic("SlaveConnection")
+                                                                                           .topic("Daemon pinger encountered an error")
+                                                                                           .message(std::current_exception())
+                                                                                           .error()
+                                                                                           .get());
 
                             return;
                         }

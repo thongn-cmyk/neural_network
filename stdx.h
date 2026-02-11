@@ -161,6 +161,19 @@ namespace stdx
         return value;
     }
 
+    template <class T1, class T>
+    constexpr auto nothrow_integer_cast(T value) noexcept -> T1
+    {
+        try
+        {
+            return throw_integer_cast<T1>(value);
+        }
+        catch (...)
+        {
+            std::abort();
+        }
+    }
+
     template <class T, std::enable_if_t<std::is_unsigned_v<T>, bool> = true>
     constexpr auto is_pow2(T value) -> bool
     {
