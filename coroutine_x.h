@@ -617,23 +617,9 @@ namespace coroutine_x
 
             CoroutineWaiter(std::shared_ptr<std::atomic<bool>> complete_status) noexcept: complete_status(std::move(complete_status)){}
 
-            inline __attribute__((always_inline)) auto is_completed() noexcept -> bool
+            auto is_completed() noexcept -> bool
             {
-                if (!this->complete_status->load(std::memory_order_relaxed))
-                {
-                    return false;
-                }
-
-                if constexpr(STRONG_MEMORY_ORDERING_FLAG)
-                {
-                    std::atomic_thread_fence(std::memory_order_seq_cst);
-                }
-                else
-                {
-                    std::atomic_thread_fence(std::memory_order_acquire);
-                }
-
-                return true;
+                return this->complete_status->load(std::memory_order_relaxed)
             }
 
             inline __attribute__((always_inline)) void wait() noexcept
@@ -648,7 +634,7 @@ namespace coroutine_x
                 }
             }
     };
-    
+
     struct Signature{};
     struct Signature1{};
     struct Signature2{};

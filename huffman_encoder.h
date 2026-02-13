@@ -33,13 +33,10 @@ namespace dg::network_huffman_encoder::constants{
     //the one_left must be greater than the immediate successor of the right sibling and vice versa
     //because the one_left is greater than the immediate successor of the right, it is guaranteed that the ancestor node is at least 2x of the immediate_successor of the right node
 
-    //so simply put, left = 2 x max(right_child)
-    //               right = 2 x max(left_child)
+    //so simply put, left + right = 3x child, so it's sqrt(3) for one level up
 
-    //left + right = 4 x min(base_child)
+    //left + right = 3 x min(base_child)
     //min(base_child) is initially 1, so it's ...
-
-    //so recursively built, we can prove that the node count of the loner is 2 ** height
 
     static inline constexpr size_t MAX_ENCODING_SZ_PER_BYTE = 6;
     static inline constexpr size_t MAX_ENCODING_OVERHEAD    = 32;

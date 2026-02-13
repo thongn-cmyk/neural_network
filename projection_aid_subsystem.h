@@ -7,6 +7,17 @@
 #include <unordered_map>
 #include "float_def.h"
 
+//when I was drafting a stable programming model for concurrent system
+//it's seemed that there are 3 types of memory
+
+//unique_ptr<> (all memory accesses are guaranteed with respect to the holder) 
+//shared_ptr<> 
+    //shared_ptr<> with safe access (all memory accesses are guaranteed per method, getters/ setters of the semantic block)
+    //shared_ptr<> with unsafe access (synchronization required, usually for asynchrounous joins or friends, this is the tricky part of things)
+
+//a promotion of unique_ptr<> -> shared_ptr<> can be done by placing mtxes across the setters/ getters
+//all unique_ptr<> and shared_ptr<> acquisitions must be done via lock_guard<std::mutex> or equivalent semantics
+
 namespace projection_aid_subsystem
 {
     using namespace float_def;
@@ -1435,7 +1446,7 @@ namespace projection_aid_subsystem
 
             virtual ~TrainingDataIterableInterface() noexcept = default;
 
-            virtual auto next() -> std::pair<std::shared_ptr<tensor_model::Matrix>, std::shared_ptr<tensor_model::Matrix>> = 0;
+            virtual auto next() -> std::unique_ptr<synchronization::Promise<std::pair<std::shared_ptr<tensor_model::Matrix>, std::shared_ptr<tensor_model::Matrix>>>> = 0;
             virtual auto has_next() -> bool = 0;
     };
 
@@ -1459,7 +1470,7 @@ namespace projection_aid_subsystem
                 this->mtx   = fair_mutex::make_unique_fair_atomic_flag();
             }
 
-            auto next() -> std::pair<std::shared_ptr<tensor_model::Matrix>, std::shared_ptr<tensor_model::Matrix>>
+            auto next() -> std::unique_ptr<synchronization::Promise<std::pair<std::shared_ptr<tensor_model::Matrix>, std::shared_ptr<tensor_model::Matrix>>>>
             {
                 fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*this->mtx);
 
@@ -1568,7 +1579,7 @@ namespace projection_aid_subsystem
                 return this->is_completed->load(std::memory_order_relaxed);
             }
 
-            auto wait()
+            void wait()
             {
                 if (!this->is_run)
                 {
@@ -1586,7 +1597,7 @@ namespace projection_aid_subsystem
                     return;
                 }
 
-                this->is_completed->wait(false, std::memory_order_relaxed);
+                this->is_completed->wait(false, std::memory_order_acquire); //it's just better to always acquire on synchronization
                 this->throw_error();
             }
 
@@ -1637,10 +1648,13 @@ namespace projection_aid_subsystem
                 std::rethrow_exception(this->ingestion_exception_container->exception);
             }
 
+            //I just think that it's better to keep the noexcept so that people can aware of the resource management, but I'll implement the coroutine_x_x
+
             class CoroutineRunner: public virtual coroutine_x::CoroutineableInterface
             {
                 private:
 
+                    std::unique_ptr<synchronization::Promise<std::pair<std::shared_ptr<tensor_model::Matrix>, std::shared_ptr<tensor_model::Matrix>>>> working_promise;
                     std::shared_ptr<TrainingDataIterableInterface> training_data;
                     std::vector<std::shared_ptr<ThreadSafe_APIClient_2>> client_vec;
                     size_t pipe_sz;
@@ -1658,7 +1672,8 @@ namespace projection_aid_subsystem
                                     size_t pipe_sz,
                                     std::shared_ptr<std::atomic<bool>> is_completed,
                                     std::shared_ptr<IngestionExceptionContainer> ingestion_exception_container,
-                                    std::shared_ptr<std::atomic<bool>> is_interrupted): training_data(std::move(training_data)),
+                                    std::shared_ptr<std::atomic<bool>> is_interrupted): working_promise(nullptr),
+                                                                                        training_data(std::move(training_data)),
                                                                                         client_vec(std::move(client_vec)),
                                                                                         pipe_sz(pipe_sz),
                                                                                         is_completed(std::move(is_completed)),
@@ -1672,11 +1687,56 @@ namespace projection_aid_subsystem
                     {
                         try
                         {
+                            if (this->working_promise != nullptr)
+                            {
+                                if (!this->working_promise->is_completed())
+                                {
+                                    return false;
+                                }
+
+                                if (this->promise_vec.size() == this->pipe_sz)
+                                {
+                                    if (!this->promise_vec.front()->is_completed())
+                                    {
+                                        return false;
+                                    }
+
+                                    this->promise_vec.front()->wait();
+                                    this->promise_vec.pop_front();
+
+                                    return true;
+                                }
+
+                                auto [inp, out]     = this->working_promise->wait();
+
+                                if (inp == nullptr)
+                                {
+                                    std::abort();
+                                }
+
+                                if (out == nullptr)
+                                {
+                                    std::abort();
+                                }
+
+                                size_t client_idx   = (this->i++) % this->client_vec.size();
+
+                                this->promise_vec.push_back(this->client_vec[client_idx]->add_training_data_2(inp, out));
+                                this->working_promise = nullptr;
+
+                                return true;
+                            }
+
                             if (!this->training_data->has_next())
                             {
                                 if (this->promise_vec.empty())
                                 {
                                     std::abort();
+                                }
+
+                                if (!this->promise_vec.front()->is_completed())
+                                {
+                                    return false;
                                 }
 
                                 this->promise_vec.front()->wait();
@@ -1685,27 +1745,8 @@ namespace projection_aid_subsystem
                                 return true;
                             }
 
-                            auto [inp, out]     = this->training_data->next();
-
-                            if (inp == nullptr)
-                            {
-                                std::abort();
-                            }
-
-                            if (out == nullptr)
-                            {
-                                std::abort();
-                            }
-
-                            size_t client_idx   = (this->i++) % this->client_vec.size();
-
-                            if (this->promise_vec.size() == this->pipe_sz)
-                            {
-                                this->promise_vec.front()->wait();
-                                this->promise_vec.pop_front();
-                            }
-
-                            this->promise_vec.push_back(this->client_vec[client_idx]->add_training_data_2(inp, out));
+                            this->working_promise = this->training_data->next();
+                            return true;
                         }
                         catch (...)
                         {
@@ -1729,6 +1770,11 @@ namespace projection_aid_subsystem
                                 throw std::runtime_error("data loading process interrupted");
                             }
 
+                            if (this->working_promise != nullptr)
+                            {
+                                return true;
+                            }
+
                             if (this->training_data->has_next())
                             {
                                 return true;
@@ -1750,7 +1796,7 @@ namespace projection_aid_subsystem
                             return false;
                         }
                     }
-                
+
                 private:
 
                     void hit_thiswise() noexcept
@@ -1759,8 +1805,8 @@ namespace projection_aid_subsystem
                             fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*this->ingestion_exception_container->mtx);
                             this->ingestion_exception_container->exception = nullptr;
                         }
-                    
-                        this->is_completed->exchange(true, std::memory_order_relaxed);
+
+                        this->is_completed->exchange(true, std::memory_order_release);
                         this->is_completed->notify_all();
                     }
 
@@ -1773,7 +1819,7 @@ namespace projection_aid_subsystem
                             this->ingestion_exception_container->exception = std::current_exception();
                         }
 
-                        this->is_completed->exchange(true, std::memory_order_relaxed);
+                        this->is_completed->exchange(true, std::memory_order_release);
                         this->is_completed->notify_all();
                     }
             };

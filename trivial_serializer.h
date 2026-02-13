@@ -11,6 +11,8 @@
 #include <cstdint>
 #include <tuple>
 #include <variant>
+#include <algorithm>
+#include <array>
 
 namespace trivial_serializer::constants{
 
