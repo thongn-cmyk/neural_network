@@ -463,7 +463,7 @@ namespace connectivity_subsystem
                                                                                                    .set_retry_count(payload.ping_retry_count)
                                                                                                    .get())
                                    .set_request(request)
-                                   .set_resolutor(reoslutor)
+                                   .set_resolutor(resolutor)
                                    .get_promise();
             }
     };

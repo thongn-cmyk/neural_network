@@ -11,10 +11,10 @@
 
 void test_one_async()
 {
-    const size_t WORKER_SZ_RANGE    = size_t{1} << 3;
+    const size_t WORKER_SZ_RANGE    = size_t{1} << 8;
     const size_t CONTAINER_SZ_RANGE = size_t{1} << 3;
     const size_t GROUP_COUNT_RANGE  = size_t{1} << 3;
-    const size_t TEST_SZ_RANGE      = size_t{1} << 3;
+    const size_t TEST_SZ_RANGE      = size_t{1} << 8;
 
     static auto randomizer          = std::mt19937_64{static_cast<uint32_t>(std::chrono::high_resolution_clock::now().time_since_epoch().count())};
     static auto uint_distributor    = std::uniform_int_distribution<size_t>{};
@@ -62,7 +62,7 @@ void test_one_async()
 void test_async()
 {
     const size_t TEST_SZ    = size_t{1} << 20;
-    const size_t COUT_SZ    = size_t{1} << 10;
+    const size_t COUT_SZ    = size_t{1} << 0;
 
     std::cout << "__BEGIN_ASYNC_TEST__" << std::endl;
 

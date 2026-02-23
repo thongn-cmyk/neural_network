@@ -37,4 +37,7 @@ int main()
     {
         std::cout << randomizer.ld_randomize_focal_2() << std::endl;
     }
+
+    //we'll integrate and test the socket today, maybe with careful consideration of how many daemons should there be
+    //point is that we dont want to do more operations than we should, and the socket should be the bare minimum of safely transferring from point A -> B, we'll build a security protocol on top of that but that's not in the TODOs list of enterprise clients
 }
