@@ -10,6 +10,7 @@
 #include <cstring>
 #include <cstdint>
 #include <tuple>
+#include <variant>
 
 namespace dg_sock::network_trivial_serializer::constants{
 
@@ -24,7 +25,7 @@ namespace dg_sock::network_trivial_serializer::types{
 
 namespace dg_sock::network_trivial_serializer::types_space{
 
-    static constexpr auto nil_lambda = [](...){}; 
+    static constexpr auto nil_lambda = []<class ...Args>(Args&& ...){}; 
 
     template <class T, class = void>
     struct is_tuple: std::false_type{};

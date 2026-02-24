@@ -14,17 +14,14 @@
 #include <mutex>
 #include <functional>
 #include <chrono>
+#include <climits>
 #include "network_raii_x.h"
-#include <stdfloat>
 #include <immintrin.h>
 #include <utility>
 #include <exception>
 #include <thread>
 #include "assert.h"
 #include <sys/syscall.h>
-#include <linux/membarrier.h>
-// #include <linux/memory.h>
-// #include <linux/barrier.h>
 
 namespace stdxx
 {
@@ -42,29 +39,6 @@ namespace stdxx
     using spin_lock_t = std::conditional_t<IS_ATOMIC_FLAG_AS_SPINLOCK,
                                            std::atomic_flag,
                                            std::mutex>; 
-
-    // template <class Lambda>
-    // inline void eventloop_expbackoff_spin(Lambda&& lambda) noexcept(noexcept(lambda())){
-
-    //     const size_t BASE                   = 2u;
-    //     const size_t MAX_SEQUENTIAL_PAUSE   = 64u;
-    //     size_t current_sequential_pause     = 1u;
-
-    //     while (true){
-    //         if (lambda()){
-    //             return;
-    //         }
-
-    //         for (size_t i = 0u; i < current_sequential_pause; ++i){
-    //             _mm_pause();
-    //         }
-
-    //         current_sequential_pause = std::min(MAX_SEQUENTIAL_PAUSE, current_sequential_pause * BASE);
-    //     }
-    // }
-
-    //recall the eqn: x^0 + x^1 + x^n = f(x) = (x^ (n + 1) - 1) / (x - 1)
-    //we are to find x
 
     struct fair_atomic_flag
     {
@@ -189,7 +163,6 @@ namespace stdxx
 
         if constexpr(STRONG_MEMORY_ORDERING_FLAG){
             std::atomic_thread_fence(std::memory_order_seq_cst);
-            hardsync();
         } else{
             std::atomic_thread_fence(on_success_memorder);
         }
@@ -260,7 +233,6 @@ namespace stdxx
 
         if constexpr(STRONG_MEMORY_ORDERING_FLAG){
             std::atomic_thread_fence(std::memory_order_seq_cst);
-            hardsync();
         } else{
             std::atomic_thread_fence(std::memory_order_acquire);
         }
@@ -285,7 +257,6 @@ namespace stdxx
         if (!mtx->is_relaxed_lock)
         {
             if constexpr(STRONG_MEMORY_ORDERING_FLAG){
-                hardsync();
                 std::atomic_thread_fence(std::memory_order_seq_cst);
             } else{
                 std::atomic_thread_fence(std::memory_order_release);
@@ -311,7 +282,6 @@ namespace stdxx
 
         if constexpr(STRONG_MEMORY_ORDERING_FLAG){
             std::atomic_thread_fence(std::memory_order_seq_cst);
-            hardsync();
         } else{
             std::atomic_thread_fence(std::memory_order_acquire);
         }
@@ -340,7 +310,6 @@ namespace stdxx
 
         if constexpr(STRONG_MEMORY_ORDERING_FLAG){
             std::atomic_thread_fence(std::memory_order_seq_cst);
-            hardsync();
         } else{
             std::atomic_thread_fence(std::memory_order_acquire);
         }
@@ -349,7 +318,6 @@ namespace stdxx
     inline __attribute__((always_inline)) void atomic_flag_memsafe_unlock(std::atomic_flag * volatile mtx) noexcept{
         
         if constexpr(STRONG_MEMORY_ORDERING_FLAG){
-            hardsync();
             std::atomic_thread_fence(std::memory_order_seq_cst);
         } else{
             std::atomic_thread_fence(std::memory_order_release);
@@ -396,17 +364,17 @@ namespace stdxx
     };
 
     template <>
-    class xlock_guard_base<stdx::fair_atomic_flag>{
+    class xlock_guard_base<stdxx::fair_atomic_flag>{
 
         private:
 
-            stdx::fair_atomic_flag * volatile mtx;
+            stdxx::fair_atomic_flag * volatile mtx;
 
         public:
 
             using self = xlock_guard_base;
 
-            inline __attribute__((always_inline)) xlock_guard_base(stdx::fair_atomic_flag& mtx) noexcept: mtx(&mtx){
+            inline __attribute__((always_inline)) xlock_guard_base(stdxx::fair_atomic_flag& mtx) noexcept: mtx(&mtx){
 
                 fair_atomic_flag_memsafe_lock(this->mtx);
             }
@@ -461,8 +429,8 @@ namespace stdxx
     };
 
     template <>
-    struct xlock_guard_chooser<stdx::fair_atomic_flag>{
-        using type = xlock_guard_base<stdx::fair_atomic_flag>;
+    struct xlock_guard_chooser<stdxx::fair_atomic_flag>{
+        using type = xlock_guard_base<stdxx::fair_atomic_flag>;
     };
 
     template <>
@@ -529,17 +497,17 @@ namespace stdxx
     };
 
     template <>
-    class unlock_guard<stdx::fair_atomic_flag>{
+    class unlock_guard<stdxx::fair_atomic_flag>{
 
         private:
 
-            stdx::fair_atomic_flag * volatile mtx;
+            stdxx::fair_atomic_flag * volatile mtx;
 
         public:
 
             using self = unlock_guard;
 
-            inline __attribute__((always_inline)) unlock_guard(stdx::fair_atomic_flag& mtx) noexcept: mtx(&mtx){}
+            inline __attribute__((always_inline)) unlock_guard(stdxx::fair_atomic_flag& mtx) noexcept: mtx(&mtx){}
 
             unlock_guard(const self&) = delete;
             unlock_guard(self&&) = delete;
@@ -603,22 +571,6 @@ namespace stdxx
             memtransaction_guard& operator =(memtransaction_guard&&) = delete;
     };
 
-    class hardsync_guard{
-
-        public:
-
-            inline __attribute__((always_inline)) hardsync_guard() noexcept{
-                stdx::hardsync2();
-            }
-
-            hardsync_guard(const hardsync_guard&) = delete;
-            hardsync_guard(hardsync_guard&&) = delete;
-
-            inline __attribute__((always_inline)) ~hardsync_guard() noexcept{
-                stdx::hardsync2();
-            }
-    };
-
     template <class T>
     inline __attribute__((always_inline)) auto safe_ptr_access(T * ptr) noexcept -> T *{
 
@@ -627,42 +579,6 @@ namespace stdxx
         }
 
         return ptr;
-    }
-
-    template <class T>
-    inline __attribute__((always_inline)) auto launder_pointer(void * volatile ptr) noexcept -> T *{
-
-        static_assert(std::disjunction_v<std::is_same<T, uint8_t>, std::is_same<T, uint16_t>, std::is_same<T, uint32_t>, std::is_same<T, uint64_t>,
-                                         std::is_same<T, int8_t>, std::is_same<T, int16_t>, std::is_same<T, int32_t>, std::is_same<T, int64_t>,
-                                         std::is_same<T, float>, std::is_same<T, double>, std::is_same<T, void>, std::is_same<T, char>,
-                                         std::is_same<T, std::float16_t>, std::is_same<T, std::bfloat16_t>, std::is_same<T, std::float32_t>, 
-                                         std::is_same<T, std::float64_t>>);
-
-        std::atomic_signal_fence(std::memory_order_seq_cst);
-        launderer<void> launder_machine{};
-        launder_machine.value = ptr;
-        T * rs = static_cast<T *>(std::launder(&launder_machine)->ptr()); //any sane compiler MUST read the polymorphic header - this is due to the definition given by STD - so it is clean right after launder() - because the function is aliased to all arithmetic_t
-        std::atomic_signal_fence(std::memory_order_seq_cst);
-        
-        return rs;
-    }
-
-    template <class T>
-    inline __attribute__((always_inline)) auto launder_pointer(const void * volatile ptr) noexcept -> const T *{
-
-        static_assert(std::disjunction_v<std::is_same<T, uint8_t>, std::is_same<T, uint16_t>, std::is_same<T, uint32_t>, std::is_same<T, uint64_t>,
-                                         std::is_same<T, int8_t>, std::is_same<T, int16_t>, std::is_same<T, int32_t>, std::is_same<T, int64_t>,
-                                         std::is_same<T, float>, std::is_same<T, double>, std::is_same<T, void>, std::is_same<T, char>,
-                                         std::is_same<T, std::float16_t>, std::is_same<T, std::bfloat16_t>, std::is_same<T, std::float32_t>, 
-                                         std::is_same<T, std::float64_t>>);
-
-        std::atomic_signal_fence(std::memory_order_seq_cst);
-        const_launderer<void> launder_machine{};
-        launder_machine.value = ptr;
-        const T * rs = static_cast<const T *>(std::launder(&launder_machine)->ptr()); //any sane compiler MUST read the polymorphic header - this is due to the definition given by STD - so it is clean right after launder() - because the function is aliased to all arithmetic_t
-        std::atomic_signal_fence(std::memory_order_seq_cst);
-
-        return rs;
     }
 
     template <class T, std::enable_if_t<std::is_unsigned_v<T>, bool> = true>
@@ -711,7 +627,7 @@ namespace stdxx
             destructor_arg();
         };
 
-        return dg::unique_resource<int, decltype(backout_ld)>(int{0}, std::move(backout_ld));
+        return dg_sock::unique_resource<int, decltype(backout_ld)>(int{0}, std::move(backout_ld));
     }
 
     template <class T, class T1>
@@ -736,6 +652,24 @@ namespace stdxx
         return static_cast<T>(sizeof(T) * CHAR_BIT - 1u) - static_cast<T>(std::countl_zero(val));
     }
 
+    constexpr auto mul_ceil(size_t value, size_t multiplier) -> size_t
+    {
+        if (value == 0u)
+        {
+            return 0u;
+        }
+
+        if (multiplier == 0u)
+        {
+            throw std::invalid_argument("bad multiplier, 0");
+        }
+
+        size_t demoted_slot     = (value - 1u) / multiplier;
+        size_t promoted_slot    = demoted_slot + 1u;
+
+        return promoted_slot * multiplier;
+    }
+
     template <class T, std::enable_if_t<std::is_unsigned_v<T>, bool> = true>
     static constexpr auto ceil2(T val) noexcept -> T{
 
@@ -750,7 +684,7 @@ namespace stdxx
     template <class T, std::enable_if_t<std::is_unsigned_v<T>, bool> = true>
     constexpr auto least_pow2_greater_equal_than(T val) noexcept -> T{
 
-        return stdx::ceil2(val);
+        return stdxx::ceil2(val);
     } 
 
     template <class T1, class T>
@@ -865,14 +799,14 @@ namespace stdxx
         template <class U>
         constexpr operator U() const noexcept{
 
-            return stdx::safe_integer_cast<U>(this->value);
+            return stdxx::safe_integer_cast<U>(this->value);
         }
     };
 
     template <class T>
     constexpr auto wrap_safe_integer_cast(T value) noexcept{
 
-        return stdx::safe_integer_cast_wrapper<T>{value};
+        return stdxx::safe_integer_cast_wrapper<T>{value};
     }
 
     template <class Iterator>
@@ -898,7 +832,7 @@ namespace stdxx
 
         constexpr safe_timestamp_cast_wrapper(std::chrono::nanoseconds caster) noexcept: caster(std::move(caster)){}
 
-        template <class U, std::enable_if_t<stdx::is_chrono_dur_v<U>, bool> = true>
+        template <class U, std::enable_if_t<stdxx::is_chrono_dur_v<U>, bool> = true>
         constexpr operator U() const noexcept{
 
             return std::chrono::duration_cast<U>(this->caster);
@@ -1041,11 +975,11 @@ namespace stdxx
 
         private:
 
-            dg::unique_resource<Args...> resource;
+            dg_sock::unique_resource<Args...> resource;
         
         public:
 
-            UniquePtrVirtualGuard(dg::unique_resource<Args...> resource) noexcept: resource(std::move(resource)){}
+            UniquePtrVirtualGuard(dg_sock::unique_resource<Args...> resource) noexcept: resource(std::move(resource)){}
 
             void release() noexcept{
 
@@ -1082,16 +1016,16 @@ namespace stdxx
 
     template <class T>
     union inplace_hdi_container{
-        alignas(stdx::hdi_size()) T value;
-        alignas(stdx::hdi_size()) char shape[round_hdi_size(std::integral_constant<size_t, sizeof(T)>{})];
+        alignas(stdxx::hdi_size()) T value;
+        alignas(stdxx::hdi_size()) char shape[round_hdi_size(std::integral_constant<size_t, sizeof(T)>{})];
 
         template <class ...Args>
         inplace_hdi_container(const std::in_place_t, Args&& ...args) noexcept(std::is_nothrow_constructible_v<T, Args&&...>): value(std::forward<Args>(args)...){}
     };
 
-    void high_resolution_sleep(std::chrono::nanoseconds dur) noexcept{
-
-        // std::this_thread::sleep_for(dur);
+    void high_resolution_sleep(std::chrono::nanoseconds dur) noexcept
+    {
+        std::this_thread::sleep_for(dur);
     }
 
     template <class ...Args>
@@ -1110,53 +1044,12 @@ namespace stdxx
         }    
     }
 
-    //this is a very dangerous yet languagely accurate
-    //we taint the value of arg and returns a pointer that could be of any values (restrictness has not been tainted, maybe ...)
-    //what happens to the point and the arg value thereafter is ... in the mercy of the compiler
-    //how do we make this official, by using a volatile container, such is every operation must be through the volatile container to be defined
-    //this is hard
-    //this is undefined as specified by Dad, we dont have a better approach
-
     template <class T, class ...ConsumingArgs>
-    __attribute__((noipa)) auto volatile_access(T * volatile arg, ConsumingArgs& ...consuming_args) noexcept -> T *{
-
+    __attribute__((noipa)) auto volatile_access(T * volatile arg, ConsumingArgs& ...consuming_args) noexcept -> T *
+    {
         (((void) consuming_args), ...);
         return arg;
     }
-
-    //this is used as a last resort to access the immediate containee, not their dependencies, we'll mess with the compiler escape analysis very badly
-    //these hacks are immediate patches, not to be used in production, including the usage of launder<>    
-    //one special case for launder is producer consumer queue, where we offload the restrictness of access -> the callee, such voids all the bad accesses thru the intermediate containees
-
-    template <class T>
-    struct volatile_container{
-
-        private:
-
-            alignas(T) std::byte s[sizeof(T)]; //we have a major bug of destruction, the compiler does not taint the value of this even if it is marked as tained by volatile_access
-                                               //the only way to make this works is to use inplace_container, std::byte
-                                               //there is no such thing that makes me feel headache as overcoming compiler escape analysis + restrictness of access (we can compromise the bugs at every access level of the object)
-        public:
-
-            template <class ...Args>
-            volatile_container(const std::in_place_t, Args&& ...args) noexcept(std::is_nothrow_constructible_v<T, Args&&...>){
-
-                new (&this->s) T(std::forward<Args>(args)...);
-            }
-
-            ~volatile_container() noexcept(std::is_nothrow_destructible_v<T>){
-
-                T * laundered_ptr   = std::launder(reinterpret_cast<T *>(&this->s));
-                T * volatiled_ptr   = stdx::volatile_access(laundered_ptr); 
-
-                std::destroy_at(volatiled_ptr);
-            }
-
-            inline auto value() noexcept -> T *{
-
-                return stdx::volatile_access(std::launder(reinterpret_cast<T *>(&this->s)));
-            } 
-    };
 }
 
 #endif

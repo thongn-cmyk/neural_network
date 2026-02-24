@@ -141,13 +141,12 @@ namespace dg_sock::network_concurrency_impl1{
                 stdxx::xlock_guard<stdxx::fair_atomic_flag> lck_grd(*this->mtx);
 
                 this->worker = std::move(worker);
-                stdxx::hardsync2();
             }
 
             void infloop() noexcept{
 
                 this->poison_pill->exchange(false, std::memory_order_relaxed);
-                stdxx::hardsync2();
+
                 std::atomic_thread_fence(std::memory_order_seq_cst); //hard-sync
                 bool reschedule_on_null = false;
 
@@ -291,176 +290,176 @@ namespace dg_sock::network_concurrency_impl1{
         }
     };
 
-    static void dg_legacy_cpuset_free(cpu_set_t * cpu_set) noexcept{
+    // static void dg_legacy_cpuset_free(cpu_set_t * cpu_set) noexcept{
 
-        CPU_FREE(cpu_set);
-    } 
+    //     CPU_FREE(cpu_set);
+    // } 
 
-    using dg_legacy_cpuset_free_t = void (*)(cpu_set_t *) noexcept; 
+    // using dg_legacy_cpuset_free_t = void (*)(cpu_set_t *) noexcept; 
 
-    struct NonLegacyPosixCpuSet{
-        std::unique_ptr<cpu_set_t, dg_legacy_cpuset_free_t> legacy_cpusetup;
-        size_t alloc_sz;
-    };
+    // struct NonLegacyPosixCpuSet{
+    //     std::unique_ptr<cpu_set_t, dg_legacy_cpuset_free_t> legacy_cpusetup;
+    //     size_t alloc_sz;
+    // };
 
-    struct NonLegacyPosixCPUSetController{
+    // struct NonLegacyPosixCPUSetController{
 
-        static auto make_cpuset(size_t cpu_sz) -> std::unique_ptr<NonLegacyPosixCpuSet>{
+    //     static auto make_cpuset(size_t cpu_sz) -> std::unique_ptr<NonLegacyPosixCpuSet>{
 
-            std::unique_ptr<cpu_set_t, dg_legacy_cpuset_free_t> legacy_cpusetup = {CPU_ALLOC(cpu_sz), dg_legacy_cpuset_free};
+    //         std::unique_ptr<cpu_set_t, dg_legacy_cpuset_free_t> legacy_cpusetup = {CPU_ALLOC(cpu_sz), dg_legacy_cpuset_free};
 
-            if (!legacy_cpusetup){
-                dg_sock::network_exception::throw_exception(dg_sock::network_exception::OUT_OF_MEMORY);
-            }
+    //         if (!legacy_cpusetup){
+    //             dg_sock::network_exception::throw_exception(dg_sock::network_exception::OUT_OF_MEMORY);
+    //         }
             
-            size_t alloc_sz = CPU_ALLOC_SIZE(cpu_sz);
-            CPU_ZERO_S(alloc_sz, legacy_cpusetup.get()); 
+    //         size_t alloc_sz = CPU_ALLOC_SIZE(cpu_sz);
+    //         CPU_ZERO_S(alloc_sz, legacy_cpusetup.get()); 
 
-            return std::make_unique<NonLegacyPosixCpuSet>(NonLegacyPosixCpuSet{std::move(legacy_cpusetup), alloc_sz});
-        }
+    //         return std::make_unique<NonLegacyPosixCpuSet>(NonLegacyPosixCpuSet{std::move(legacy_cpusetup), alloc_sz});
+    //     }
 
-        static void add_cpu_to_cpuset(NonLegacyPosixCpuSet * dst, int cpu_id){
+    //     static void add_cpu_to_cpuset(NonLegacyPosixCpuSet * dst, int cpu_id){
 
-            CPU_SET_S(cpu_id, dst->alloc_sz, dst->legacy_cpusetup.get());
-        }
-    };
+    //         CPU_SET_S(cpu_id, dst->alloc_sz, dst->legacy_cpusetup.get());
+    //     }
+    // };
 
-    struct StdThreadFactory{
+    // struct StdThreadFactory{
 
-        template <class T>
-        static void internal_pthread_setaffinity_np(T&& thr_handle, NonLegacyPosixCpuSet * cpusetp){
+    //     template <class T>
+    //     static void internal_pthread_setaffinity_np(T&& thr_handle, NonLegacyPosixCpuSet * cpusetp){
 
-            int err = pthread_setaffinity_np(std::forward<T>(thr_handle), cpusetp->alloc_sz, cpusetp->legacy_cpusetup.get());
+    //         int err = pthread_setaffinity_np(std::forward<T>(thr_handle), cpusetp->alloc_sz, cpusetp->legacy_cpusetup.get());
             
-            if (err != 0){
-                if (err == EFAULT){
-                    dg_sock::network_exception::throw_exception(dg_sock::network_exception::PTHREAD_EFAULT);
-                }
-                if (err == EINVAL){
-                    dg_sock::network_exception::throw_exception(dg_sock::network_exception::PTHREAD_EINVAL);
-                }
-                if (err == ESRCH){
-                    dg_sock::network_exception::throw_exception(dg_sock::network_exception::PTHREAD_ESRCH);
-                }
+    //         if (err != 0){
+    //             if (err == EFAULT){
+    //                 dg_sock::network_exception::throw_exception(dg_sock::network_exception::PTHREAD_EFAULT);
+    //             }
+    //             if (err == EINVAL){
+    //                 dg_sock::network_exception::throw_exception(dg_sock::network_exception::PTHREAD_EINVAL);
+    //             }
+    //             if (err == ESRCH){
+    //                 dg_sock::network_exception::throw_exception(dg_sock::network_exception::PTHREAD_ESRCH);
+    //             }
 
-                dg_sock::network_exception::throw_exception(dg_sock::network_exception::UNIDENTIFIED_EXCEPTION);
-            }
-        }
+    //             dg_sock::network_exception::throw_exception(dg_sock::network_exception::UNIDENTIFIED_EXCEPTION);
+    //         }
+    //     }
 
-        static auto spawn_thread(std::shared_ptr<StdDaemonRunnableInterface> runnable, std::vector<int> cpu_vec) -> std::shared_ptr<std::thread>{
+    //     static auto spawn_thread(std::shared_ptr<StdDaemonRunnableInterface> runnable, std::vector<int> cpu_vec) -> std::shared_ptr<std::thread>{
 
-            if (runnable == nullptr){
-                dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
-            }
+    //         if (runnable == nullptr){
+    //             dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
+    //         }
 
-            if (cpu_vec.empty()){
-                dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
-            }
+    //         if (cpu_vec.empty()){
+    //             dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
+    //         }
 
-            auto executable = [=]() noexcept{
-                runnable->infloop();
-            };
+    //         auto executable = [=]() noexcept{
+    //             runnable->infloop();
+    //         };
 
-            auto destructor = [=](std::thread * thr_ins) noexcept{
-                runnable->signal_abort();
-                thr_ins->join();
-                delete thr_ins;
-            };
+    //         auto destructor = [=](std::thread * thr_ins) noexcept{
+    //             runnable->signal_abort();
+    //             thr_ins->join();
+    //             delete thr_ins;
+    //         };
 
-            auto thr_instance   = std::unique_ptr<std::thread, decltype(destructor)>(new std::thread(std::move(executable)), std::move(destructor));
-            auto cpu_set        = NonLegacyPosixCPUSetController::make_cpuset(cpu_vec.size()); 
+    //         auto thr_instance   = std::unique_ptr<std::thread, decltype(destructor)>(new std::thread(std::move(executable)), std::move(destructor));
+    //         auto cpu_set        = NonLegacyPosixCPUSetController::make_cpuset(cpu_vec.size()); 
 
-            for (int cpu_id: cpu_vec){
-                NonLegacyPosixCPUSetController::add_cpu_to_cpuset(cpu_set.get(), cpu_id);
-            }
+    //         for (int cpu_id: cpu_vec){
+    //             NonLegacyPosixCPUSetController::add_cpu_to_cpuset(cpu_set.get(), cpu_id);
+    //         }
             
-            internal_pthread_setaffinity_np(thr_instance->native_handle(), cpu_set.get());
-            return thr_instance;
-        }
+    //         internal_pthread_setaffinity_np(thr_instance->native_handle(), cpu_set.get());
+    //         return thr_instance;
+    //     }
 
-        static auto spawn_thread(std::shared_ptr<StdDaemonRunnableInterface> runnable) -> std::shared_ptr<std::thread>{
+    //     static auto spawn_thread(std::shared_ptr<StdDaemonRunnableInterface> runnable) -> std::shared_ptr<std::thread>{
 
-            if (runnable == nullptr){
-                dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
-            }
+    //         if (runnable == nullptr){
+    //             dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
+    //         }
 
-            auto executable = [=]() noexcept{
-                runnable->infloop();
-            };
+    //         auto executable = [=]() noexcept{
+    //             runnable->infloop();
+    //         };
 
-            auto destructor = [=](std::thread * thr_ins) noexcept{
-                runnable->signal_abort();
-                thr_ins->join();
-                delete thr_ins;
-            };
+    //         auto destructor = [=](std::thread * thr_ins) noexcept{
+    //             runnable->signal_abort();
+    //             thr_ins->join();
+    //             delete thr_ins;
+    //         };
 
-            return std::unique_ptr<std::thread, decltype(destructor)>(new std::thread(std::move(executable)), std::move(destructor));
-        }
-    };
+    //         return std::unique_ptr<std::thread, decltype(destructor)>(new std::thread(std::move(executable)), std::move(destructor));
+    //     }
+    // };
 
-    struct DaemonRunnerFactory{
+    // struct DaemonRunnerFactory{
 
-        static auto spawn_std_daemon_affine_runner(std::vector<int> cpu_set) -> std::unique_ptr<DaemonDedicatedRunnerInterface>{
+    //     static auto spawn_std_daemon_affine_runner(std::vector<int> cpu_set) -> std::unique_ptr<DaemonDedicatedRunnerInterface>{
 
-            using namespace std::chrono_literals;
+    //         using namespace std::chrono_literals;
 
-            const size_t LOOPCHK_SZ = 32u;
+    //         const size_t LOOPCHK_SZ = 32u;
 
-            auto rescheduler    = ReschedulerFactory::spawn_sleepy_rescheduler(10ms);
-            auto mtx            = std::make_unique<stdxx::fair_atomic_flag>();
-            stdxx::inplace_make_fair_atomic_flag(*mtx);
-            auto poison_pill    = std::make_unique<std::atomic<bool>>();
-            auto daemon_runner  = std::make_shared<StdDaemonRunner>(std::move(poison_pill), std::move(mtx), nullptr, std::move(rescheduler), LOOPCHK_SZ);
-            auto thr_instance   = StdThreadFactory::spawn_thread(daemon_runner, cpu_set); 
-            auto raii_runner    = std::make_unique<StdRaiiDaemonRunner>(daemon_runner, std::move(thr_instance)); 
+    //         auto rescheduler    = ReschedulerFactory::spawn_sleepy_rescheduler(10ms);
+    //         auto mtx            = std::make_unique<stdxx::fair_atomic_flag>();
+    //         stdxx::inplace_make_fair_atomic_flag(*mtx);
+    //         auto poison_pill    = std::make_unique<std::atomic<bool>>();
+    //         auto daemon_runner  = std::make_shared<StdDaemonRunner>(std::move(poison_pill), std::move(mtx), nullptr, std::move(rescheduler), LOOPCHK_SZ);
+    //         auto thr_instance   = StdThreadFactory::spawn_thread(daemon_runner, cpu_set); 
+    //         auto raii_runner    = std::make_unique<StdRaiiDaemonRunner>(daemon_runner, std::move(thr_instance)); 
 
-            return raii_runner;
-        } 
+    //         return raii_runner;
+    //     } 
 
-        static auto spawn_std_daemon_runner() -> std::unique_ptr<DaemonDedicatedRunnerInterface>{
+    //     static auto spawn_std_daemon_runner() -> std::unique_ptr<DaemonDedicatedRunnerInterface>{
 
-            using namespace std::chrono_literals;
+    //         using namespace std::chrono_literals;
 
-            const size_t LOOPCHK_SZ = 32u;
+    //         const size_t LOOPCHK_SZ = 32u;
 
-            auto rescheduler    = ReschedulerFactory::spawn_sleepy_rescheduler(10ms);
-            auto mtx            = std::make_unique<stdxx::fair_atomic_flag>();
-            stdxx::inplace_make_fair_atomic_flag(*mtx);
-            auto poison_pill    = std::make_unique<std::atomic<bool>>();
-            auto daemon_runner  = std::make_shared<StdDaemonRunner>(std::move(poison_pill), std::move(mtx), nullptr, std::move(rescheduler), LOOPCHK_SZ);
-            auto thr_instance   = StdThreadFactory::spawn_thread(daemon_runner);
-            auto raii_runner    = std::make_unique<StdRaiiDaemonRunner>(daemon_runner, std::move(thr_instance)); 
+    //         auto rescheduler    = ReschedulerFactory::spawn_sleepy_rescheduler(10ms);
+    //         auto mtx            = std::make_unique<stdxx::fair_atomic_flag>();
+    //         stdxx::inplace_make_fair_atomic_flag(*mtx);
+    //         auto poison_pill    = std::make_unique<std::atomic<bool>>();
+    //         auto daemon_runner  = std::make_shared<StdDaemonRunner>(std::move(poison_pill), std::move(mtx), nullptr, std::move(rescheduler), LOOPCHK_SZ);
+    //         auto thr_instance   = StdThreadFactory::spawn_thread(daemon_runner);
+    //         auto raii_runner    = std::make_unique<StdRaiiDaemonRunner>(daemon_runner, std::move(thr_instance)); 
 
-            return raii_runner;
-        }
-    };
+    //         return raii_runner;
+    //     }
+    // };
 
-    struct ControllerFactory{
+    // struct ControllerFactory{
 
-        static auto spawn_daemon_controller(std::vector<std::pair<std::unique_ptr<DaemonRunnerInterface>, daemon_kind_t>> runner_kind_vec) -> std::unique_ptr<DaemonControllerInterface>{
+    //     static auto spawn_daemon_controller(std::vector<std::pair<std::unique_ptr<DaemonRunnerInterface>, daemon_kind_t>> runner_kind_vec) -> std::unique_ptr<DaemonControllerInterface>{
 
-            std::unordered_map<daemon_kind_t, std::vector<size_t>> kind_id_map{};
-            std::unordered_map<size_t, std::unique_ptr<DaemonRunnerInterface>> id_runner_map{};
-            size_t id_sz{}; 
+    //         std::unordered_map<daemon_kind_t, std::vector<size_t>> kind_id_map{};
+    //         std::unordered_map<size_t, std::unique_ptr<DaemonRunnerInterface>> id_runner_map{};
+    //         size_t id_sz{}; 
 
-            for (auto& vec_pair: runner_kind_vec){                
-                auto runner         = std::move(std::get<0>(vec_pair));
-                daemon_kind_t kind  = std::get<1>(vec_pair);
-                size_t id           = id_sz;
+    //         for (auto& vec_pair: runner_kind_vec){                
+    //             auto runner         = std::move(std::get<0>(vec_pair));
+    //             daemon_kind_t kind  = std::get<1>(vec_pair);
+    //             size_t id           = id_sz;
 
-                if (runner == nullptr){
-                    dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
-                }
+    //             if (runner == nullptr){
+    //                 dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
+    //             }
 
-                kind_id_map[kind].push_back(id);
-                id_runner_map.emplace(std::make_pair(id, std::move(runner)));
-                id_sz += 1;
-            }
+    //             kind_id_map[kind].push_back(id);
+    //             id_runner_map.emplace(std::make_pair(id, std::move(runner)));
+    //             id_sz += 1;
+    //         }
             
-            auto mtx = std::make_unique<std::mutex>(); 
-            return std::make_unique<DaemonController>(std::move(kind_id_map), std::move(id_runner_map), std::move(mtx));
-        }
-    };
+    //         auto mtx = std::make_unique<std::mutex>(); 
+    //         return std::make_unique<DaemonController>(std::move(kind_id_map), std::move(id_runner_map), std::move(mtx));
+    //     }
+    // };
 } 
 
 #endif

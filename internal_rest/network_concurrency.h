@@ -33,23 +33,23 @@ namespace dg_sock::network_concurrency{
 
     inline ConcurrencyResource * volatile concurrency_resource;
 
-    extern void init(Config config)
-    {
-        stdxx::memtransaction_guard tx_grd;
+    // extern void init(Config config)
+    // {
+    //     stdxx::memtransaction_guard tx_grd;
 
-        // // auto [daemon_controller, thr_id_vec] = dg_sock::network_concurrency_impl1::planner::spawn(config);
-        // auto thrid_to_idx_map = dg_sock::network_datastructure::unordered_map_variants::unordered_node_map<std::thread::id, size_t>(); 
+    //     // // auto [daemon_controller, thr_id_vec] = dg_sock::network_concurrency_impl1::planner::spawn(config);
+    //     // auto thrid_to_idx_map = dg_sock::network_datastructure::unordered_map_variants::unordered_node_map<std::thread::id, size_t>(); 
         
-        // for (size_t i = 0u; i < thr_id_vec.size(); ++i)
-        // {
-        //     thrid_to_idx_map[thr_id_vec[i]] = i;
-        // }
+    //     // for (size_t i = 0u; i < thr_id_vec.size(); ++i)
+    //     // {
+    //     //     thrid_to_idx_map[thr_id_vec[i]] = i;
+    //     // }
 
-        // concurrency_resource = new ConcurrencyResource(ConcurrencyResource{
-        //     .daemon_controller  = std::move(daemon_controller),
-        //     .thrid_to_idx_map   = std::move(thrid_to_idx_map)
-        // });
-    }
+    //     // concurrency_resource = new ConcurrencyResource(ConcurrencyResource{
+    //     //     .daemon_controller  = std::move(daemon_controller),
+    //     //     .thrid_to_idx_map   = std::move(thrid_to_idx_map)
+    //     // });
+    // }
 
     extern void deinit() noexcept
     {

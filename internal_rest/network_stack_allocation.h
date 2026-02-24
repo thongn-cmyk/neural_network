@@ -337,7 +337,7 @@ namespace dg_sock::network_stack_allocation{
                     dg_sock::network_exception::throw_exception(buf.error());
                 }
 
-                void * head = stdxx::align_ptr(buf.value(), std::integral_constant<size_t, alignof(T)>{});
+                void * head = stdxx::align_ptr(static_cast<char *>(buf.value()), std::integral_constant<size_t, alignof(T)>{});
 
                 if constexpr(std::is_nothrow_constructible_v<T, Args&&...>){
                     this->obj = new (head) T(std::forward<Args>(args)...);
@@ -425,7 +425,7 @@ namespace dg_sock::network_stack_allocation{
                     dg_sock::network_exception::throw_exception(buf.error());
                 }
 
-                void * head = stdxx::align_ptr(buf.value(), std::integral_constant<size_t, alignof(T)>{}); 
+                void * head = stdxx::align_ptr(static_cast<char *>(buf.value()), std::integral_constant<size_t, alignof(T)>{}); 
 
                 if constexpr(std::is_nothrow_default_constructible_v<T>){
                     this->arr       = new (head) T[sz];

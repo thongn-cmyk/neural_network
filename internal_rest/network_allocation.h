@@ -20,6 +20,7 @@
 #include "network_stack_allocation.h"
 #include "network_trivial_serializer.h"
 #include "network_datastructure.h"
+#include <bit>
 
 namespace dg_sock::network_allocation
 {
@@ -33,8 +34,8 @@ namespace dg_sock::network_allocation
     {
         private:
 
-            unordered_map<uint8_t, size_t, uint8_t> unit_counter;
-            unordered_map<uint8_t, std::vector<char *>, uint8_t> unit_map;
+            unordered_map<uint8_t, size_t> unit_counter;
+            unordered_map<uint8_t, std::vector<char *>> unit_map;
             std::vector<std::shared_ptr<char[]>> raii_buf_vec;
 
             using header_t = uint8_t;
@@ -45,6 +46,7 @@ namespace dg_sock::network_allocation
 
         private:
 
+            static_assert(stdxx::is_pow2(DEFAULT_ALIGNMENT_SZ));
             static inline constexpr size_t MIN_POW2_VALUE       = std::max(size_t{5u}, static_cast<size_t>(stdxx::ulog2(DEFAULT_ALIGNMENT_SZ)));
 
         public:
@@ -135,11 +137,21 @@ namespace dg_sock::network_allocation
                     }
                 }
 
-                std::shared_ptr<char[]> buf     = std::unique_ptr<char[], decltype(&std::free)>(std::aligned_alloc(DEFAULT_ALIGNMENT_SZ, actual_sz), std::free);
+                auto std_memory_free_func       = [](char * mem) noexcept
+                {
+                    std::free(mem);
+                };
+
+                std::shared_ptr<char[]> buf     = std::unique_ptr<char[], decltype(std_memory_free_func)>(static_cast<char *>(std::malloc(actual_sz)), std_memory_free_func);
 
                 if (buf == nullptr)
                 {
                     throw std::bad_alloc();
+                }
+
+                if (reinterpret_cast<uintptr_t>(buf.get()) % DEFAULT_ALIGNMENT_SZ != 0u)
+                {
+                    std::abort();
                 }
 
                 char * buf_value                = this->internal_write_metadata_to_buffer(buf.get(), bucket_idx);
@@ -226,7 +238,7 @@ namespace dg_sock::network_allocation
     {
         private:
 
-            fair_mutex::fair_atomic_flag mtx;
+            stdxx::fair_atomic_flag mtx;
 
         public:
 
@@ -234,30 +246,124 @@ namespace dg_sock::network_allocation
 
             ThreadSafeBinaryUnitAllocator(): BinaryUnitAllocator()
             {
-                fair_mutex::inplace_make_fair_atomic_flag(this->mtx);
+                stdxx::inplace_make_fair_atomic_flag(this->mtx);
             }
 
             inline auto malloc(size_t sz) -> void *
             {
-                fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(this->mtx);
+                stdxx::xlock_guard<stdxx::fair_atomic_flag> lck_grd(this->mtx);
 
                 return BinaryUnitAllocator::malloc(sz);
             }
 
             inline auto realloc(void * buf, size_t blk_sz) -> void *
             {
-                fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(this->mtx);
+                stdxx::xlock_guard<stdxx::fair_atomic_flag> lck_grd(this->mtx);
 
                 return BinaryUnitAllocator::realloc(buf, blk_sz);
             }
 
             inline void free(void * buf) noexcept
             {
-                fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(this->mtx);
+                stdxx::xlock_guard<stdxx::fair_atomic_flag> lck_grd(this->mtx);
 
                 BinaryUnitAllocator::free(buf);
             }
     };
+
+    template <size_t CONCURRENCY_SZ_ARG>
+    class DistributedThreadSafeBinaryUnitAllocator
+    {
+        private:
+
+            std::vector<std::unique_ptr<ThreadSafeBinaryUnitAllocator>> allocator_vec;
+
+        public:
+
+            static inline constexpr size_t CONCURRENCY_SZ = CONCURRENCY_SZ_ARG;
+
+            static_assert(CONCURRENCY_SZ <= std::numeric_limits<uint8_t>::max());
+            static_assert(stdxx::is_pow2(CONCURRENCY_SZ));
+
+            static inline constexpr size_t DEFAULT_ALIGNMENT_SZ = 1u;
+
+            DistributedThreadSafeBinaryUnitAllocator(): allocator_vec()
+            {
+                for (size_t i = 0u; i < CONCURRENCY_SZ; ++i)
+                {
+                    this->allocator_vec.push_back(std::make_unique<ThreadSafeBinaryUnitAllocator>());
+                }
+            }
+
+            inline auto malloc(size_t sz) -> void *
+            {
+                if (sz == 0u) [[unlikely]]
+                {
+                    return nullptr;
+                }
+
+                uint8_t idx     = dg_sock::network_hash::hash_reflectible(std::bit_cast<size_t>(std::this_thread::get_id())) & (CONCURRENCY_SZ - 1u);
+                size_t new_sz   = sz + sizeof(uint8_t);
+                void * rs       = this->allocator_vec[idx]->malloc(new_sz);
+
+                std::memcpy(rs, &idx, sizeof(uint8_t));
+
+                return std::next(static_cast<char *>(rs), sizeof(uint8_t));
+            }
+
+            inline auto realloc(void * buf, size_t blk_sz) -> void *
+            {
+                if (buf == nullptr) [[unlikely]]
+                {
+                    return this->malloc(blk_sz);
+                }
+
+                uint8_t idx;
+                char * buf_head     = std::prev(static_cast<char *>(buf), sizeof(uint8_t));
+                std::memcpy(&idx, buf_head, sizeof(uint8_t));
+
+                if constexpr(DEBUG_MODE_FLAG)
+                {
+                    if (idx >= this->allocator_vec.size())
+                    {
+                        std::abort();
+                    }
+                }
+
+                size_t new_blk_sz   = blk_sz + sizeof(uint8_t);
+                void * new_ptr      = this->allocator_vec[idx]->realloc(buf_head, new_blk_sz);
+
+                return std::next(static_cast<char *>(new_ptr), sizeof(uint8_t));
+            }
+
+            inline void free(void * buf) noexcept
+            {
+                if (buf == nullptr) [[unlikely]]
+                {
+                    return;
+                }
+
+                uint8_t idx;
+                char * buf_head = std::prev(static_cast<char *>(buf), sizeof(uint8_t));
+                std::memcpy(&idx, buf_head, sizeof(uint8_t));
+
+                if constexpr(DEBUG_MODE_FLAG)
+                {
+                    if (idx >= this->allocator_vec.size())
+                    {
+                        std::abort();
+                    }
+                }
+
+                this->allocator_vec[idx]->free(buf_head);
+            }
+    };
+
+    static inline constexpr size_t BINARY_UNIT_ALLOCATOR_CONCURRENCY_SZ = 4u;
+
+    using BestBinaryUnitAllocator = std::conditional_t<(BINARY_UNIT_ALLOCATOR_CONCURRENCY_SZ == 1u),
+                                                       ThreadSafeBinaryUnitAllocator,
+                                                       DistributedThreadSafeBinaryUnitAllocator<BINARY_UNIT_ALLOCATOR_CONCURRENCY_SZ>>;
 
     class AffinedAllocator
     {
@@ -269,7 +375,7 @@ namespace dg_sock::network_allocation
             };
 
             std::vector<MemoryPool> pool_vec;
-            std::shared_ptr<ThreadSafeBinaryUnitAllocator> base_allocator;
+            std::shared_ptr<BestBinaryUnitAllocator> base_allocator;
             unordered_map<size_t, pow2_cyclic_queue<void *>> cache_map;
             size_t total_memory_counter;
 
@@ -278,9 +384,9 @@ namespace dg_sock::network_allocation
             static inline constexpr size_t FLUSH_THRESHOLD                  = size_t{1} << 20;
             static inline constexpr size_t STACK_CAPTURE_POOL_SZ            = size_t{1} << 8;
             static inline constexpr size_t STACK_CAPTURE_POOL_POPULATION    = size_t{1} << 8;
-            static inline constexpr size_t DEFAULT_ALIGNMENT_SZ             = ThreadSafeBinaryUnitAllocator::DEFAULT_ALIGNMENT_SZ;
+            static inline constexpr size_t DEFAULT_ALIGNMENT_SZ             = BestBinaryUnitAllocator::DEFAULT_ALIGNMENT_SZ;
 
-            AffinedAllocator(std::shared_ptr<ThreadSafeBinaryUnitAllocator> base_allocator)
+            AffinedAllocator(std::shared_ptr<BestBinaryUnitAllocator> base_allocator)
             {
                 if (base_allocator == nullptr)
                 {
@@ -365,7 +471,7 @@ namespace dg_sock::network_allocation
 
                     if constexpr(DEBUG_MODE_FLAG)
                     {
-                        if (dg_sock::network_excepiton::is_failed(err))
+                        if (dg_sock::network_exception::is_failed(err))
                         {
                             std::abort();
                         }
@@ -480,7 +586,7 @@ namespace dg_sock::network_allocation
 
                 if constexpr(DEBUG_MODE_FLAG)
                 {
-                    if (dg_sock::network_excepiton::is_failed(err))
+                    if (dg_sock::network_exception::is_failed(err))
                     {
                         std::abort();
                     }
@@ -500,7 +606,10 @@ namespace dg_sock::network_allocation
                     }
 
                     map_pair.second.clear();
-                    this->pool_vec.push_back(std::move(map_pair.second));
+                    this->pool_vec.push_back(MemoryPool
+                    {
+                        .pool = std::move(map_pair.second)
+                    });
                 }
 
                 this->cache_map.clear();
@@ -520,7 +629,7 @@ namespace dg_sock::network_allocation
 
             GlobalAllocator(): affined_allocator_vec()
             {
-                std::shared_ptr<ThreadSafeBinaryUnitAllocator> allocator = std::make_shared<ThreadSafeBinaryUnitAllocator>();
+                std::shared_ptr<BestBinaryUnitAllocator> allocator = std::make_shared<BestBinaryUnitAllocator>();
 
                 for (size_t i = 0u; i < dg_sock::network_concurrency::get_thread_count(); ++i)
                 {
@@ -585,26 +694,28 @@ namespace dg_sock::network_allocation
     using alignment_header_t        = uint32_t;
     using xalign_metadata_size_t    = uint32_t;
 
-    static inline auto dg_align(void * ptr, uintptr_t alignment_sz) noexcept -> void *
+    static constexpr auto dg_align(void * buf, uintptr_t alignment_sz) noexcept -> void *
     {
         assert(stdxx::is_pow2(alignment_sz));
 
-        uintptr_t fwd_sz                        = alignment_sz - 1u;
-        uintptr_t bit_mask                      = ~fwd_sz;
-        uintptr_t aligned_ptr_numerical_addr    = (reinterpret_cast<uintptr_t>(ptr) + fwd_sz) & bit_mask;
+        uintptr_t arithmetic_buf        = reinterpret_cast<uintptr_t>(buf);
+        uintptr_t FWD_SZ                = alignment_sz - 1u;
+        uintptr_t MASK_VALUE            = ~FWD_SZ;
+        uintptr_t fwd_arithmetic_buf    = (arithmetic_buf + FWD_SZ) & MASK_VALUE;
 
-        return reinterpret_cast<void *>(aligned_ptr_numerical_addr);
+        return reinterpret_cast<void *>(fwd_arithmetic_buf);
     }
 
-    static inline auto dg_align(const void * ptr, uintptr_t alignment_sz) noexcept -> const void *{
-
+    static constexpr auto dg_align(const void * buf, uintptr_t alignment_sz) noexcept -> const void *
+    {
         assert(stdxx::is_pow2(alignment_sz));
 
-        uintptr_t fwd_sz                        = alignment_sz - 1u;
-        uintptr_t bit_mask                      = ~fwd_sz;
-        uintptr_t aligned_ptr_numerical_addr    = (reinterpret_cast<uintptr_t>(ptr) + fwd_sz) & bit_mask;
+        uintptr_t arithmetic_buf        = reinterpret_cast<uintptr_t>(buf);
+        uintptr_t FWD_SZ                = alignment_sz - 1u;
+        uintptr_t MASK_VALUE            = ~FWD_SZ;
+        uintptr_t fwd_arithmetic_buf    = (arithmetic_buf + FWD_SZ) & MASK_VALUE;
 
-        return reinterpret_cast<const void *>(aligned_ptr_numerical_addr);
+        return reinterpret_cast<const void *>(fwd_arithmetic_buf);
     }
 
     extern auto dg_malloc(size_t blk_sz) -> void *
@@ -614,7 +725,7 @@ namespace dg_sock::network_allocation
 
     extern auto dg_realloc(void * buf, size_t blk_sz) -> void *
     {
-        allocation_resource_obj::get()->realloc(buf, blk_sz);
+        return allocation_resource_obj::get()->realloc(buf, blk_sz);
     } 
 
     extern void dg_free(void * ptr) noexcept
@@ -626,14 +737,14 @@ namespace dg_sock::network_allocation
     {
         if (!stdxx::is_pow2(alignment))
         {
-            return nullptr;
+            throw std::bad_alloc();
         }
 
         const size_t max_fwd_sz = alignment + (sizeof(alignment_header_t) - 1u);
 
         if (max_fwd_sz > std::numeric_limits<alignment_header_t>::max())
         {
-            return nullptr;
+            throw std::bad_alloc();
         }
 
         if (blk_sz == 0u)
@@ -646,7 +757,7 @@ namespace dg_sock::network_allocation
 
         if (ptr == nullptr)
         {
-            return nullptr;
+            std::abort();
         }
 
         void * aligned_ptr              = dg_sock::network_allocation::dg_align(std::next(static_cast<char *>(ptr), sizeof(alignment_header_t)), alignment);
@@ -666,7 +777,7 @@ namespace dg_sock::network_allocation
         }
 
         void * alignment_header_addr    = std::prev(static_cast<char *>(ptr), sizeof(alignment_header_t));
-        alignment_header_t difference   = {};
+        alignment_header_t difference;
         std::memcpy(&difference, alignment_header_addr, sizeof(alignment_header_t));
         void * org_ptr                  = std::prev(static_cast<char *>(ptr), difference); 
 
@@ -691,20 +802,20 @@ namespace dg_sock::network_allocation
         }
     };
 
-    extern auto dg_xaligned_alloc(size_t alignment, size_t blk_sz) noexcept -> void *
+    extern auto dg_xaligned_alloc(size_t alignment, size_t blk_sz) -> void *
     {
         constexpr size_t METADATA_SZ = dg_sock::network_trivial_serializer::size(XAlignMetadata{});
 
         if (!stdxx::is_pow2(alignment))
         {
-            return nullptr;
+            throw std::bad_alloc();
         }
 
         const size_t max_fwd_sz = alignment + (METADATA_SZ - 1u);
 
         if (max_fwd_sz > std::numeric_limits<alignment_header_t>::max())
         {
-            return nullptr;
+            throw std::bad_alloc();
         }
 
         if (blk_sz == 0u)
@@ -717,7 +828,7 @@ namespace dg_sock::network_allocation
 
         if (ptr == nullptr)
         {
-            return nullptr;
+            std::abort();
         }
 
         void * aligned_ptr              = dg_sock::network_allocation::dg_align(std::next(static_cast<char *>(ptr), METADATA_SZ), alignment); //forward METADATA_SZ to reserve the METADATA_SZ, align the alignment (guaranteed to fit because we have extra ALIGMENT_SZ - 1u)
@@ -732,6 +843,11 @@ namespace dg_sock::network_allocation
 
     extern void dg_xaligned_free(void * ptr) noexcept
     {
+        if (ptr == nullptr)
+        {
+            return;
+        }
+
         constexpr size_t METADATA_SZ    = dg_sock::network_trivial_serializer::size(XAlignMetadata{});
 
         void * metadata_header_addr     = std::prev(static_cast<char *>(ptr), METADATA_SZ);
@@ -744,6 +860,11 @@ namespace dg_sock::network_allocation
 
     extern auto dg_xaligned_blk_size(void * ptr) noexcept -> size_t
     {
+        if (ptr == nullptr)
+        {
+            return 0u;
+        }
+
         constexpr size_t METADATA_SZ    = dg_sock::network_trivial_serializer::size(XAlignMetadata{});
 
         void * metadata_header_addr     = std::prev(static_cast<char *>(ptr), METADATA_SZ);
@@ -911,6 +1032,42 @@ namespace dg_sock::network_allocation
 
         [[clang::noinline]] dg_sock::network_allocation::dg_xaligned_free(static_cast<void *>(arr));
     }
+
+    template <class T, class = void>
+    struct unique_ptr_chooser
+    {
+        using type  = std::unique_ptr<T, decltype(&std_delete_object<T>)>;
+    };
+
+    template <class T>
+    struct unique_ptr_chooser<T, std::void_t<std::enable_if_t<std::is_array_v<T>, bool>>>: std::enable_if<std::is_unbounded_array_v<T>, std::unique_ptr<T, decltype(&std_delete_array<std::remove_extent_t<T>>)>>{};
+
+    template <class T>
+    using unique_ptr = typename unique_ptr_chooser<T>::type;
+
+    template <class T, class ...Args>
+    auto make_unique(Args&& ...args) -> unique_ptr<T>
+    {
+        if constexpr(std::is_array_v<T>)
+        {
+            if constexpr(std::is_unbounded_array_v<T>)
+            {
+                using elemental_t = std::remove_extent_t<T>;
+                return unique_ptr<T>(std_new_array<elemental_t>(std::forward<Args>(args)...), std_delete_array<elemental_t>);
+            }
+            else
+            {
+                static_assert(FALSE_VAL<>);
+            }
+        }
+        else
+        {
+            return unique_ptr<T>(std_new_object<T>(std::forward<Args>(args)...), std_delete_object<T>);
+        }
+    }
+
+    template <class T>
+    using shared_ptr = std::shared_ptr<T>;
 
     template <class T, class ...Args>
     auto make_shared(Args&& ...args) -> std::shared_ptr<T>

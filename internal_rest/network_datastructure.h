@@ -1916,7 +1916,8 @@ namespace dg_sock::network_datastructure::unordered_map_variants{
     {
         if (multiplier == 0u)
         {
-            throw std::invalid_argument("bad multiplier, 0");
+            // throw std::invalid_argument("bad multiplier, 0");
+            std::abort();
         }
 
         if (x == 0u)

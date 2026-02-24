@@ -10,7 +10,6 @@
 #include "network_exception.h"
 #include "network_log.h"
 #include "network_concurrency.h"
-// #include <stacktrace>
 
 namespace dg_sock::network_kernel_allocator
 {
@@ -19,6 +18,7 @@ namespace dg_sock::network_kernel_allocator
         public:
 
             virtual ~BatchAllocatorInterface() noexcept = default;
+
             virtual void malloc(std::add_pointer_t<void> * ret_mem_arr, size_t request_mem_blk_count, exception_t * exception_arr) noexcept = 0;
             virtual void free(std::add_pointer_t<void> * free_mem_arr, size_t arr_sz) noexcept = 0;
             virtual auto malloc_size() const noexcept -> size_t = 0;
@@ -39,47 +39,46 @@ namespace dg_sock::network_kernel_allocator
     template <class T>
     class AllocatorInterface: public virtual BaseAllocatorInterface{};
 
-    using memfree_func_t = void (*)(void *) noexcept; 
-
     class BatchAllocator : public virtual BatchAllocatorInterface
     {
         private:
 
+            std::vector<std::shared_ptr<void>> memreference_queue;
             std::vector<void *> mem_queue;
+            size_t mem_queue_cap;
             std::unique_ptr<stdxx::fair_atomic_flag> mtx;
-            memfree_func_t memfree_func;
             stdxx::hdi_container<size_t> mempiece_sz;
             stdxx::hdi_container<size_t> max_consume_per_load;
 
         public:
 
-            BatchAllocator(std::vector<void *> mem_queue,
-                           std::unique_ptr<stdxx::fair_atomic_flag> mtx,
-                           memfree_func_t memfree_func,
+            BatchAllocator(size_t mem_queue_cap,
                            size_t mempiece_sz,
-                           size_t max_consume_per_load): mem_queue(std::move(mem_queue)),
+                           size_t max_consume_per_load): memreference_queue(),
+                                                         mem_queue(),
+                                                         mem_queue_cap(mem_queue_cap),
+                                                         mtx(stdxx::make_unique_fair_atomic_flag()),
                                                          mempiece_sz(stdxx::hdi_container<size_t>{mempiece_sz}),
-                                                         max_consume_per_load(stdxx::hdi_container<size_t>{max_consume_per_load}),
-                                                         mtx(std::move(mtx)),
-                                                         memfree_func(memfree_func){}
-
-            ~BatchAllocator() noexcept
-            {
-                for (auto mempiece: this->mem_queue)
-                {
-                    this->memfree_func(mempiece);
-                }                
-            }
+                                                         max_consume_per_load(stdxx::hdi_container<size_t>{max_consume_per_load}){}
 
             void malloc(std::add_pointer_t<void> * ret_mem_arr, size_t request_mem_blk_count, exception_t * exception_arr) noexcept
             {
-                if (request_mem_blk_count > this->max_consume_size())
+                if constexpr(DEBUG_MODE_FLAG)
                 {
-                    dg_sock::network_log_stackdump::critical(dg_sock::network_exception::verbose(dg_sock::network_exception::INTERNAL_CORRUPTION));
-                    std::abort();
+                    if (request_mem_blk_count > this->max_consume_size())
+                    {
+                        dg_sock::network_log_stackdump::critical(dg_sock::network_exception::verbose(dg_sock::network_exception::INTERNAL_CORRUPTION));
+                        std::abort();
+                    }
                 }
 
                 stdxx::xlock_guard<stdxx::fair_atomic_flag> lck_grd(*this->mtx);
+
+                size_t allocatable_sz   = this->mem_queue_cap - this->memreference_queue.size();
+                size_t missing_sz       = request_mem_blk_count - std::min(request_mem_blk_count, this->mem_queue.size());
+                size_t doable_sz        = std::min(allocatable_sz, missing_sz);
+
+                this->noexcept_allocate(doable_sz);
 
                 size_t fulfillable_sz   = std::min(static_cast<size_t>(this->mem_queue.size()), request_mem_blk_count);
                 size_t rem_sz           = this->mem_queue.size() - fulfillable_sz;   
@@ -111,6 +110,28 @@ namespace dg_sock::network_kernel_allocator
             {
                 return this->max_consume_per_load.value;
             } 
+
+        private:
+
+            void noexcept_allocate(size_t allocatable_sz) noexcept
+            {
+                for (size_t i = 0u; i < allocatable_sz; ++i)
+                {
+                    try
+                    {
+                        size_t promoted_sz                  = stdxx::mul_ceil(this->mempiece_sz.value, alignof(std::max_align_t));
+                        std::shared_ptr<void> memreference  = std::unique_ptr<void, decltype(&std::free)>(std::aligned_alloc(alignof(std::max_align_t), promoted_sz), std::free);
+
+                        this->memreference_queue.push_back(memreference);
+                        this->mem_queue.push_back(memreference.get());
+                    }
+                    catch (...)
+                    {
+                        dg_sock::network_log_stackdump::critical(dg_sock::network_exception::verbose(dg_sock::network_exception::INTERNAL_CORRUPTION));
+                        std::abort();
+                    }
+                }
+            }
     };
 
     class AffinedAllocator : public virtual AllocatorInterface<AffinedAllocator>
@@ -306,46 +327,12 @@ namespace dg_sock::network_kernel_allocator
                 dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
             }
 
-            std::vector<void *> mempiece_vec{};
-            mempiece_vec.reserve(mempiece_count);
-
             size_t tentative_consume_sz = mempiece_count >> consume_decay_factor;
             size_t consume_sz           = std::max(size_t{1}, tentative_consume_sz); 
 
-            constexpr auto std_free     = [](void * mem_ptr) noexcept
-            {
-                std::free(mem_ptr);
-            };
-
-            try
-            {
-                for (size_t i = 0u; i < mempiece_count; ++i)
-                {
-                    void * mempiece = std::aligned_alloc(alignof(std::max_align_t), mempiece_sz);
-
-                    if (mempiece == nullptr)
-                    {
-                        dg_sock::network_exception::throw_exception(dg_sock::network_exception::RESOURCE_EXHAUSTION);
-                    }
-
-                    mempiece_vec.push_back(mempiece);
-                }
-
-                return std::make_unique<BatchAllocator>(std::move(mempiece_vec),
-                                                        stdxx::make_unique_fair_atomic_flag(),
-                                                        std_free,
-                                                        mempiece_sz,
-                                                        consume_sz);
-            }
-            catch (...)
-            {
-                for (void * mempiece: mempiece_vec)
-                {
-                    std::free(mempiece);
-                }
-
-                throw;
-            }
+            return std::make_unique<BatchAllocator>(mempiece_count,
+                                                    mempiece_sz,
+                                                    consume_sz);
         }
 
         static auto make_affined_allocator(std::shared_ptr<BatchAllocatorInterface> base_allocator,

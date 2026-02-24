@@ -167,6 +167,8 @@ namespace dg_sock::network_rest_frame::model
         }
     };
 
+    using ClientResponse = Response;
+
     struct InternalRequest
     {
         Request request;
@@ -4966,8 +4968,8 @@ namespace dg_sock::network_rest_frame::client_impl1{
             DistributedRestController(std::unique_ptr<std::unique_ptr<RestControllerInterface>[]> rest_controller_arr,
                                       size_t pow2_rest_controller_arr_sz,
                                       stdxx::hdi_container<size_t> max_consume_per_load) noexcept: rest_controller_arr(std::move(rest_controller_arr)),
-                                                                                                  pow2_rest_controller_arr_sz(pow2_rest_controller_arr_sz),
-                                                                                                  max_consume_per_load(std::move(max_consume_per_load)){} 
+                                                                                                   pow2_rest_controller_arr_sz(pow2_rest_controller_arr_sz),
+                                                                                                   max_consume_per_load(std::move(max_consume_per_load)){} 
 
             auto request(model::ClientRequest&& request) noexcept -> std::expected<std::unique_ptr<ResponseInterface>, exception_t>
             {
@@ -5022,6 +5024,23 @@ namespace dg_sock::network_rest_frame::client_instance
 {
     using namespace dg_sock::network_rest_frame::model;
 
+    void init(const BuilderConfig& config)
+    {
+
+    }
+
+    void deinit() noexcept
+    {
+
+    }
+}
+
+namespace dg_sock::network_rest_frame::client
+{
+    using Url               = dg_sock::network_rest_frame::model::ResourceAddress;
+    using ClientRequest     = dg_sock::network_rest_frame::model::ClientRequest;
+    using ClientResponse    = dg_sock::network_rest_frame::model::ClientResponse;
+
     template <class T>
     class Promise
     {
@@ -5033,19 +5052,142 @@ namespace dg_sock::network_rest_frame::client_instance
             virtual auto wait() -> T = 0;
     };
 
-    void init(const BuilderConfig& config)
+    template <class T>
+    class PromiseFactoryInterface
     {
+        public:
 
-    }
+            virtual ~PromiseFactoryInterface() noexcept = default;
 
-    void deinit() noexcept
+            virtual auto get() -> dg_sock::unique_ptr<Promise<T>> = 0;
+    };
+
+    class RequestRetryMachineInterface
     {
+        public:
 
-    }
+            virtual ~RequestRetryMachineInterface() noexcept = default;
+
+            virtual auto get_retryable_promise(dg_sock::unique_ptr<PromiseFactoryInterface<ClientResponse>>&& factory) -> dg_sock::unique_ptr<Promise<ClientRepsonse>> = 0;
+    };
+
+    class RequestRetryMachineFactory
+    {
+        public:
+
+            using retry_policy_t = uint8_t;
+
+            static inline constexpr retry_policy_t EXPONENTIAL_EASY     = 0u;
+            static inline constexpr retry_policy_t EXPONENTIAL_MEDIUM   = 1u;
+            static inline constexpr retry_policy_t EXPONENTIAL_HARD     = 2u;
+
+            static inline constexpr retry_policy_t UNIFORM_EASY         = 3u;
+            static inline constexpr retry_policy_t UNIFORM_MEDIUM       = 4u;
+            static inline constexpr retry_policy_t UNIFORM_HARD         = 5u;
+
+            auto get(retry_policy_t retry_policy) -> dg_sock::unique_ptr<RequestRetryMachineInterface>
+            {
+                switch (retry_policy)
+                {
+                    case EXPONENTIAL_EASY:
+                    {
+                        break;
+                    }
+                    case EXPONENTIAL_MEDIUM:
+                    {
+                        break;
+                    }
+                    case EXPONENTIAL_HARD:
+                    {
+                        break;
+                    }
+                    case UNIFORM_EASY:
+                    {
+                        break;
+                    }
+                    case UNIFORM_MEDIUM:
+                    {
+                        break;
+                    }
+                    case UNIFORM_HARD:
+                    {
+                        break;
+                    }
+                    default:
+                    {
+                        throw std::invalid_argument("bad retry policy, enumeration out of range");
+                    }
+                }                
+            }
+    };
+
+    using retry_policy_t = RequestRetryMachineFactory::retry_policy_t;
 
     class RequestFactory
     {
+        private:
 
+            std::optional<Url> _url;
+            std::optional<dg_sock::string> _payload;
+            std::optional<dg_sock::string> _serialization_method;
+
+            static inline constexpr std::chrono::nanoseconds DEFAULT_CLIENT_TIMEOUT_DUR = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::minutes(1));
+
+        public:
+
+            RequestFactory(): _url(std::nullopt),
+                              _payload(std::nullopt),
+                              _serialization_method(std::nullopt){}
+
+            auto url(const Url& url_arg) -> RequestFactory&
+            {
+                this->_url = url_arg;
+
+                return *this;
+            }
+
+            auto payload(std::string_view payload_arg) -> RequestFactory&
+            {
+                this->_payload = payload_arg;
+
+                return *this;
+            }
+
+            auto serialization_method(std::string_view method_arg) -> RequestFactory&
+            {
+                this->_serialization_method = method_arg;
+
+                return *this;
+            }
+
+            auto get() -> ClientRequest
+            {
+                if (!this->_url.has_value())
+                {
+                    throw std::invalid_argument("bad url, url not set");
+                }
+
+                if (!this->_payload.has_value())
+                {
+                    throw std::invalid_argument("bad payload, payload not set");
+                }
+
+                if (!this->_serialization_method.has_value())
+                {
+                    throw std::invalid_argument("bad serialization method, serialization method not set");
+                }
+
+                return ClientRequest
+                {
+                    .requestee_url                  = this->_url.value(),
+                    .requestor                      = dg_sock::network_rest_frame::client_instance::address(),
+                    .payload                        = this->_payload.value(),
+                    .payload_serialization_method   = this->_serialization_method.value(),
+                    .client_timeout_dur             = DEFAULT_CLIENT_TIMEOUT_DUR,
+                    .server_abs_timeout             = std::nullopt,
+                    .designated_request_id          = std::nullopt
+                };
+            }
     };
 
     template <class T>
@@ -5083,25 +5225,28 @@ namespace dg_sock::network_rest_frame::client_instance
 
             using self              = RequestDispatcher;
 
+            static inline const std::chrono::nanoseconds DEFAULT_REQUEST_CLIENT_TIMEOUT_DURATION    = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(10));
+            static inline const std::chrono::nanoseconds DEFAULT_REQUEST_SERVER_TIMEOUT_DURATION    = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(10));
+
         public:
-            
+
             using value_type        = decltype(std::declval<Resolutor&>()(std::declval<const Response&>()));
             using resolutor_type    = Resolutor;
 
             template <class ResolutorLike = Resolutor, std::enable_if_t<std::is_default_constructible_v<ResolutorLike>, bool> = true>
             RequestDispatcher(): RequestDispatcher(ResolutorLike{},
-                                                   get_default_retry_policy(),
+                                                   this->get_default_retry_policy(),
                                                    nullptr,
                                                    false){}
 
             RequestDispatcher(Resolutor resolutor): RequestDispatcher(std::move(resolutor),
-                                                                      get_default_retry_policy(),
+                                                                      this->get_default_retry_policy(),
                                                                       nullptr,
                                                                       false){}
 
             auto set_retry_policy(retry_policy_t retry_policy) -> self&
             {
-                check_and_throw_retry_policy(retry_policy)
+                this->check_and_throw_retry_policy(retry_policy)
                 this->retry_policy = retry_policy;
 
                 return *this;
@@ -5141,12 +5286,7 @@ namespace dg_sock::network_rest_frame::client_instance
 
             auto get_promise() -> dg_sock::unique_ptr<Promise<value_type>>
             {
-                if (this->client_request == nullptr)
-                {
-                    throw std::invalid_argument("bad client request, null");
-                }
-
-                return {};
+                return RequestRetryMachineFactory{}.get(this->retry_policy)->get_retryable_promise(dg_sock::make_unique<InternalPromiseFactory>(this->get_full_request()));
             }
 
             auto get() -> value_type
@@ -5156,34 +5296,156 @@ namespace dg_sock::network_rest_frame::client_instance
 
         private:
 
-            class InternalPromise: public virtual Promise<value_type>
+            auto get_full_request_client_timeout_duration() -> std::chrono::nanoseconds
             {
+                return DEFAULT_REQUEST_CLIENT_TIMEOUT_DURATION;
+            }
+
+            auto get_full_request_server_absolute_timeout_duration() -> std::optional<std::chrono::time_point<std::chrono::utc_clock>>
+            {
+                return std::chrono::utc_clock::now() + DEFAULT_REQUEST_SERVER_TIMEOUT_DURATION;
+            }
+
+            auto get_full_request_designated_request_id() -> std::optional<request_id_t>
+            {
+                if (!this->is_distinct_request)
+                {
+                    return std::nullopt;
+                }                
+
+                return client_instance::get_request_id();
+            }
+
+            auto get_full_request() -> ClientRequest
+            {
+                if (this->client_request == nullptr)
+                {
+                    throw std::invalid_argument("bad client request, null");
+                }
+
+                return ClientRequest
+                {
+                    .requestee_url                  = this->client_request->requestee_url,
+                    .requestor                      = this->client_request->requestor,
+                    .payload                        = this->client_request->payload,
+                    .payload_serialization_format   = this->client_request->payload_serialization_format,
+                    .client_timeout_dur             = this->get_full_request_client_timeout_duration(),
+                    .server_abs_timeout             = this->get_full_request_server_absolute_timeout_duration(),
+                    .designated_request_id          = this->get_full_request_designated_request_id()
+                };
+            }
+
+            consteval auto get_default_retry_policy() const -> retry_policy_t
+            {
+                return RequestRetryMachineFactory::EXPONENTIAL_EASY;
+            }
+
+            void check_and_throw_retry_policy(retry_policy_t retry_policy)
+            {
+                RequestRetryMachineFactory{}.get(retry_policy);
+            }
+
+            class PromiseWrapper: public virtual Promise<ClientRepsonse>
+            {
+                private:
+
+                    dg_sock::unique_ptr<dg_sock::network_rest_frame::client::ResponseInterface> base;
+
                 public:
+
+                    PromiseWrapper(dg_sock::unique_ptr<dg_sock::network_rest_frame::client::ResponseInterface> base): base(std::move(base)){}
 
                     auto is_completed() noexcept -> bool
                     {
-                        return true;
+                        return this->base->is_completed();
                     }
 
-                    auto wait() -> value_type
+                    auto wait() -> ClientResponse
                     {
-                        return {};
+                        std::expected<ClientResponse, exception_t> response = this->base->response();
+
+                        if (!response.has_value())
+                        {
+                            dg_sock::network_exception::throw_exception(response.error());
+                        }
+
+                        return std::move(response.value());
+                    }
+            };
+
+            class InternalPromiseFactory: public virtual PromiseFactoryInterface<ClientResponse>
+            {
+                private:
+
+                    ClientRequest request;
+
+                public:
+
+                    InternalPromiseFactory(ClientRequest request): request(std::move(request)){}
+
+                    auto get() -> dg_sock::unique_ptr<Promise<ClientResponse>>
+                    {
+                        return dg_sock::make_unique<PromiseWrapper>(client_instance::request(this->request));
                     }
             };
     };
 
     class RequestClient
     {
+        private:
+
+            retry_policy_t retry_policy;
+            bool is_unique_request;
+
         public:
 
-            auto set_retry_policy() -> self&
+            RequestClient(): retry_policy(this->get_default_retry_policy()),
+                             is_unique_request(false){}
+
+            auto set_retry_policy(retry_policy_t retry_policy) -> self&
             {
+                this->check_and_nothrow_retry_policy(retry_policy);
+                this->retry_policy = retry_policy;
+
                 return *this;
             }
 
-            auto get_request_container() -> RequestDispatcher<>
+            auto set_multiple_request_uniqueness(bool is_unique) -> self&
             {
-                return {};
+                this->is_unique_request = is_unique;
+
+                return *this;
+            }
+
+            auto request(ClientRequest client_request) -> RequestDispatcher<>
+            {
+                auto rs = RequestDispatcher<>{};
+
+                rs.set_retry_policy(this->retry_policy);
+                rs.set_request(std::move(client_request));
+
+                if (this->is_unique_request)
+                {
+                    rs.unique();
+                }
+                else
+                {
+                    rs.non_unique();
+                }
+
+                return rs;
+            }
+
+        private:
+
+            consteval auto get_default_retry_policy() const -> retry_policy_t
+            {
+                return RequestRetryMachineFactory::EXPONENTIAL_EASY;
+            }
+
+            void check_and_throw_retry_policy(retry_policy_t retry_policy)
+            {
+                RequestRetryMachineFactory{}.get(retry_policy);
             }
     };
 }
