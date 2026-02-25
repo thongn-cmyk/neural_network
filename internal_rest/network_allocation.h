@@ -14,10 +14,7 @@
 #include "stdx.h"
 #include "network_exception.h"
 #include "network_concurrency.h"
-#include "network_randomizer.h"
-#include "network_producer_consumer.h"
 #include <memory>
-#include "network_stack_allocation.h"
 #include "network_trivial_serializer.h"
 #include "network_datastructure.h"
 #include <bit>
@@ -381,9 +378,9 @@ namespace dg_sock::network_allocation
 
         public:
 
-            static inline constexpr size_t FLUSH_THRESHOLD                  = size_t{1} << 20;
-            static inline constexpr size_t STACK_CAPTURE_POOL_SZ            = size_t{1} << 8;
-            static inline constexpr size_t STACK_CAPTURE_POOL_POPULATION    = size_t{1} << 8;
+            static inline constexpr size_t FLUSH_THRESHOLD                  = size_t{1} << 24;
+            static inline constexpr size_t STACK_CAPTURE_POOL_SZ            = size_t{1} << 6;
+            static inline constexpr size_t STACK_CAPTURE_POOL_POPULATION    = size_t{1} << 6;
             static inline constexpr size_t DEFAULT_ALIGNMENT_SZ             = BestBinaryUnitAllocator::DEFAULT_ALIGNMENT_SZ;
 
             AffinedAllocator(std::shared_ptr<BestBinaryUnitAllocator> base_allocator)
@@ -617,15 +614,50 @@ namespace dg_sock::network_allocation
             }
     };
 
+    class RoundBucketAffinedAllocator: private AffinedAllocator
+    {
+        private:
+
+            static inline constexpr size_t SLACK_BUFFER_SZ  = 8u;
+
+        public:
+
+            static inline constexpr size_t DEFAULT_ALIGNMENT_SZ         = AffinedAllocator::DEFAULT_ALIGNMENT_SZ;
+
+            RoundBucketAffinedAllocator(std::shared_ptr<BestBinaryUnitAllocator> base_allocator): AffinedAllocator(std::move(base_allocator)){}
+
+            inline auto malloc(size_t sz) -> void *
+            {
+                return AffinedAllocator::malloc(this->promote_size(sz));
+            }
+
+            inline auto realloc(void * buf, size_t blk_sz) -> void *
+            {
+                return AffinedAllocator::realloc(buf, this->promote_size(blk_sz));
+            }
+
+            inline void free(void * buf) noexcept
+            {
+                AffinedAllocator::free(buf);
+            }
+
+        private:
+
+            constexpr auto promote_size(size_t sz) const noexcept -> size_t
+            {
+                return stdxx::ceil2(sz + SLACK_BUFFER_SZ) - SLACK_BUFFER_SZ;
+            }
+    };
+
     class GlobalAllocator
     {
         private:
 
-            std::vector<std::unique_ptr<AffinedAllocator>> affined_allocator_vec;
+            std::vector<std::unique_ptr<RoundBucketAffinedAllocator>> affined_allocator_vec;
 
         public:
 
-            static inline constexpr size_t DEFAULT_ALIGNMENT_SZ = AffinedAllocator::DEFAULT_ALIGNMENT_SZ;
+            static inline constexpr size_t DEFAULT_ALIGNMENT_SZ = RoundBucketAffinedAllocator::DEFAULT_ALIGNMENT_SZ;
 
             GlobalAllocator(): affined_allocator_vec()
             {
@@ -633,7 +665,7 @@ namespace dg_sock::network_allocation
 
                 for (size_t i = 0u; i < dg_sock::network_concurrency::get_thread_count(); ++i)
                 {
-                    this->affined_allocator_vec.push_back(std::make_unique<AffinedAllocator>(allocator));
+                    this->affined_allocator_vec.push_back(std::make_unique<RoundBucketAffinedAllocator>(allocator));
                 }   
             }
 
