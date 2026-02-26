@@ -61,7 +61,7 @@ namespace dg_sock::network_kernel_mailbox_impl1_flash_streamx{
         UrgentAllocatorInstance::deinit();
     }
 
-    using internal_huge_kernel_buffer       = dg_sock::network_kernel_buffer::kernel_string<HugeAllocatorInstance>;
+    using internal_huge_kernel_buffer       = dg_sock::string;
     using internal_segment_kernel_buffer    = dg_sock::network_kernel_buffer::kernel_string<SegmentAllocatorInstance>; 
 
     template <class T>
@@ -2766,67 +2766,96 @@ namespace dg_sock::network_kernel_mailbox_impl1_flash_streamx{
     };
 
     //OK
-    class NetworkStatusMonitorWorker: public virtual dg_sock::network_concurrency::WorkerInterface{
-
+    class NetworkStatusMonitorWorker
+    {
         private:
 
-            std::shared_ptr<NetworkBusyStatusRetrieverInterface> netstat_retriever;
-            std::shared_ptr<NetworkBusyObserverInterface> busy_observer;
-            std::chrono::nanoseconds break_time; 
+            std::shared_ptr<void> daemon;
 
         public:
 
             NetworkStatusMonitorWorker(std::shared_ptr<NetworkBusyStatusRetrieverInterface> netstat_retriever,
                                        std::shared_ptr<NetworkBusyObserverInterface> busy_observer,
-                                       std::chrono::nanoseconds break_time) noexcept: netstat_retriever(std::move(netstat_retriever)),
-                                                                                      busy_observer(std::move(busy_observer)),
-                                                                                      break_time(break_time){}
-            
-            bool run_one_epoch() noexcept{
-
-                using netstat_interface_t = NetworkBusyStatusRetrieverInterface;
-                using observer_interface_t = NetworkBusyObserverInterface;
-
-                std::expected<netstat_interface_t::busy_level_t, exception_t> busy_level = this->netstat_retriever->get();
-
-                if (busy_level.has_value()){
-                    switch (busy_level.value()){
-                        case netstat_interface_t::BUSY_0:
-                        {
-                            this->busy_observer->notify(observer_interface_t::BUSY_0);
-                            break;
-                        }
-                        case netstat_interface_t::BUSY_1:
-                        {
-                            this->busy_observer->notify(observer_interface_t::BUSY_1);
-                            break;
-                        }
-                        case netstat_interface_t::BUSY_2:
-                        {
-                            this->busy_observer->notify(observer_interface_t::BUSY_2);
-                            break;
-                        }
-                        default:
-                        {
-                            if constexpr(DEBUG_MODE_FLAG){
-                                dg_sock::network_log_stackdump::critical(dg_sock::network_exception::verbose(dg_sock::network_exception::INTERNAL_CORRUPTION));
-                                std::abort();
-                            } else{
-                                std::unreachable();
-                            }
-                        }
-                    }
-                } else{
-                    dg_sock::network_log_stackdump::error(dg_sock::network_exception::verbose(busy_level.error()));
+                                       std::chrono::nanoseconds break_time)
+            {
+                if (netstat_retriever == nullptr)
+                {
+                    dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
                 }
 
-                std::this_thread::sleep_for(this->break_time);
-                return true;
+                if (busy_observer == nullptr)
+                {
+                    dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
+                }
+
+                this->daemon = cron_subsystem::register_periodic_cronjob(std::make_shared<InternalUpdater>(netstat_retriever, busy_observer), break_time);
             }
+            
+        private:
+            
+            class InternalUpdater: public virtual cron_subsystem::UpdatableInterface
+            {
+                private:
+
+                    std::shared_ptr<NetworkBusyStatusRetrieverInterface> netstat_retriever;
+                    std::shared_ptr<NetworkBusyObserverInterface> busy_observer;
+
+                public:
+
+                    InternalUpdater(std::shared_ptr<NetworkBusyStatusRetrieverInterface> netstat_retriever,
+                                    std::shared_ptr<NetworkBusyObserverInterface> busy_observer) noexcept: netstat_retriever(std::move(netstat_retriever)),
+                                                                                                           busy_observer(std::move(busy_observer)){}
+
+                    void update()
+                    {
+                        using netstat_interface_t = NetworkBusyStatusRetrieverInterface;
+                        using observer_interface_t = NetworkBusyObserverInterface;
+
+                        std::expected<netstat_interface_t::busy_level_t, exception_t> busy_level = this->netstat_retriever->get();
+
+                        if (busy_level.has_value())
+                        {
+                            switch (busy_level.value())
+                            {
+                                case netstat_interface_t::BUSY_0:
+                                {
+                                    this->busy_observer->notify(observer_interface_t::BUSY_0);
+                                    break;
+                                }
+                                case netstat_interface_t::BUSY_1:
+                                {
+                                    this->busy_observer->notify(observer_interface_t::BUSY_1);
+                                    break;
+                                }
+                                case netstat_interface_t::BUSY_2:
+                                {
+                                    this->busy_observer->notify(observer_interface_t::BUSY_2);
+                                    break;
+                                }
+                                default:
+                                {
+                                    if constexpr(DEBUG_MODE_FLAG)
+                                    {
+                                        dg_sock::network_log_stackdump::critical(dg_sock::network_exception::verbose(dg_sock::network_exception::INTERNAL_CORRUPTION));
+                                        std::abort();
+                                    } else
+                                    {
+                                        std::unreachable();
+                                    }
+                                }
+                            }
+                        }
+                        else
+                        {
+                            dg_sock::network_log_stackdump::error(dg_sock::network_exception::verbose(busy_level.error()));
+                        }
+                    }
+            };
     };
 
     //OK
-    class ExpiryWorker: public virtual dg_sock::network_concurrency::WorkerInterface{
+    class ExpiryWorker: public virtual dg_sock::network_concurrency::WorkerInterface
+    {
 
         private:
 
@@ -2901,7 +2930,8 @@ namespace dg_sock::network_kernel_mailbox_impl1_flash_streamx{
     };
 
     //OK
-    class InBoundWorker: public virtual dg_sock::network_concurrency::WorkerInterface{
+    class InBoundWorker: public virtual dg_sock::network_concurrency::WorkerInterface
+    {
 
         private:
 

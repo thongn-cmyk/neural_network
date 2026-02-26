@@ -222,39 +222,6 @@ namespace dg_sock::network_rest_frame::server
 {
     using namespace dg_sock::network_rest_frame::model;
 
-    //it just seems to me that every request (or flash_stream_x) should be <= 64KB
-
-    //and the pipe capacity should be shared and fixed, leaving a small room to do pings, healthchecks or not at all in the virtual network of packet routing
-    //because when I tried to solve the problem of equality or fairness in the virtual transmission network (the network that have fixed bidirectional edges and fixed outdegree and weights), I can't seem to find a better solutions in terms of no-connections and fair
-    //I have been able to prove that with a reasonable pipe velocity on client side, the packets can indeed be transmitted with 100% success rate, with a fail rate of around 10 ** -40 if enough retransmissions are done
-
-    //alright, so we have solved the problem of fairness of transmission and the problem of max consumption, hint: it's maxflow + betweenness centrality + really capping the retranmission queue -> 1-10 KB / client + 10 outdegree ...
-
-    //due to the speed difference of local RAM and socket, we now face the problem of capping the "awaiting buffers" and the worst recovery time of a certain transmission node in the middle of a transmission, or a temporary site
-    //if we increase the worst recovery time, we'd increase some of the traffic, which we'd want to reduce by increasing the processing capacity + network bandwidth from A -> B
-
-    //these are the not-quantifiables, because we'd expect a system to be working all the time, just like RAM or CPU, since the logics to solve this is way more complicated than you would ever think
-
-    //the other way would be to have multiple virtual networks of transferring from A -> B, and we'd have to "switch" from this network to another network to hit that recovery time equilibrium
-    //that is an advanced topic for a fiber network company to figure out, we usually scale nodes transfer 1TB -> 100TB for each of the node, but the methodology remains
-    //there is unlikely that recovery or temporary site is necessary, because it's a maxflow problem
-    
-    //but in our specific application, we only need to do min(process_speed, socket_speed) and transmit accordingly for ease of usage
-    //and we do synchronizations, so ... recovery is rarely a problem if we hold unique usage over the socket
-
-    //I guess that part of the reasons this is difficult is the memory management and where I'd tie the memory knots
-
-    //the mailbox_impl1, we guarantee 100% delivery
-    //for maiilbox_impl1_x, we also guarantee that but not as much via the cyclic_unordered_node_map
-    //but in the rest controller, we'd apply the "revolution" strategy again to make that 100%
-
-    //the mailbox_impl1 is self_sufficient and converge memory usage as it goes
-    //the mailbox_impl1_x is also self_sufficient and converge memory usage as it goes
-
-    //the rest controller uses global pool of memory that is managed by the users, we can safely say that the references held by users are the memory consumptions, so the lifetime of those resources are clear
-    //                                                               and the workers (which we control the operation window) so we don't have lifetime problems
-
-
     struct CacheControllerInterface
     {
         virtual ~CacheControllerInterface() noexcept = default;
@@ -349,7 +316,29 @@ namespace dg_sock::network_rest_frame::server
     {
         virtual ~RequestHandlerRetrieverInterface() noexcept = default;
 
-        virtual auto get_resolver(std::string_view resource_addr) noexcept -> RequestHandlerInterface * = 0;
+        virtual auto get_resolver(std::string_view resource_addr) noexcept -> std::add_pointer_t<RequestHandlerInterface> = 0;
+    };
+
+    struct RequestFiltererInterface
+    {
+        virtual ~RequestFiltererInterface() noexcept = default;
+        virtual auto thru(const Request& request) -> exception_t = 0;
+    };
+    
+    struct RequestFiltererDictionaryInterface
+    {
+        virtual ~RequestFiltererDictionaryInterface() noexcept = default;
+
+        virtual auto add_filterer(std::string_view resource_addr, std::shared_ptr<RequestFiltererInterface> request_filterer) noexcept -> exception_t = 0;
+        virtual void remove_filterer(std::string_view resource_addr) noexcept = 0;
+        virtual auto get_filterer(std::string_view resource_addr) noexcept -> std::shared_ptr<RequestFiltererInterface> = 0;
+    };
+
+    struct RequestFiltererRetrieverInterface
+    {
+        virtual ~RequestFiltererRetrieverInterface() noexcept = default;
+
+        virtual auto get_filterer(std::string_view resource_addr) noexcept -> std::add_pointer_t<RequestFiltererInterface> = 0;
     };
 }
 
@@ -432,15 +421,12 @@ namespace dg_sock::network_rest_frame::client
         virtual auto max_consume_size() noexcept -> size_t = 0;
     };
 
-    struct SubscriptibleTicketTimeoutManagerInterface: virtual TicketTimeoutManagerInterface,
-                                                       virtual UpdatableInterface{};
-
     struct RestControllerInterface
     {
         virtual ~RestControllerInterface() noexcept = default;
 
-        virtual auto request(model::ClientRequest&&) noexcept -> std::expected<std::unique_ptr<ResponseInterface>, exception_t> = 0;
-        virtual auto batch_request(std::move_iterator<model::ClientRequest *> client_request_arr, size_t client_request_arr_sz) noexcept -> std::expected<std::unique_ptr<BatchResponseInterface>, exception_t> = 0;
+        virtual auto request(model::ClientRequest&&) noexcept -> std::expected<dg_sock::unique_ptr<ResponseInterface>, exception_t> = 0;
+        virtual auto batch_request(std::move_iterator<model::ClientRequest *> client_request_arr, size_t client_request_arr_sz) noexcept -> std::expected<dg_sock::unique_ptr<BatchResponseInterface>, exception_t> = 0;
         virtual auto get_designated_request_id(size_t request_id_arr_sz, RequestID * request_id_arr) noexcept -> exception_t = 0;
         virtual auto max_consume_size() noexcept -> size_t = 0;
     };
@@ -1347,7 +1333,7 @@ namespace dg_sock::network_rest_frame::server_impl1
             std::unique_ptr<std::unique_ptr<CacheUniqueWriteTrafficControllerInterface>[]> base_arr;
             size_t pow2_base_arr_sz;
             size_t max_thru_sz;
-
+            
         public:
 
             DistributedCacheUniqueWriteTrafficController(std::unique_ptr<std::unique_ptr<CacheUniqueWriteTrafficControllerInterface>[]> base_arr,
@@ -1360,7 +1346,8 @@ namespace dg_sock::network_rest_frame::server_impl1
             {
                 //why arent we using a statistical thru (1 thru out of 40), we are susceptible to leaks of incoming_sz
 
-                if (incoming_sz > this->thru_capacity()){
+                if (incoming_sz > this->thru_capacity())
+                {
                     return std::unexpected(dg_sock::network_exception::INVALID_ARGUMENT);
                 }
 
@@ -1372,7 +1359,8 @@ namespace dg_sock::network_rest_frame::server_impl1
 
             void reset() noexcept
             {
-                for (size_t i = 0u; i < this->pow2_base_arr_sz; ++i){
+                for (size_t i = 0u; i < this->pow2_base_arr_sz; ++i)
+                {
                     this->base_arr[i]->reset();
                 }
             }
@@ -1384,68 +1372,71 @@ namespace dg_sock::network_rest_frame::server_impl1
     };
 
     //clear
-    class SubscriptibleWrappedTrafficController: public virtual UpdatableInterface
+    class SelfUpdateCacheUniqueWriteTrafficController: public virtual CacheUniqueWriteTrafficControllerInterface
     {
         private:
 
-            stdxx::hdi_container<std::chrono::nanoseconds> update_dur;
-            stdxx::inplace_hdi_container<std::atomic<std::chrono::time_point<std::chrono::steady_clock>>> last_updated;
-            std::shared_ptr<CacheUniqueWriteTrafficControllerInterface> updating_component;
+            std::shared_ptr<CacheUniqueWriteTrafficControllerInterface> base;
+            std::shared_ptr<void> daemon;
 
         public:
 
-            SubscriptibleWrappedTrafficController(std::chrono::nanoseconds update_dur,
-                                                  std::chrono::time_point<std::chrono::steady_clock> last_updated,
-                                                  std::shared_ptr<CacheUniqueWriteTrafficControllerInterface> updating_component) noexcept: update_dur(stdxx::hdi_container<std::chrono::nanoseconds>{update_dur}),
-                                                                                                                                            last_updated(std::in_place_t{}, last_updated),
-                                                                                                                                            updating_component(std::move(updating_component)){}
-
-            void update() noexcept
+            SelfUpdateCacheUniqueWriteTrafficController(std::unique_ptr<CacheUniqueWriteTrafficControllerInterface> base,
+                                                        std::chrono::nanoseconds update_dur)
             {
-                //attempt to do atomic_cmpexch to take unique update responsibility, clock always goes forward in time
-
-                std::chrono::time_point<std::chrono::steady_clock> last_updated_value   = this->last_updated.value.load(std::memory_order_relaxed);
-                std::chrono::time_point<std::chrono::steady_clock> now                  = std::chrono::steady_clock::now();
-                std::chrono::nanoseconds diff                                           = std::chrono::duration_cast<std::chrono::nanoseconds>(now - last_updated_value);
-
-                if (diff < this->update_dur.value){
-                    return;
+                if (base == nullptr)
+                {
+                    dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
                 }
 
-                bool has_mtx_ticket = this->last_updated.value.compare_exchange_strong(last_updated_value, now, std::memory_order_relaxed);
+                const std::chrono::nanoseconds MIN_UPDATE_DUR   = std::chrono::nanoseconds(0);
+                const std::chrono::nanoseconds MAX_UPDATE_DUR   = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::hours(1));
 
-                if (!has_mtx_ticket){
-                    return;
+                if (std::clamp(update_dur, MIN_UPDATE_DUR, MAX_UPDATE_DUR) != update_dur)
+                {
+                    dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
                 }
 
-                this->updating_component->reset(); //thru
+                this->base      = std::move(base);
+                this->daemon    = cron_subsystem::register_periodic_cronjob(dg_sock::make_shared<InternalUpdater>(this->base),
+                                                                            update_dur);
             }
 
+            auto thru(size_t incoming_sz) noexcept -> std::expected<bool, exception_t>
+            {
+                return this->base->thru(incoming_sz);
+            }
+
+            void reset() noexcept
+            {
+                this->base->reset();
+            }
+
+            auto thru_capacity() const noexcept -> size_t
+            {
+                return this->base->thru_capacity();
+            }
+
+        private:
+
+            class InternalUpdater: public virtual cron_subsystem::UpdatableInterface
+            {
+                private:
+
+                    std::shared_ptr<CacheUniqueWriteTrafficControllerInterface> base;
+
+                public:
+
+                    InternalUpdater(std::shared_ptr<CacheUniqueWriteTrafficControllerInterface> base): base(std::move(base)){}
+
+                    void update()
+                    {
+                        this->base->reset();
+                    }
+            };
     };
 
     //clear
-    class UpdateWorker: public virtual dg_sock::network_concurrency::WorkerInterface
-    {
-        private:
-
-            std::shared_ptr<UpdatableInterface> updatable;
-            std::chrono::nanoseconds heartbeat_dur;
-
-        public:
-
-            UpdateWorker(std::shared_ptr<UpdatableInterface> updatable,
-                         std::chrono::nanoseconds heartbeat_dur) noexcept: updatable(std::move(updatable)),
-                                                                           heartbeat_dur(heartbeat_dur){}
-
-            auto run_one_epoch() noexcept -> bool
-            {
-                this->updatable->update();
-                std::this_thread::sleep_for(this->heartbeat_dur);
-
-                return true;
-            }
-    };
-
     class RequestHandlerDictionary: public virtual RequestHandlerDictionaryInterface
     {
         private:
@@ -1455,9 +1446,8 @@ namespace dg_sock::network_rest_frame::server_impl1
 
         public:
 
-            RequestHandlerDictionary(dg_sock::unordered_unstable_map<dg_sock::string, std::shared_ptr<RequestHandlerInterface>> request_map,
-                                     std::unique_ptr<stdxx::fair_atomic_flag> mtx) noexcept: request_map(std::move(request_map)),
-                                                                                            mtx(std::move(mtx)){}
+            RequestHandlerDictionary(): request_map(),
+                                        mtx(stdxx::make_unique_fair_atomic_flag()){}
 
             auto add_resolver(std::string_view resource_addr, std::shared_ptr<RequestHandlerInterface> request_handler) noexcept -> exception_t
             {
@@ -1502,12 +1492,42 @@ namespace dg_sock::network_rest_frame::server_impl1
             }
     };
 
+    //clear
     class OneFetchRequestHandlerRetriever: public virtual RequestHandlerRetrieverInterface
     {
         private:
 
             std::shared_ptr<RequestHandlerDictionaryInterface> global_pool;
             dg_sock::unordered_unstable_map<dg_sock::string, std::shared_ptr<RequestHandlerInterface>> request_map;
+
+        public:
+
+            OneFetchRequestHandlerRetriever(std::shared_ptr<RequestHandlerDictionaryInterface> global_pool)
+            {
+                if (global_pool == nullptr)
+                {
+                    dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
+                }
+
+                this->global_pool   = std::move(global_pool);
+                this->request_map   = {};
+            }
+
+            auto get_resolver(std::string_view resource_addr) noexcept -> RequestHandlerInterface *
+            {
+                auto map_ptr = this->request_map.find(resource_addr);
+
+                if (map_ptr == this->request_map.end()) [[unlikely]]
+                {
+                    return this->slow_path(resource_addr);
+                }
+                else [[likely]]
+                {
+                    return map_ptr->second.get();
+                }
+            }            
+        
+        private:
 
             __attribute__((noinline)) auto slow_path(std::string_view resource_addr) noexcept -> RequestHandlerInterface *
             {
@@ -1537,14 +1557,86 @@ namespace dg_sock::network_rest_frame::server_impl1
 
                 return map_ptr->second.get();
             }
+    };
+
+    //clear
+    class RequestFiltererDictionary: public virtual RequestFiltererDictionaryInterface
+    {
+        private:
+
+            dg_sock::unordered_unstable_map<dg_sock::string, std::shared_ptr<RequestFiltererInterface>> filterer_map;
+            std::unique_ptr<stdxx::fair_atomic_flag> mtx;
 
         public:
 
-            OneFetchRequestHandlerRetriever(std::shared_ptr<RequestHandlerDictionaryInterface> global_pool,
-                                            dg_sock::unordered_unstable_map<dg_sock::string, std::shared_ptr<RequestHandlerInterface>> request_map) noexcept: global_pool(std::move(global_pool)),
-                                                                                                                                                    request_map(std::move(request_map)){}
+            RequestFiltererDictionary(): filterer_map(),
+                                         mtx(stdxx::make_unique_fair_atomic_flag()){}
 
-            auto get_resolver(std::string_view resource_addr) noexcept -> RequestHandlerInterface *
+            auto add_filterer(std::string_view resource_addr, std::shared_ptr<RequestFiltererInterface> request_filterer) noexcept -> exception_t
+            {
+                stdxx::xlock_guard<stdxx::fair_atomic_flag> lck_grd(*this->mtx);
+
+                if (request_filterer == nullptr)
+                {
+                    return dg_sock::network_exception::INVALID_ARGUMENT;
+                }
+
+                try
+                {
+                    this->filterer_map.insert_or_assign(resource_addr, request_filterer);
+                }
+                catch (...)
+                {
+                    return dg_sock::network_exception::wrap_std_exception(std::current_exception());
+                }
+
+                return dg_sock::network_exception::SUCCESS;
+            }
+
+            void remove_filterer(std::string_view resource_addr) noexcept
+            {
+                stdxx::xlock_guard<stdxx::fair_atomic_flag> lck_grd(*this->mtx);
+
+                this->filterer_map.erase(resource_addr);
+            }
+
+            auto get_filterer(std::string_view resource_addr) noexcept -> std::shared_ptr<RequestFiltererInterface>
+            {
+                stdxx::xlock_guard<stdxx::fair_atomic_flag> lck_grd(*this->mtx);
+
+                auto map_ptr = this->filterer_map.find(resource_addr);
+
+                if (map_ptr == this->filterer_map.end())
+                {
+                    return nullptr;
+                }
+
+                return map_ptr->second;
+            }
+    };
+
+    //clear
+    class OneFetchRequestFiltererRetriever: public virtual RequestFiltererRetrieverInterface
+    {
+        private:
+
+            std::shared_ptr<RequestFiltererDictionaryInterface> global_pool;
+            dg_sock::unordered_unstable_map<dg_sock::string, std::shared_ptr<RequestFiltererInterface>> request_map;
+        
+        public:
+
+            OneFetchRequestFiltererRetriever(std::shared_ptr<RequestFiltererDictionaryInterface> global_pool)
+            {
+                if (global_pool == nullptr)
+                {
+                    dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
+                }
+
+                this->global_pool   = std::move(global_pool);
+                this->request_map   = {};
+            }
+
+            auto get_filterer(std::string_view resource_addr) noexcept -> RequestFiltererInterface *
             {
                 auto map_ptr = this->request_map.find(resource_addr);
 
@@ -1556,15 +1648,47 @@ namespace dg_sock::network_rest_frame::server_impl1
                 {
                     return map_ptr->second.get();
                 }
-            }            
+            }
+        
+        private:
+            
+            __attribute__((noinline)) auto slow_path(std::string_view resource_addr) noexcept -> RequestFiltererInterface *
+            {
+                auto map_ptr = this->request_map.find(resource_addr);
+
+                if (map_ptr == this->request_map.end())
+                {
+                    std::shared_ptr<RequestFiltererInterface> tmp = this->global_pool->get_filterer(resource_addr);
+
+                    if (tmp == nullptr)
+                    {
+                        return nullptr;
+                    }
+
+                    try
+                    {
+                        auto [new_map_ptr, status] = this->request_map.insert(std::make_pair(resource_addr, tmp));
+                        dg_sock::network_exception_handler::dg_assert(status);
+                        map_ptr = new_map_ptr;
+                    }
+                    catch (...)
+                    {
+                        dg_sock::network_log_stackdump::critical(dg_sock::network_exception::verbose(dg_sock::network_exception::INTERNAL_CORRUPTION));
+                        std::abort();
+                    }
+                }
+
+                return map_ptr->second.get();
+            }
     };
 
+    //clear
     class OneRequestHandlerAdapter: public virtual RequestHandlerInterface
     {
         private:
 
             std::shared_ptr<OneRequestHandlerInterface> base;
-        
+
         public:
 
             OneRequestHandlerAdapter(std::shared_ptr<OneRequestHandlerInterface> base) noexcept: base(std::move(base)){}
@@ -1603,6 +1727,7 @@ namespace dg_sock::network_rest_frame::server_impl1
         private:
 
             std::shared_ptr<RequestHandlerRetrieverInterface> request_handler_map;
+            std::shared_ptr<RequestFiltererRetrieverInterface> request_filterer_map;
             std::shared_ptr<InfiniteCacheControllerInterface> request_cache_controller;
             std::shared_ptr<InfiniteCacheUniqueWriteControllerInterface> cachewrite_uex_controller;
             std::shared_ptr<CacheUniqueWriteTrafficControllerInterface> cachewrite_traffic_controller;
@@ -1620,10 +1745,10 @@ namespace dg_sock::network_rest_frame::server_impl1
         public:
 
             RequestResolverWorker(std::shared_ptr<RequestHandlerRetrieverInterface> request_handler_map,
+                                  std::shared_ptr<RequestFiltererRetrieverInterface> request_filterer_map,
                                   std::shared_ptr<InfiniteCacheControllerInterface> request_cache_controller,
                                   std::shared_ptr<InfiniteCacheUniqueWriteControllerInterface> cachewrite_uex_controller,
                                   std::shared_ptr<CacheUniqueWriteTrafficControllerInterface> cachewrite_traffic_controller,
-
                                   uint32_t recv_channel,
                                   uint32_t send_channel,
                                   size_t resolve_consume_sz,
@@ -1634,13 +1759,12 @@ namespace dg_sock::network_rest_frame::server_impl1
                                   size_t cache_server_fetch_feed_cap,
                                   size_t cache_fetch_feed_cap,
                                   size_t busy_consume_sz) noexcept: request_handler_map(std::move(request_handler_map)),
+                                                                    request_filterer_map(std::move(request_filterer_map)),
                                                                     request_cache_controller(std::move(request_cache_controller)),
                                                                     cachewrite_uex_controller(std::move(cachewrite_uex_controller)),
                                                                     cachewrite_traffic_controller(std::move(cachewrite_traffic_controller)),
-
                                                                     recv_channel(recv_channel),
                                                                     send_channel(send_channel),
-
                                                                     resolve_consume_sz(resolve_consume_sz),
                                                                     mailbox_feed_cap(mailbox_feed_cap),
                                                                     mailbox_prep_feed_cap(mailbox_prep_feed_cap),
@@ -2260,8 +2384,7 @@ namespace dg_sock::network_rest_frame::server_impl1
 
             static auto get_request_handler_dictionary() -> std::unique_ptr<RequestHandlerDictionaryInterface>
             {
-                return std::make_unique<RequestHandlerDictionary>(dg_sock::unordered_unstable_map<dg_sock::string, std::shared_ptr<RequestHandlerInterface>>{},
-                                                                  stdxx::make_unique_fair_atomic_flag());
+                return std::make_unique<RequestHandlerDictionary>();
             }
 
             static auto get_request_handler_one_fetch_retriever(std::shared_ptr<RequestHandlerDictionaryInterface> arg) -> std::unique_ptr<RequestHandlerRetrieverInterface>
@@ -2271,8 +2394,22 @@ namespace dg_sock::network_rest_frame::server_impl1
                     dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
                 }
 
-                return std::make_unique<OneFetchRequestHandlerRetriever>(std::move(arg),
-                                                                         dg_sock::unordered_unstable_map<dg_sock::string, std::shared_ptr<RequestHandlerInterface>>{});
+                return std::make_unique<OneFetchRequestHandlerRetriever>(std::move(arg));
+            }
+
+            static auto get_request_filterer_dictionary() -> std::unique_ptr<RequestFiltererDictionaryInterface>
+            {
+                return std::make_unique<RequestFiltererDictionary>();
+            }
+
+            static auto get_request_filterer_one_fetch_retriever(std::shared_ptr<RequestFiltererDictionaryInterface> arg) -> std::unique_ptr<RequestFiltererRetrieverInterface>
+            {
+                if (arg == nullptr)
+                {
+                    dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
+                }
+
+                return std::make_unique<OneFetchRequestFiltererRetriever>(std::move(arg));
             }
 
             static auto get_distributed_cache_controller(size_t map_capacity,
@@ -2371,28 +2508,14 @@ namespace dg_sock::network_rest_frame::server_impl1
                 return std::make_unique<DistributedCacheUniqueWriteTrafficController>(std::move(base_arr),
                                                                                       concurrency_sz,
                                                                                       max_thru_sz);
-            } 
+            }
 
-            static auto get_traffic_controller_wrapper(std::shared_ptr<CacheUniqueWriteTrafficControllerInterface> updatable,
-                                                       std::chrono::nanoseconds update_dur) -> std::unique_ptr<UpdatableInterface>
+            static auto get_self_update_traffic_controller(std::unique_ptr<CacheUniqueWriteTrafficControllerInterface> base,
+                                                           std::chrono::nanoseconds reset_duration) std::unique_ptr<CacheUniqueWriteTrafficControllerInterface>
             {
-                const std::chrono::nanoseconds MIN_UPDATE_DUR   = std::chrono::nanoseconds(0);
-                const std::chrono::nanoseconds MAX_UPDATE_DUR   = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::minutes(1));
-
-                if (updatable == nullptr)
-                {
-                    dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
-                }
-
-                if (std::clamp(update_dur, MIN_UPDATE_DUR, MAX_UPDATE_DUR) != update_dur)
-                {
-                    dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
-                }
-
-                return std::make_unique<SubscriptibleWrappedTrafficController>(update_dur,
-                                                                               std::chrono::steady_clock::now(),
-                                                                               std::move(updatable));
-            } 
+                return std::make_unique<SelfUpdateCacheUniqueWriteTrafficController>(std::move(base),
+                                                                                     reset_duration);
+            }
 
             static auto get_one_request_adapter(std::shared_ptr<OneRequestHandlerInterface> request_handler) -> std::unique_ptr<RequestHandlerInterface>
             {
@@ -2404,27 +2527,8 @@ namespace dg_sock::network_rest_frame::server_impl1
                 return std::make_unique<OneRequestHandlerAdapter>(std::move(request_handler));
             }
 
-            static auto get_update_worker(std::shared_ptr<UpdatableInterface> updatable,
-                                          std::chrono::nanoseconds update_dur) -> std::unique_ptr<dg_sock::network_concurrency::WorkerInterface>
-            {
-                const std::chrono::nanoseconds MIN_UPDATE_DUR   = std::chrono::nanoseconds(0);
-                const std::chrono::nanoseconds MAX_UPDATE_DUR   = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::minutes(1));
-
-                if (updatable == nullptr)
-                {
-                    dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
-                }
-
-                if (std::clamp(update_dur, MIN_UPDATE_DUR, MAX_UPDATE_DUR) != update_dur)
-                {
-                    dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
-                }
-
-                return std::make_unique<UpdateWorker>(std::move(updatable),
-                                                      update_dur);
-            }
-
             static auto get_request_resolver(std::shared_ptr<RequestHandlerRetrieverInterface> request_handler_map,
+                                             std::shared_ptr<RequestFiltererRetrieverInterface> request_filterer_map,
                                              std::shared_ptr<InfiniteCacheControllerInterface> cache_controller,
                                              std::shared_ptr<InfiniteCacheUniqueWriteControllerInterface> cache_write_controller,
                                              std::shared_ptr<CacheUniqueWriteTrafficControllerInterface> traffic_controller,
@@ -2447,6 +2551,11 @@ namespace dg_sock::network_rest_frame::server_impl1
                 const size_t MAX_BUSY_CONSUME_SZ    = size_t{1} << 30;
 
                 if (request_handler_map == nullptr)
+                {
+                    dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
+                }
+
+                if (request_filterer_map == nullptr)
                 {
                     dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
                 }
@@ -2507,6 +2616,7 @@ namespace dg_sock::network_rest_frame::server_impl1
                 }
 
                 return std::make_unique<RequestResolverWorker>(std::move(request_handler_map),
+                                                               std::move(request_filterer_map),
                                                                std::move(cache_controller),
                                                                std::move(cache_write_controller),
                                                                std::move(traffic_controller),
@@ -2578,6 +2688,7 @@ namespace dg_sock::network_rest_frame::server_instance
     struct RestServerSolution
     {
         std::shared_ptr<RequestHandlerDictionaryInterface> rest_resolver_dictionary;
+        std::shared_ptr<RequestFiltererRetrieverInterface> request_filterer_dictionary;
         std::shared_ptr<void> daemon_process;
     };
 
@@ -2656,13 +2767,15 @@ namespace dg_sock::network_rest_frame::server_instance
 
             auto build() -> RestServerSolution
             {
-                std::shared_ptr<RequestHandlerDictionaryInterface> handler_dict = this->get_request_handler_dictionary();
-                std::shared_ptr<void> daemon_process                            = this->get_daemon_process(handler_dict);
+                std::shared_ptr<RequestHandlerDictionaryInterface> handler_dict     = this->get_request_handler_dictionary();
+                std::shared_ptr<RequestFiltererDictionaryInterface> filterer_dict   = this->get_request_filterer_dictionary();
+                std::shared_ptr<void> daemon_process                                = this->get_daemon_process(handler_dict, filterer_dict);
 
                 return RestServerSolution
                 {
-                    .rest_resolver_dictionary   = handler_dict,
-                    .daemon_process             = daemon_process
+                    .rest_resolver_dictionary       = handler_dict,
+                    .request_filterer_dictionary    = filterer_dict,
+                    .daemon_process                 = daemon_process
                 };
             }
 
@@ -2670,7 +2783,7 @@ namespace dg_sock::network_rest_frame::server_instance
 
             auto run_workable(std::unique_ptr<dg_sock::network_concurrency::WorkerInterface> workable) -> std::shared_ptr<void>
             {
-                auto resource = dg_sock::network_exception_handler::throw_nolog(dg_sock::network_concurrency::daemon_saferegister(dg_sock::network_concurrency::COMPUTING_DAEMON, std::move(workable))); 
+                auto resource = dg_sock::network_exception_handler::throw_nolog(dg_sock::network_concurrency::daemon_saferegister(dg_sock::network_concurrency::REST_SERVER_DAEMON, std::move(workable))); 
 
                 return std::make_shared<decltype(resource)>(std::move(resource));
             }
@@ -2692,34 +2805,35 @@ namespace dg_sock::network_rest_frame::server_instance
                 return dg_sock::network_rest_frame::server_impl1::ComponentFactory::get_request_handler_dictionary();
             }
 
+            auto get_request_filterer_dictionary() -> std::unique_ptr<RequestFiltererDictionaryInterface>
+            {
+                return dg_sock::network_rest_frame::server_impl1::ComponentFactory::get_request_filterer_dictionary();
+            }
+
             auto get_cache_controller() -> std::unique_ptr<InfiniteCacheControllerInterface>
             {
                 return dg_sock::network_rest_frame::server_impl1::ComponentFactory::get_distributed_cache_controller(this->cache_each_capacity,
-                                                                                                                this->cache_response_capacity,
-                                                                                                                this->cache_concurrency_sz);
+                                                                                                                     this->cache_response_capacity,
+                                                                                                                     this->cache_concurrency_sz);
             }
 
             auto get_cache_unique_write_controller() -> std::unique_ptr<InfiniteCacheUniqueWriteControllerInterface>
             {
                 return dg_sock::network_rest_frame::server_impl1::ComponentFactory::get_distributed_unique_cache_write_right_controller(this->cache_unique_write_set_each_capacity,
-                                                                                                                                   this->cache_unique_write_set_concurrency_sz);
+                                                                                                                                        this->cache_unique_write_set_concurrency_sz);
             }
 
             auto get_traffic_controller() -> std::unique_ptr<CacheUniqueWriteTrafficControllerInterface>
             {
-                return dg_sock::network_rest_frame::server_impl1::ComponentFactory::get_distributed_cache_write_traffic_controller(this->cache_unique_write_traffic_controller_elemental_thru_cap,
-                                                                                                                              this->cache_unique_write_traffic_controller_concurrency_sz);
-            }
-
-            auto get_traffic_update_worker(const std::shared_ptr<CacheUniqueWriteTrafficControllerInterface>& traffic_controller) -> std::unique_ptr<dg_sock::network_concurrency::WorkerInterface>
-            {
                 using namespace dg_sock::network_rest_frame::server_impl1;
 
-                return ComponentFactory::get_update_worker(ComponentFactory::get_traffic_controller_wrapper(traffic_controller, this->cache_unique_write_traffic_controller_reset_duration),
-                                                           this->cache_unique_write_traffic_controller_reset_duration);
+                return ComponentFactory::get_self_update_traffic_controller(ComponentFactory::get_distributed_cache_write_traffic_controller(this->cache_unique_write_traffic_controller_elemental_thru_cap,
+                                                                                                                                             this->cache_unique_write_traffic_controller_concurrency_sz),
+                                                                            this->cache_unique_write_traffic_controller_reset_duration);
             }
 
             auto get_request_resolver_worker(const std::shared_ptr<RequestHandlerDictionaryInterface>& dictionary,
+                                             const std::shared_ptr<RequestFiltererDictionaryInterface>& filterer_dictionary,
                                              const std::shared_ptr<InfiniteCacheControllerInterface>& cache_controller,
                                              const std::shared_ptr<InfiniteCacheUniqueWriteControllerInterface>& cache_unique_write_controller,
                                              const std::shared_ptr<CacheUniqueWriteTrafficControllerInterface>& traffic_controller) -> std::unique_ptr<dg_sock::network_concurrency::WorkerInterface>
@@ -2727,6 +2841,7 @@ namespace dg_sock::network_rest_frame::server_instance
                 using namespace dg_sock::network_rest_frame::server_impl1;
 
                 return ComponentFactory::get_request_resolver(ComponentFactory::get_request_handler_one_fetch_retriever(dictionary),
+                                                              ComponentFactory::get_request_filterer_one_fetch_retriever(filterer_dictionary),
                                                               cache_controller,
                                                               cache_unique_write_controller,
                                                               traffic_controller,
@@ -2742,7 +2857,8 @@ namespace dg_sock::network_rest_frame::server_instance
                                                               this->request_resolver_busy_consume_sz);
             }
 
-            auto get_daemon_process(std::shared_ptr<RequestHandlerDictionaryInterface> dictionary) -> std::shared_ptr<void>
+            auto get_daemon_process(const std::shared_ptr<RequestHandlerDictionaryInterface>& dictionary,
+                                    const std::shared_ptr<RequestFiltererDictionaryInterface>& filterer_dictionary) -> std::shared_ptr<void>
             {
                 std::vector<std::unique_ptr<dg_sock::network_concurrency::WorkerInterface>> worker_vec      = {};
 
@@ -2750,11 +2866,11 @@ namespace dg_sock::network_rest_frame::server_instance
                 std::shared_ptr<InfiniteCacheUniqueWriteControllerInterface> cache_unique_write_controller  = this->get_cache_unique_write_controller();
                 std::shared_ptr<CacheUniqueWriteTrafficControllerInterface> traffic_controller              = this->get_traffic_controller();
 
-                worker_vec.push_back(this->get_traffic_update_worker(traffic_controller));
-
                 for (size_t i = 0u; i < this->request_resolver_worker_sz; ++i)
                 {
-                    worker_vec.push_back(this->get_request_resolver_worker(dictionary, cache_controller, cache_unique_write_controller, traffic_controller));
+                    worker_vec.push_back(this->get_request_resolver_worker(dictionary, filterer_dictionary,
+                                                                           cache_controller, cache_unique_write_controller,
+                                                                           traffic_controller));
                 }
 
                 return this->run_workable_vec(std::move(worker_vec));
@@ -2773,7 +2889,13 @@ namespace dg_sock::network_rest_frame::server_instance
 
     void deinit() noexcept
     {
+        std::atomic_thread_fence(std::memory_order_seq_cst);
         SolutionSingleton::get()    = {};
+    }
+
+    void bind_filter(const ResourceAddress& resource_addr, std::shared_ptr<RequestFiltererInterface> filterer)
+    {
+        dg_sock::network_exception_handler::nothrow_log(SolutionSingleton::get().request_filterer_dictionary->add_filterer(resource_addr.resoruce_addr, filterer));
     }
 
     void hook(const ResourceAddress& resource_addr, std::shared_ptr<OneRequestHandlerInterface> request_handler)
@@ -2971,6 +3093,8 @@ namespace dg_sock::network_rest_frame::client_impl1{
             dg_sock::vector<std::shared_ptr<ResponseObserverInterface>> observer_arr; 
             std::shared_ptr<BatchRequestResponseBase> base;
 
+        public:
+
             BatchRequestResponse(size_t resp_sz): observer_arr(resp_sz),
                                                   base(std::make_shared<BatchRequestResponseBase>(resp_sz))
             {
@@ -2979,10 +3103,6 @@ namespace dg_sock::network_rest_frame::client_impl1{
                     this->observer_arr[i] = std::make_shared<BatchRequestResponseBaseDesignatedObserver>(this->base, i);
                 }
             }
-
-            friend auto make_batch_request_response(size_t resp_sz) noexcept -> std::expected<std::unique_ptr<BatchRequestResponse>, exception_t>; 
-
-        public:
 
             BatchRequestResponse(const BatchRequestResponse&) = delete;
             BatchRequestResponse& operator =(const BatchRequestResponse&) = delete;
@@ -3014,9 +3134,9 @@ namespace dg_sock::network_rest_frame::client_impl1{
     };
 
     //
-    auto make_batch_request_response(size_t resp_sz) noexcept -> std::expected<std::unique_ptr<BatchRequestResponse>, exception_t>
+    auto make_batch_request_response(size_t resp_sz) noexcept -> std::expected<dg_sock::unique_ptr<BatchRequestResponse>, exception_t>
     {
-        return std::unique_ptr<BatchRequestResponse>(new BatchRequestResponse(resp_sz));
+        return dg_sock::make_unique<BatchRequestResponse>(resp_sz);
     }
 
     //clear
@@ -3551,6 +3671,7 @@ namespace dg_sock::network_rest_frame::client_impl1{
             };
     };
 
+    //
     template <class T, class StatelessIdExtractor, class ClockType = std::chrono::steady_clock>
     class temporal_ordered_item_map
     {
@@ -3881,7 +4002,7 @@ namespace dg_sock::network_rest_frame::client_impl1{
     };
 
     //clear
-    class TicketTimeoutManager: public virtual SubscriptibleTicketTimeoutManagerInterface
+    class TicketTimeoutManager
     {
         public:
 
@@ -4209,6 +4330,75 @@ namespace dg_sock::network_rest_frame::client_impl1{
                     this->pop_wait_bucket_vec.pop_front();
                 } 
             }
+    };
+
+    //clear
+    class SelfUpdateTicketTimeoutManager: public virtual TicketTimeoutManagerInterface
+    {
+        private:
+
+            std::shared_ptr<void> daemon;
+            std::shared_ptr<TicketTimeoutManager> base;
+
+            static inline const std::chrono::nanoseconds UPDATE_DURATION = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::milliseconds(1));
+
+        public:
+
+            SelfUpdateTicketTimeoutManager(std::unique_ptr<TicketTimeoutManager> base_arg)
+            {
+                if (base_arg == nullptr)
+                {
+                    dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
+                }
+
+                this->base      = std::move(base_arg);
+                std::shared_ptr<cron_subsystem::UpdatableInterface> updatable = dg_sock::make_shared<InternalUpdater>(this->base);
+                this->daemon    = cron_subsystem::register_periodic_cronjob(updatable, UPDATE_DURATION);
+            }
+
+            void clock_in(ClockInArgument * clockin_arr, size_t sz, exception_t * exception_arr) noexcept
+            {
+                this->base->clock_in(clockin_arr, sz, exception_arr);
+            }
+
+            void get_expired_ticket(model::ticket_id_t * output_arr, size_t& output_arr_sz, size_t output_arr_cap) noexcept
+            {
+                this->base->get_expired_ticket(output_arr, output_arr_sz, output_arr_cap);
+            }
+
+            void void_ticket(model::ticket_id_t * ticket_arr, size_t sz) noexcept
+            {
+                this->base->void_ticket(ticket_arr, sz);
+            }
+
+            auto max_clockin_dur() const noexcept -> std::chrono::nanoseconds
+            {
+                return this->base->max_clockin_dur();
+            }
+
+            auto max_consume_size() noexcept -> size_t
+            {
+                return this->base->max_consume_size();
+            }
+
+        private:
+            
+            class InternalUpdater: public virtual cron_subsystem::UpdatableInterface
+            {
+                private:
+
+                    std::shared_ptr<TicketTimeoutManager> base;
+                
+                public:
+
+                    InternalUpdater(std::shared_ptr<TicketTimeoutManager> base): base(std::move(base)){}
+
+                    void update()
+                    {
+                        this->base->update();
+                    }
+            };
+
     };
 
     //clear
@@ -4690,19 +4880,19 @@ namespace dg_sock::network_rest_frame::client_impl1{
                                                                                         request_id_generator(std::move(request_id_generator)),
                                                                                         max_consume_per_load(std::move(max_consume_per_load)){}
 
-            auto request(model::ClientRequest&& client_request) noexcept -> std::expected<std::unique_ptr<ResponseInterface>, exception_t>
+            auto request(model::ClientRequest&& client_request) noexcept -> std::expected<dg_sock::unique_ptr<ResponseInterface>, exception_t>
             {
-                std::expected<std::unique_ptr<BatchResponseInterface>, exception_t> resp = this->batch_request(std::make_move_iterator(std::addressof(client_request)), 1u);
+                std::expected<dg_sock::unique_ptr<BatchResponseInterface>, exception_t> resp = this->batch_request(std::make_move_iterator(std::addressof(client_request)), 1u);
 
                 if (!resp.has_value())
                 {
                     return std::unexpected(resp.error());
                 }
 
-                return self::internal_make_single_response(static_cast<std::unique_ptr<BatchResponseInterface>&&>(resp.value()));
+                return self::internal_make_single_response(static_cast<dg_sock::unique_ptr<BatchResponseInterface>&&>(resp.value()));
             }
 
-            auto batch_request(std::move_iterator<model::ClientRequest *> client_request_arr, size_t sz) noexcept -> std::expected<std::unique_ptr<BatchResponseInterface>, exception_t>
+            auto batch_request(std::move_iterator<model::ClientRequest *> client_request_arr, size_t sz) noexcept -> std::expected<dg_sock::unique_ptr<BatchResponseInterface>, exception_t>
             {
                 if (sz > this->max_consume_size())
                 {
@@ -4733,7 +4923,7 @@ namespace dg_sock::network_rest_frame::client_impl1{
                     return std::unexpected(err);
                 }
 
-                std::expected<std::unique_ptr<InternalBatchResponse>, exception_t> response = self::internal_make_batch_request_response(sz, ticket_id_arr.get(), this->ticket_controller); //open batch_response associated with the tickets, take ticket responsibility
+                std::expected<dg_sock::unique_ptr<InternalBatchResponse>, exception_t> response = self::internal_make_batch_request_response(sz, ticket_id_arr.get(), this->ticket_controller); //open batch_response associated with the tickets, take ticket responsibility
 
                 if (!response.has_value())
                 {
@@ -4802,7 +4992,7 @@ namespace dg_sock::network_rest_frame::client_impl1{
                     }
                 }
 
-                return std::unique_ptr<BatchResponseInterface>(std::move(response.value()));
+                return dg_sock::unique_ptr<BatchResponseInterface>(std::move(response.value()));
             }
 
             auto get_designated_request_id(size_t request_id_sz, RequestID * out_request_id_arr) noexcept -> exception_t
@@ -4826,8 +5016,8 @@ namespace dg_sock::network_rest_frame::client_impl1{
             {
                 private:
 
-                    std::unique_ptr<BatchRequestResponse> base;
-                    std::unique_ptr<model::ticket_id_t[]> ticket_id_arr;
+                    dg_sock::unique_ptr<BatchRequestResponse> base;
+                    dg_sock::unique_ptr<model::ticket_id_t[]> ticket_id_arr;
                     size_t ticket_id_arr_sz;
                     std::shared_ptr<TicketControllerInterface> ticket_controller;
                     bool was_released;
@@ -4836,8 +5026,8 @@ namespace dg_sock::network_rest_frame::client_impl1{
 
                     //defer construction -> factory, all deferred constructions are marked as noexcept to avoid leaks, such is malloc() -> inplace -> return, fails can only happen at malloc 
 
-                    InternalBatchResponse(std::unique_ptr<BatchRequestResponse> base,
-                                          std::unique_ptr<model::ticket_id_t[]> ticket_id_arr,
+                    InternalBatchResponse(dg_sock::unique_ptr<BatchRequestResponse> base,
+                                          dg_sock::unique_ptr<model::ticket_id_t[]> ticket_id_arr,
                                           size_t ticket_id_arr_sz,
                                           std::shared_ptr<TicketControllerInterface> ticket_controller,
                                           bool was_released) noexcept: base(std::move(base)),
@@ -4892,11 +5082,11 @@ namespace dg_sock::network_rest_frame::client_impl1{
             {
                 private:
 
-                    std::unique_ptr<BatchResponseInterface> base;
+                    dg_sock::unique_ptr<BatchResponseInterface> base;
                 
                 public:
 
-                    InternalSingleResponse(std::unique_ptr<BatchResponseInterface> base) noexcept: base(std::move(base)){}
+                    InternalSingleResponse(dg_sock::unique_ptr<BatchResponseInterface> base) noexcept: base(std::move(base)){}
 
                     auto is_completed() noexcept -> bool
                     {
@@ -4927,7 +5117,7 @@ namespace dg_sock::network_rest_frame::client_impl1{
             };
 
             static auto internal_make_batch_request_response(size_t request_sz, ticket_id_t * ticket_id_arr,
-                                                             std::shared_ptr<TicketControllerInterface> ticket_controller) noexcept -> std::expected<std::unique_ptr<InternalBatchResponse>, exception_t>
+                                                             std::shared_ptr<TicketControllerInterface> ticket_controller) noexcept -> std::expected<dg_sock::unique_ptr<InternalBatchResponse>, exception_t>
             {
                 if (request_sz == 0u)
                 {
@@ -4939,14 +5129,14 @@ namespace dg_sock::network_rest_frame::client_impl1{
                     return std::unexpected(dg_sock::network_exception::INVALID_ARGUMENT);
                 }
 
-                std::expected<std::unique_ptr<BatchRequestResponse>, exception_t> base = dg_sock::network_rest_frame::client_impl1::make_batch_request_response(request_sz);
+                std::expected<dg_sock::unique_ptr<BatchRequestResponse>, exception_t> base = dg_sock::network_rest_frame::client_impl1::make_batch_request_response(request_sz);
 
                 if (!base.has_value())
                 {
                     return std::unexpected(base.error());
                 }
 
-                std::expected<std::unique_ptr<model::ticket_id_t[]>, exception_t> cpy_ticket_id_arr = dg_sock::network_allocation::cstyle_make_unique<ticket_id_t[]>(request_sz);
+                std::expected<dg_sock::unique_ptr<model::ticket_id_t[]>, exception_t> cpy_ticket_id_arr = dg_sock::network_allocation::make_unique<ticket_id_t[]>(request_sz);
 
                 if (!cpy_ticket_id_arr.has_value())
                 {
@@ -4954,11 +5144,11 @@ namespace dg_sock::network_rest_frame::client_impl1{
                 }
 
                 std::copy(stdxx::safe_ptr_access(ticket_id_arr), std::next(ticket_id_arr, request_sz), cpy_ticket_id_arr.value().get());
-                std::expected<std::unique_ptr<InternalBatchResponse>, exception_t> rs = dg_sock::network_allocation::cstyle_make_unique<InternalBatchResponse>(std::move(base.value()), 
-                                                                                                                                                          std::move(cpy_ticket_id_arr.value()), 
-                                                                                                                                                          request_sz, 
-                                                                                                                                                          std::move(ticket_controller), 
-                                                                                                                                                          false);
+                std::expected<dg_sock::unique_ptr<InternalBatchResponse>, exception_t> rs = dg_sock::network_allocation::make_unique<InternalBatchResponse>(std::move(base.value()), 
+                                                                                                                                                            std::move(cpy_ticket_id_arr.value()), 
+                                                                                                                                                            request_sz, 
+                                                                                                                                                            std::move(ticket_controller), 
+                                                                                                                                                            false);
 
                 if (!rs.has_value())
                 {
@@ -4968,9 +5158,9 @@ namespace dg_sock::network_rest_frame::client_impl1{
                 return rs;
             }
 
-            static auto internal_make_single_response(std::unique_ptr<BatchResponseInterface>&& base) noexcept -> std::expected<std::unique_ptr<ResponseInterface>, exception_t>
+            static auto internal_make_single_response(dg_sock::unique_ptr<BatchResponseInterface>&& base) noexcept -> std::expected<dg_sock::unique_ptr<ResponseInterface>, exception_t>
             {
-                return dg_sock::network_allocation::cstyle_make_unique<InternalSingleResponse>(static_cast<std::unique_ptr<BatchResponseInterface>&&>(base));
+                return dg_sock::network_allocation::make_unique<InternalSingleResponse>(static_cast<dg_sock::unique_ptr<BatchResponseInterface>&&>(base));
             }
 
             static auto internal_make_internal_request(std::move_iterator<model::ClientRequest *> request_arr, ticket_id_t * ticket_id_arr, size_t request_arr_sz) noexcept -> std::expected<dg_sock::vector<model::InternalRequest>, exception_t>
@@ -5021,7 +5211,7 @@ namespace dg_sock::network_rest_frame::client_impl1{
                                                                                                    pow2_rest_controller_arr_sz(pow2_rest_controller_arr_sz),
                                                                                                    max_consume_per_load(std::move(max_consume_per_load)){} 
 
-            auto request(model::ClientRequest&& request) noexcept -> std::expected<std::unique_ptr<ResponseInterface>, exception_t>
+            auto request(model::ClientRequest&& request) noexcept -> std::expected<dg_sock::unique_ptr<ResponseInterface>, exception_t>
             {
                 size_t random_clue  = dg_sock::network_randomizer::randomize_int<size_t>();
                 size_t idx          = random_clue & (this->pow2_rest_controller_arr_sz - 1u);
@@ -5029,7 +5219,7 @@ namespace dg_sock::network_rest_frame::client_impl1{
                 return this->rest_controller_arr[idx]->request(static_cast<model::ClientRequest&&>(request));
             }
 
-            auto batch_request(std::move_iterator<model::ClientRequest *> request_arr, size_t request_arr_sz) noexcept -> std::expected<std::unique_ptr<BatchResponseInterface>, exception_t>
+            auto batch_request(std::move_iterator<model::ClientRequest *> request_arr, size_t request_arr_sz) noexcept -> std::expected<dg_sock::unique_ptr<BatchResponseInterface>, exception_t>
             {
                 if (request_arr_sz > this->max_consume_size())
                 {
@@ -5072,6 +5262,47 @@ namespace dg_sock::network_rest_frame::client_impl1{
                                               size_t recv_concurrency_queue_sz,
                                               size_t push_concurrency_queue_sz) -> std::unique_ptr<RequestContainerInterface>
             {
+                const size_t MIN_QUEUE_CAP                  = 1u;
+                const size_t MAX_QUEUE_CAP                  = size_t{1} << 30;
+                const size_t MIN_RECV_CONCURRENCY_QUEUE_SZ  = 1u;
+                const size_t MAX_RECV_CONCURRENCY_QUEUE_SZ  = size_t{1} << 30;
+                const size_t MIN_PUSH_CONCURRENCY_QUEUE_SZ  = 1u;
+                const size_t MAX_PUSH_CONCURRENCY_QUEUE_SZ  = size_t{1} << 30;
+
+                if (std::clamp(queue_cap, MIN_QUEUE_CAP, MAX_QUEUE_CAP) != queue_cap)
+                {
+                    dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
+                }
+
+                if (!stdxx::is_pow2(queue_cap))
+                {
+                    dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
+                }
+
+                if (std::clamp(recv_concurrency_queue_sz, MIN_RECV_CONCURRENCY_QUEUE_SZ, MAX_RECV_CONCURRENCY_QUEUE_SZ) != recv_concurrency_queue_sz)
+                {
+                    dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
+                }
+
+                if (!stdxx::is_pow2(recv_concurrency_queue_sz))
+                {
+                    dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
+                }
+
+                if (std::clamp(push_concurrency_queue_sz, MIN_PUSH_CONCURRENCY_QUEUE_SZ, MAX_PUSH_CONCURRENCY_QUEUE_SZ) != push_concurrency_queue_sz)
+                {
+                    dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
+                }
+
+                if (!stdxx::is_pow2(push_concurrency_queue_sz))
+                {
+                    dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
+                }
+
+                return std::make_unique<RequestContainer>(dg_sock::pow2_cyclic_queue<dg_sock::vector<model::InternalRequest>>(stdxx::ulog2(queue_cap)),
+                                                          dg_sock::pow2_cyclic_queue<std::pair<std::binary_semaphore *, std::optional<dg_sock::vector<model::InternalRequest>> *>>(stdxx::ulog2(recv_concurrency_queue_sz)),
+                                                          dg_sock::pow2_cyclic_queue<std::pair<std::binary_semaphore *, dg_sock::vector<model::InternalRequest>>>(stdxx::ulog2(push_concurrency_queue_sz)),
+                                                          stdxx::make_unique_fair_atomic_flag());
 
             }
 
@@ -5141,7 +5372,7 @@ namespace dg_sock::network_rest_frame::client_impl1{
             static auto get_ticket_timeout_manager(size_t push_concurrency_queue_sz,
                                                    size_t pop_concurrency_queue_sz,
                                                    size_t concurrent_request_cap,
-                                                   std::chrono::nanoseconds max_wait_dur) -> std::unique_ptr<SubscriptibleTicketTimeoutManagerInterface>
+                                                   std::chrono::nanoseconds max_wait_dur) -> std::unique_ptr<TicketTimeoutManagerInterface>
             {
                 const size_t MIN_CONCURRENCY_QUEUE_SZ   = 1u;
                 const size_t MAX_CONCURRENCY_QUEUE_SZ   = size_t{1} << 30;
@@ -5180,12 +5411,12 @@ namespace dg_sock::network_rest_frame::client_impl1{
                 size_t max_wait_sz              = actual_consume_sz;
                 size_t concurrent_request_cap_2 = concurrent_request_cap + max_wait_sz;
 
-                return std::make_unique<TicketTimeoutManager>(dg_sock::pow2_cyclic_queue<TicketTimeoutManager::PushWaitBucket>(stdxx::ulog2(push_concurrency_queue_sz)),
-                                                              dg_sock::pow2_cyclic_queue<TicketTimeoutManager::PopWaitBucket>(stdxx::ulog2(pop_concurrency_queue_sz)),
-                                                              temporal_ordered_item_map<model::ticket_id_t, TicketTimeoutManager::TicketIdExtractor, std::chrono::steady_clock>(concurrent_request_cap_2),
-                                                              stdxx::make_unique_fair_atomic_flag(),
-                                                              stdxx::hdi_container<std::chrono::nanoseconds>(max_wait_dur),
-                                                              stdxx::hdi_container<size_t>(actual_consume_sz));
+                return std::make_unique<SelfUpdateTicketTimeoutManager>(std::make_unique<TicketTimeoutManager>(dg_sock::pow2_cyclic_queue<TicketTimeoutManager::PushWaitBucket>(stdxx::ulog2(push_concurrency_queue_sz)),
+                                                                                                               dg_sock::pow2_cyclic_queue<TicketTimeoutManager::PopWaitBucket>(stdxx::ulog2(pop_concurrency_queue_sz)),
+                                                                                                               temporal_ordered_item_map<model::ticket_id_t, TicketTimeoutManager::TicketIdExtractor, std::chrono::steady_clock>(concurrent_request_cap_2),
+                                                                                                               stdxx::make_unique_fair_atomic_flag(),
+                                                                                                               stdxx::hdi_container<std::chrono::nanoseconds>(max_wait_dur),
+                                                                                                               stdxx::hdi_container<size_t>(actual_consume_sz)));
             }
 
             static auto get_inbound_worker(std::shared_ptr<TicketControllerInterface> ticket_controller,
@@ -5414,20 +5645,18 @@ namespace dg_sock::network_rest_frame::client_instance
 
             auto get() -> std::unique_ptr<client::RestControllerInterface>
             {
-                std::shared_ptr<RequestContainerInterface> request_container                = this->get_request_container();
-                std::shared_ptr<TicketControllerInterface> ticket_controller                = this->get_ticket_controller();
-                std::shared_ptr<SubscriptibleTicketTimeoutManagerInterface> timeout_manager = this->get_ticket_timeout_manager();
-                std::unique_ptr<RequestIDGeneratorInterface> request_id_generator           = this->get_request_id_generator();
+                std::shared_ptr<RequestContainerInterface> request_container        = this->get_request_container();
+                std::shared_ptr<TicketControllerInterface> ticket_controller        = this->get_ticket_controller();
+                std::shared_ptr<TicketTimeoutManagerInterface> timeout_manager      = this->get_ticket_timeout_manager();
+                std::unique_ptr<RequestIDGeneratorInterface> request_id_generator   = this->get_request_id_generator();
 
-                std::shared_ptr<void> inbound_worker                                        = this->get_inbound_worker(ticket_controller, timeout_manager);
-                std::shared_ptr<void> outbound_worker                                       = this->get_outbound_worker(request_container);
-                std::shared_ptr<void> expiry_worker                                         = this->get_expiry_worker(ticket_controller, timeout_manager);
-                std::shared_ptr<void> update_worker                                         = this->get_update_worker(timeout_manager);
+                std::shared_ptr<void> inbound_worker                                = this->get_inbound_worker(ticket_controller, timeout_manager);
+                std::shared_ptr<void> outbound_worker                               = this->get_outbound_worker(request_container);
+                std::shared_ptr<void> expiry_worker                                 = this->get_expiry_worker(ticket_controller, timeout_manager);
+                std::shared_ptr<void> master_worker                                 = this->get_master_worker({inbound_worker, outbound_worker, expiry_worker});
 
-                std::shared_ptr<void> master_worker                                         = this->get_master_worker({inbound_worker, outbound_worker, expiry_worker, update_worker});
+                size_t max_consume_per_load                                         = std::min(ticket_controller->max_consime_size(), ticket_controller->max_consume_size());
 
-                size_t max_consume_per_load                                                 = std::min(ticket_controller->max_consime_size(), ticket_controller->max_consume_size());
-                
                 return std::make_unique<client_impl1::RestController>(std::move(master_worker),
                                                                       std::move(request_container),
                                                                       std::move(ticket_controller),
@@ -5494,7 +5723,7 @@ namespace dg_sock::network_rest_frame::client_instance
                                                                                          this->ticket_controller_concurrency_sz);
             }
 
-            auto get_ticket_timeout_manager() -> std::unique_ptr<SubscriptibleTicketTimeoutManagerInterface>
+            auto get_ticket_timeout_manager() -> std::unique_ptr<TicketTimeoutManagerInterface>
             {
                 return client_impl1::ComponentFactory::get_ticket_timeout_manager(stdx::ceil2(this->system_thread_count),
                                                                                   stdx::ceil2(this->system_thread_count),
@@ -5525,9 +5754,13 @@ namespace dg_sock::network_rest_frame::client_instance
                     dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
                 }
 
-                return client_impl1::ComponentFactory::get_inbound_worker(ticket_controller,
-                                                                          timeout_manager,
-                                                                          this->recv_channel.value());
+                std::unique_ptr<dg_sock::network_concurrency::WorkerInterface> worker = client_impl1::ComponentFactory::get_inbound_worker(ticket_controller,
+                                                                                                                                           timeout_manager,
+                                                                                                                                           this->recv_channel.value());
+
+                auto worker_handle = dg_sock::network_exception_handler::throw_nolog(dg_sock::network_concurrency::daemon_saferegister(dg_sock::network_concurrency::REST_CLIENT_DAEMON, std::move(worker)));
+
+                return std::make_shared<decltype(worker_handle)>(std::move(worker_handle));
             }
 
             auto get_outbound_worker(std::shared_ptr<RequestContainerInterface> request_container) -> std::shared_ptr<void>
@@ -5542,8 +5775,12 @@ namespace dg_sock::network_rest_frame::client_instance
                     dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
                 }
 
-                return client_impl1::ComponentFactory::get_outbound_worker(request_container,
-                                                                           this->send_channel.value());
+                std::unique_ptr<dg_sock::network_concurrency::WorkerInterface> worker = client_impl1::ComponentFactory::get_outbound_worker(request_container,
+                                                                                                                                            this->send_channel.value())
+
+                auto worker_handle = dg_sock::network_exception_handler::throw_nolog(dg_sock::network_concurrency::daemon_saferegister(dg_sock::network_concurrency::REST_CLIENT_DAEMON, std::move(worker)));
+
+                return std::make_shared<decltype(worker_handle)>(std::move(worker_handle));
             }
 
             auto get_expiry_worker(std::shared_ptr<TicketControllerInterface> ticket_controller,
@@ -5559,9 +5796,13 @@ namespace dg_sock::network_rest_frame::client_instance
                     dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
                 }
 
-                return client_impl1::ComponentFactory::get_expiry_worker(ticket_controller,
-                                                                         ticket_timeout_manager,
-                                                                         0u);
+                std::unique_ptr<dg_sock::network_concurrency::WorkerInterface> worker = client_impl1::ComponentFactory::get_expiry_worker(ticket_controller,
+                                                                                                                                          ticket_timeout_manager,
+                                                                                                                                          0u);
+
+                auto worker_handle = dg_sock::network_exception_handler::throw_nolog(dg_sock::network_concurrency::daemon_saferegister(dg_sock::network_concurrency::REST_CLIENT_DAEMON, std::move(worker)));
+
+                return std::make_shared<decltype(worker_handle)>(std::move(worker_handle));
             }
 
             auto get_master_worker(std::vector<std::shared_ptr<void>> worker_vec) -> std::shared_ptr<void>
@@ -5637,6 +5878,16 @@ namespace dg_sock::network_rest_frame::client
 
             virtual auto get_retryable_promise(dg_sock::unique_ptr<PromiseFactoryInterface<T>>&& factory,
                                                dg_sock::unique_ptr<RetryExceptionRuleInterface>&& exception_rule) -> dg_sock::unique_ptr<Promise<T>> = 0;
+    };
+
+    class TrueOnAllRetryExceptionRule: public virtual RetryExceptionRuleInterface
+    {
+        public:
+
+            auto can_retry(exception_t err) noexcept -> bool
+            {
+                return true;
+            }
     };
 
     template <class T>
@@ -5715,7 +5966,7 @@ namespace dg_sock::network_rest_frame::client
             {
                 if (std::exchange(this->wait_broke, true))
                 {
-                    throw std::runtime_error("second wait");
+                    throw std::invalid_argument("second wait");
                 }
 
                 this->bucket->complete_status.wait(false, std::memory_order_acquire);
@@ -5749,10 +6000,191 @@ namespace dg_sock::network_rest_frame::client
                     size_t retry_idx;
 
                     std::chrono::time_point<std::chrono::steady_clock> since;
+                    bool is_concluded;
+
+                    bool is_on_retry;
+                    std::chrono::time_point<std::chrono::steady_clock> on_retry_since;
+                    size_t on_retry_idx;                    
 
                 public:
 
-                    InternalCoroutine(){}
+                    InternalCoroutine(std::shared_ptr<Bucket> bucket,
+                                      std::chrono::nanoseconds first_retry_dur,
+                                      std::chrono::nanoseconds max_retry_dur,
+                                      std::chrono::nanoseconds timeout_dur,
+                                      size_t max_retry_count,
+                                      dg_sock::unique_ptr<PromiseFactoryInterface<T>>&& promise_factory,
+                                      dg_sock::unique_ptr<RetryExceptionRuleInterface>&& exception_rule)
+                    {
+                        this->current_promise   = this->promise_factory->get();
+
+                        this->bucket            = std::move(bucket);
+                        this->promise_factory   = std::move(promise_factory);
+                        this->exception_rule    = std::move(exception_rule);
+
+                        this->first_retry_dur   = first_retry_dur;
+                        this->max_retry_dur     = max_retry_dur;
+                        this->timeout_dur       = timeout_dur;
+                        
+                        this->max_retry_count   = max_retry_count;
+                        this->retry_idx         = 0u;
+
+                        this->since             = std::chrono::steady_clock::now();
+                        this->is_concluded      = false;
+
+                        this->is_on_retry       = false;
+                        this->on_retry_since    = {};
+                        this->on_retry_idx      = {};
+                    }
+
+                    auto next() noexcept -> bool
+                    {
+                        if constexpr(DEBUG_MODE_FLAG)
+                        {
+                            if (this->is_concluded)
+                            {
+                                dg_sock::network_log_stackdump::critical(dg_sock::network_exception::verbose(dg_sock::network_exception::INTERNAL_CORRUPTION));
+                                std::abort();
+                            }
+                        }
+
+                        std::chrono::time_point<std::chrono::steady_clock> now  = std::chrono::steady_clock::now();
+                        std::chrono::nanoseconds lapsed                         = now - this->since;
+
+                        if (lapsed >= this->timeout_dur)
+                        {
+                            this->error_finalize(dg_sock::network_exception::wrap_std_exception(std::current_exception()));
+                            return true;
+                        }
+
+                        if (this->is_on_retry)
+                        {
+                            if (lapsed < this->get_retry_sleep_duration())
+                            {
+                                return false;
+                            }
+
+                            try
+                            {
+                                this->current_promise = this->promise_factory->get();
+                            }
+                            catch (...)
+                            {
+                                this->error_finalize(dg_sock::network_exception::wrap_std_exception(std::current_exception()));
+                                return true;
+                            }
+
+                            this->is_on_retry = false;
+                            return true;
+                        }
+
+                        if (!this->current_promise->is_completed())
+                        {
+                            return false;
+                        }
+
+                        try
+                        {
+                            T result = this->current_promise->wait();
+                            this->result_finalize(std::move(result));
+
+                            return true;
+                        }
+                        catch (...)
+                        {
+                            if (this->retry_idx == this->max_retry_count)
+                            {
+                                this->error_finalize(dg_sock::network_exception::MAX_REST_RETRY_REACHED);
+                                return true;
+                            }
+
+                            if (!this->exception_rule->can_retry(dg_sock::network_exception::wrap_std_exception(std::current_exception())))
+                            {
+                                this->error_finalize(dg_sock::network_exception::wrap_std_exception(std::current_exception()));
+                                return true;
+                            }
+
+                            if constexpr(DEBUG_MODE_FLAG)
+                            {
+                                if (this->is_on_retry)
+                                {
+                                    dg_sock::network_log_stackdump::critical(dg_sock::network_exception::verbose(dg_sock::network_exception::INTERNAL_CORRUPTION));
+                                    std::abort();
+                                }
+                            }
+
+                            this->is_on_retry       = true;
+                            this->on_retry_since    = now;
+                            this->on_retry_idx      = this->retry_idx;
+                            this->retry_idx         += 1u;
+
+                            return true;
+                        }
+                    }
+
+                    auto has_next() noexcept -> bool
+                    {
+                        if (this->is_concluded)
+                        {
+                            return false;
+                        }
+
+                        return true;
+                    }
+                
+                private:
+
+                    auto get_retry_sleep_duration() -> std::chrono::nanoseconds
+                    {
+                        return std::min(this->first_retry_dur * (size_t{1} << this->on_retry_idx), this->max_retry_dur);
+                    }
+
+                    void result_finalize(T result) noexcept
+                    {
+                        if constexpr(DEBUG_MODE_FLAG)
+                        {
+                            if (this->is_concluded)
+                            {
+                                dg_sock::network_log_stackdump::critical(dg_sock::network_exception::verbose(dg_sock::network_exception::INTERNAL_CORRUPTION));
+                                std::abort();
+                            }
+                        }
+
+                        static_assert(std::is_nothrow_move_copyable_v<T>);
+                        
+                        this->bucket->result    = std::move(result);
+
+                        if constexpr(STRONG_MEMORY_ORDERING_FLAG)
+                        {
+                            std::atomic_thread_fence(std::memory_order_seq_cst);
+                        }
+
+                        this->bucket->complete_status.exchange(true, std::memory_order_release);
+                        this->is_concluded = true;
+                    }
+
+                    void error_finalize(exception_t err) noexcept
+                    {
+                        if constexpr(DEBUG_MODE_FLAG)
+                        {
+                            if (this->is_concluded)
+                            {
+                                dg_sock::network_log_stackdump::critical(dg_sock::network_exception::verbose(dg_sock::network_exception::INTERNAL_CORRUPTION));
+                                std::abort();
+                            }
+                        }
+
+                        this->bucket->result    = std::nullopt;
+                        this->bucket->err       = err;
+
+                        if constexpr(STRONG_MEMORY_ORDERING_FLAG)
+                        {
+                            std::atomic_thread_fence(std::memory_order_seq_cst);   
+                        }
+
+                        this->bucket->complete_status.exchange(true, std::memory_order_release);
+                        this->is_concluded = true;
+                    }
             };
     };
 
@@ -5788,7 +6220,7 @@ namespace dg_sock::network_rest_frame::client
             }
     };
 
-    template <class T>
+    template <class T = void>
     class RequestRetryMachineFactory
     {
         public:
@@ -5824,7 +6256,7 @@ namespace dg_sock::network_rest_frame::client
 
         private:
 
-            auto get_exponential_easy() -> dg_sock::unique_ptr<RequestRetryMachineInterface>
+            auto get_exponential_easy() -> dg_sock::unique_ptr<RequestRetryMachineInterface<T>>
             {
                 const std::chrono::nanoseconds FIRST_RETRY_DUR_ARG  = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(1));
                 const std::chrono::nanoseconds MAX_RETRY_DUR_ARG    = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(4));
@@ -5837,7 +6269,7 @@ namespace dg_sock::network_rest_frame::client
                                                                                     RETRY_COUNT_ARG);
             }
 
-            auto get_exponential_medium() -> dg_sock::unique_ptr<RequestRetryMachineInterface>
+            auto get_exponential_medium() -> dg_sock::unique_ptr<RequestRetryMachineInterface<T>>
             {
                 const std::chrono::nanoseconds FIRST_RETRY_DUR_ARG  = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(1));
                 const std::chrono::nanoseconds MAX_RETRY_DUR_ARG    = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(16));
@@ -5850,7 +6282,7 @@ namespace dg_sock::network_rest_frame::client
                                                                                     RETRY_COUNT_ARG);
             }
 
-            auto get_exponential_hard() -> dg_sock::unique_ptr<RequestRetryMachineInterface>
+            auto get_exponential_hard() -> dg_sock::unique_ptr<RequestRetryMachineInterface<T>>
             {
                 const std::chrono::nanoseconds FIRST_RETRY_DUR_ARG  = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(1));
                 const std::chrono::nanoseconds MAX_RETRY_DUR_ARG    = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::minutes(1));
@@ -5864,7 +6296,12 @@ namespace dg_sock::network_rest_frame::client
             }
     };
 
-    using retry_policy_t = RequestRetryMachineFactory::retry_policy_t;
+    class RequestRetryMachineFactory<void>
+    {
+        using retry_policy_t = uint8_t;
+    };
+
+    using retry_policy_t = typename RequestRetryMachineFactory<>::retry_policy_t;
 
     class RequestFactory
     {
@@ -6062,7 +6499,10 @@ namespace dg_sock::network_rest_frame::client
                     return std::nullopt;
                 }                
 
-                return client_instance::get_request_id();
+                model::RequestID request_id;
+                client_instance::get_instance()->get_designated_request_id(1u, &request_id);
+
+                return request_id;
             }
 
             auto get_full_request() -> ClientRequest
@@ -6084,19 +6524,20 @@ namespace dg_sock::network_rest_frame::client
                 };
             }
 
-            auto get_raw_promise() -> dg_sock::unique_ptr<Promise<value_type>>
-            {
-                return {};
-            }
-
             auto get_promise_factory() -> dg_sock::unique_ptr<PromiseFactoryInterface<value_type>>
             {
-                return {};
+                return dg_sock::make_unique<InternalPromiseFactory>(this->get_full_request(),
+                                                                    this->resolutor);
+            }
+
+            auto get_raw_promise() -> dg_sock::unique_ptr<Promise<value_type>>
+            {
+                return this->get_promise_factory()->get();
             }
 
             auto get_exception_rule() -> dg_sock::unique_ptr<RetryExceptionRuleInterface>
             {
-                return {};
+                return dg_sock::make_unique<TrueOnAllRetryExceptionRule>();
             }
 
             void check_and_throw_retry_policy(retry_policy_t retry_policy)
@@ -6109,10 +6550,13 @@ namespace dg_sock::network_rest_frame::client
                 private:
 
                     dg_sock::unique_ptr<dg_sock::network_rest_frame::client::ResponseInterface> base;
+                    Resolutor resolutor;
 
                 public:
 
-                    PromiseWrapper(dg_sock::unique_ptr<dg_sock::network_rest_frame::client::ResponseInterface> base): base(std::move(base)){}
+                    PromiseWrapper(dg_sock::unique_ptr<dg_sock::network_rest_frame::client::ResponseInterface> base,
+                                   Resolutor resolutor): base(std::move(base)),
+                                                         resolutor(std::move(resolutor)){}
 
                     auto is_completed() noexcept -> bool
                     {
@@ -6128,7 +6572,7 @@ namespace dg_sock::network_rest_frame::client
                             dg_sock::network_exception::throw_exception(response.error());
                         }
 
-                        return std::move(response.value());
+                        return this->resolutor(std::move(response.value()));
                     }
             };
 
@@ -6137,14 +6581,18 @@ namespace dg_sock::network_rest_frame::client
                 private:
 
                     ClientRequest request;
+                    Resolutor resolutor;
 
                 public:
 
-                    InternalPromiseFactory(ClientRequest request): request(std::move(request)){}
+                    InternalPromiseFactory(ClientRequest request,
+                                           Resolutor resolutor): request(std::move(request)),
+                                                                 resolutor(std::move(resolutor)){}
 
                     auto get() -> dg_sock::unique_ptr<Promise<ClientResponse>>
                     {
-                        return dg_sock::make_unique<PromiseWrapper>(client_instance::get_instance()->request(this->request));
+                        return dg_sock::make_unique<PromiseWrapper>(client_instance::get_instance()->request(this->request),
+                                                                    this->resolutor);
                     }
             };
     };
@@ -6153,7 +6601,7 @@ namespace dg_sock::network_rest_frame::client
     {
         private:
 
-            retry_policy_t retry_policy;
+            std::optional<retry_policy_t> retry_policy;
             bool is_unique_request;
 
         public:
@@ -6197,9 +6645,9 @@ namespace dg_sock::network_rest_frame::client
 
         private:
 
-            consteval auto get_default_retry_policy() const -> retry_policy_t
+            consteval auto get_default_retry_policy() const -> std::optional<retry_policy_t>
             {
-                return RequestRetryMachineFactory::EXPONENTIAL_EASY;
+                return std::nullopt;
             }
 
             void check_and_throw_retry_policy(retry_policy_t retry_policy)
