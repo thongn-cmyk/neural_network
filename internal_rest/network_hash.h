@@ -98,7 +98,7 @@ namespace dg_sock::network_hash{
     }
 
     template <size_t LEN, size_t SEED = 0xFF>
-    static constexpr auto murmur_hash(const char * buf, const std::integral_constant<size_t, LEN>, const std::integral_constant<uint64_t, SEED> seed = std::integral_constant<size_t, SEED>{}) -> uint64_t{ //this should be compiler responsibility - yet reimplementation for now (because of compiler limitation)
+    static constexpr auto murmur_hash(const char * buf, const std::integral_constant<size_t, LEN>, const std::integral_constant<uint64_t, SEED> seed = std::integral_constant<uint64_t, SEED>{}) -> uint64_t{ //this should be compiler responsibility - yet reimplementation for now (because of compiler limitation)
 
         const size_t nblocks = LEN / 16;
 

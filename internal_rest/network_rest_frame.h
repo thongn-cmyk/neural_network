@@ -3,8 +3,12 @@
 
 //define HEADER_CONTROL 12
 
+#include <coroutine_subsystem/coroutine_x.h>
+#include <cron_subsystem/cron_subsystem.h>
+
 #include <stdint.h>
 #include <stdlib.h>
+#include "network_allocation.h"
 #include "network_std_container.h"
 #include <chrono>
 #include "network_exception.h"
@@ -13,7 +17,9 @@
 #include "network_compact_serializer.h"
 #include <variant>
 #include "network_kernel_mailbox.h"
- 
+#include "network_producer_consumer.h"
+#include "network_stack_allocation.h"
+
 namespace dg_sock::network_rest_frame::model
 {
     using ticket_id_t   = uint64_t; //I've thought long and hard, it's better to do bitshift, because the otherwise would be breaking single responsibilities, breach of extensions
@@ -27,7 +33,6 @@ namespace dg_sock::network_rest_frame::model
     using ipv4_storage_t        = std::array<char, 4u>;
     using ip_storage_t          = std::variant<ipv4_storage_t, ipv6_storage_t>; 
     using native_id_storage_t   = std::array<char, 8u>; 
-    using MailBoxArgument       = dg_sock::network_kernel_mailbox::MailBoxArgument;
     using Address               = dg_sock::network_kernel_mailbox::Address;
 
     struct CacheID
@@ -88,6 +93,8 @@ namespace dg_sock::network_rest_frame::model
             reflector(remote_addr, dg_sock::network_compact_serializer::wrap_container<uint16_t>(resource_addr));
         }
     };
+
+    using Url = ResourceAddress;
 
     struct ClientRequest
     {
@@ -1814,6 +1821,7 @@ namespace dg_sock::network_rest_frame::server_impl1
 
                 auto server_fetch_feed_resolutor                            = InternalServerFeedResolutor{};
                 server_fetch_feed_resolutor.request_handler_map             = this->request_handler_map.get();
+                server_fetch_feed_resolutor.request_filterer_map            = this->request_filterer_map.get();
                 server_fetch_feed_resolutor.mailbox_prep_feeder             = mailbox_prep_feeder.get();
                 server_fetch_feed_resolutor.cache_map_feeder                = cache_map_insert_feeder.get();
 
@@ -1946,16 +1954,18 @@ namespace dg_sock::network_rest_frame::server_impl1
                     InternalResponseFeedArgument * base_data_arr = data_arr.base();
 
                     dg_sock::network_stack_allocation::NoExceptAllocation<exception_t[]> exception_arr(sz);
-                    dg_sock::network_stack_allocation::NoExceptAllocation<MailBoxArgument[]> mailbox_arr(sz);
+                    dg_sock::network_stack_allocation::NoExceptAllocation<Address[]> addr_arr(sz);
+                    dg_sock::network_stack_allocation::NoExceptAllocation<dg_sock::string[]> content_arr(sz);
 
                     for (size_t i = 0u; i < sz; ++i)
                     {
-                        mailbox_arr[i].to           = base_data_arr[i].mailbox_arg.to;
-                        mailbox_arr[i].content      = static_cast<const void *>(base_data_arr[i].mailbox_arg.content.data());
-                        mailbox_arr[i].content_sz   = base_data_arr[i].mailbox_arg.content.size();
+                        addr_arr[i]     = base_data_arr[i].mailbox_arg.to;
+                        content_arr[i]  = std::move(base_data_arr[i].mailbox_arg.content);
                     }
 
-                    dg_sock::network_kernel_mailbox::send(this->send_channel, mailbox_arr.get(), sz, exception_arr.get());
+                    dg_sock::network_kernel_mailbox::send(this->send_channel,
+                                                          addr_arr.get(), content_arr.get(), sz,
+                                                          exception_arr.get());
 
                     for (size_t i = 0u; i < sz; ++i)
                     {
@@ -2061,6 +2071,8 @@ namespace dg_sock::network_rest_frame::server_impl1
             struct InternalServerFeedResolutor: dg_sock::network_producer_consumer::KVConsumerInterface<dg_sock::string, InternalServerFeedResolutorArgument>{
 
                 RequestHandlerRetrieverInterface * request_handler_map;
+                RequestFiltererRetrieverInterface * request_filterer_map;
+
                 dg_sock::network_producer_consumer::DeliveryHandle<InternalMailBoxPrepFeedArgument> * mailbox_prep_feeder;
                 dg_sock::network_producer_consumer::DeliveryHandle<InternalCacheMapFeedArgument> * cache_map_feeder;
 
@@ -2075,7 +2087,8 @@ namespace dg_sock::network_rest_frame::server_impl1
                         request_arr[i] = std::move(base_data_arr[i].request);
                     }
 
-                    RequestHandlerInterface * resource_handler = this->request_handler_map->get_resolver(local_uri_path);
+                    RequestHandlerInterface * resource_handler  = this->request_handler_map->get_resolver(local_uri_path);
+                    RequestFiltererInterface * request_filterer = this->request_filterer_map->get_filterer(local_uri_path);
 
                     if constexpr(DEBUG_MODE_FLAG)
                     {
@@ -2090,7 +2103,8 @@ namespace dg_sock::network_rest_frame::server_impl1
                     //a fail of this request could denote a unique_write good resource leak, not bad leak
                     //the contract of worst case == that of one normal request signal remains 
 
-                    resource_handler->handle(std::make_move_iterator(request_arr.get()), sz, response_arr.get());
+                    this->handle(std::make_move_iterator(request_arr.get()), sz, response_arr.get(),
+                                 resource_handler, request_filterer);
 
                     for (size_t i = 0u; i < sz; ++i)
                     {
@@ -2124,7 +2138,57 @@ namespace dg_sock::network_rest_frame::server_impl1
 
                         dg_sock::network_producer_consumer::delvrsrv_deliver(this->mailbox_prep_feeder, std::move(prep_arg));
                     }
-                } 
+                }
+
+                void handle(std::move_iterator<Request *> request_arr, size_t sz, Response * response_arr,
+                            RequestHandlerInterface * resource_handler,
+                            RequestFiltererInterface * resource_filterer) noexcept
+                {
+                    //this is complicated, we dont want to complicate this even though this should be another feeder
+                    //I would settle for this just because this is easy to implement
+
+                    dg_sock::network_stack_allocation::NoExceptAllocation<Request[]> thru_request_arr(sz);
+                    dg_sock::network_stack_allocation::NoExceptAllocation<Response[]> thru_response_arr(sz);
+                    dg_sock::network_stack_allocation::NoExceptAllocation<std::add_pointer_t<Response>[]> corresponding_response_ptr_arr(sz);
+
+                    size_t thru_sz              = 0u;
+                    Request * base_request_arr  = request_arr.base();
+
+                    for (size_t i = 0u; i < sz; ++i)
+                    {
+                        try
+                        {
+                            exception_t err = resource_filterer->thru(base_request_arr[i]);
+
+                            if (dg_sock::network_exception::is_failed(err))
+                            {
+                                dg_sock::network_exception::throw_exception(err);
+                            }
+                        }
+                        catch (...)
+                        {
+                            response_arr[i] = Response
+                            {
+                                .response                       = {},
+                                .response_serialization_format  = {},
+                                .err_code                       = dg_sock::network_exception::wrap_std_exception(std::current_exception())
+                            };
+
+                            continue;
+                        }
+
+                        thru_request_arr[thru_sz]               = std::move(base_request_arr[i]);
+                        corresponding_response_ptr_arr[thru_sz] = std::next(response_arr, i);
+                        thru_sz                                 += 1u;
+                    }
+
+                    resource_handler->handle(std::make_move_iterator(thru_request_arr.get()), thru_sz, thru_response_arr.get());
+
+                    for (size_t i = 0u; i < thru_sz; ++i)
+                    {
+                        *corresponding_response_ptr_arr[i] = std::move(thru_response_arr[i]);
+                    }
+                }
             };
 
             struct InternalCacheServerFeedArgument
@@ -2186,7 +2250,7 @@ namespace dg_sock::network_rest_frame::server_impl1
                         }
 
                         return;
-                    } 
+                    }
 
                     //thru, attempts to get the unique write 
 
@@ -2511,7 +2575,7 @@ namespace dg_sock::network_rest_frame::server_impl1
             }
 
             static auto get_self_update_traffic_controller(std::unique_ptr<CacheUniqueWriteTrafficControllerInterface> base,
-                                                           std::chrono::nanoseconds reset_duration) std::unique_ptr<CacheUniqueWriteTrafficControllerInterface>
+                                                           std::chrono::nanoseconds reset_duration) -> std::unique_ptr<CacheUniqueWriteTrafficControllerInterface>
             {
                 return std::make_unique<SelfUpdateCacheUniqueWriteTrafficController>(std::move(base),
                                                                                      reset_duration);
@@ -2688,7 +2752,7 @@ namespace dg_sock::network_rest_frame::server_instance
     struct RestServerSolution
     {
         std::shared_ptr<RequestHandlerDictionaryInterface> rest_resolver_dictionary;
-        std::shared_ptr<RequestFiltererRetrieverInterface> request_filterer_dictionary;
+        std::shared_ptr<RequestFiltererDictionaryInterface> request_filterer_dictionary;
         std::shared_ptr<void> daemon_process;
     };
 
@@ -2895,7 +2959,7 @@ namespace dg_sock::network_rest_frame::server_instance
 
     void bind_filter(const ResourceAddress& resource_addr, std::shared_ptr<RequestFiltererInterface> filterer)
     {
-        dg_sock::network_exception_handler::nothrow_log(SolutionSingleton::get().request_filterer_dictionary->add_filterer(resource_addr.resoruce_addr, filterer));
+        dg_sock::network_exception_handler::nothrow_log(SolutionSingleton::get().request_filterer_dictionary->add_filterer(resource_addr.resource_addr, filterer));
     }
 
     void hook(const ResourceAddress& resource_addr, std::shared_ptr<OneRequestHandlerInterface> request_handler)
@@ -3748,7 +3812,7 @@ namespace dg_sock::network_rest_frame::client_impl1{
                     return dg_sock::network_exception::INVALID_DICTIONARY_KEY;
                 }
 
-                map_ptr->second->sched_tiem = expiry_time;
+                map_ptr->second->sched_time = expiry_time;
                 this->correct_heap_node_at(map_ptr->second->heap_idx);
 
                 return dg_sock::network_exception::SUCCESS;
@@ -4756,18 +4820,20 @@ namespace dg_sock::network_rest_frame::client_impl1{
                 void push(std::move_iterator<InternalMailBoxArgument *> mailbox_arg, size_t sz) noexcept
                 {
                     dg_sock::network_stack_allocation::NoExceptAllocation<exception_t[]> exception_arr(sz);
-                    dg_sock::network_stack_allocation::NoExceptAllocation<MailBoxArgument[]> mailbox_arr(sz);
+                    dg_sock::network_stack_allocation::NoExceptAllocation<Address[]> addr_arr(sz);
+                    dg_sock::network_stack_allocation::NoExceptAllocation<dg_sock::string[]> content_arr(sz);
 
                     auto base_mailbox_arg = mailbox_arg.base(); 
 
                     for (size_t i = 0u; i < sz; ++i)
                     {
-                        mailbox_arr[i].to           = base_mailbox_arg[i].to;
-                        mailbox_arr[i].content      = static_cast<const void *>(base_mailbox_arg[i].content.data());
-                        mailbox_arr[i].content_sz   = base_mailbox_arg[i].content.size();
+                        addr_arr[i]     = base_mailbox_arg[i].to;
+                        content_arr[i]  = std::move(base_mailbox_arg[i].content);
                     }
 
-                    dg_sock::network_kernel_mailbox::send(this->send_channel, mailbox_arr.get(), sz, exception_arr.get());
+                    dg_sock::network_kernel_mailbox::send(this->send_channel,
+                                                          addr_arr.get(), content_arr.get(), sz,
+                                                          exception_arr.get());
 
                     for (size_t i = 0u; i < sz; ++i)
                     {
@@ -5451,7 +5517,7 @@ namespace dg_sock::network_rest_frame::client_impl1{
 
                 std::lock_guard<std::mutex> lck_grd(mtx);
 
-                static auto random_generator    = std::bind(std::uniform_int_distribution<uint64_t>(), std::mt19937_64{static_cast<uint32_t>(std::chrono::high_resolution_clock::now())});
+                static auto random_generator    = std::bind(std::uniform_int_distribution<uint64_t>(), std::mt19937_64{static_cast<uint32_t>(std::chrono::high_resolution_clock::now().time_since_epoch().count())});
                 uint64_t id_counter             = random_generator();
                 std::array<char, 8u> ip         = {};
 
@@ -5512,6 +5578,7 @@ namespace dg_sock::network_rest_frame::client_impl1{
 namespace dg_sock::network_rest_frame::client_instance
 {
     using namespace dg_sock::network_rest_frame::model;
+    using namespace dg_sock::network_rest_frame::client;
 
     struct SolutionBuilder
     {
@@ -5655,7 +5722,7 @@ namespace dg_sock::network_rest_frame::client_instance
                 std::shared_ptr<void> expiry_worker                                 = this->get_expiry_worker(ticket_controller, timeout_manager);
                 std::shared_ptr<void> master_worker                                 = this->get_master_worker({inbound_worker, outbound_worker, expiry_worker});
 
-                size_t max_consume_per_load                                         = std::min(ticket_controller->max_consime_size(), ticket_controller->max_consume_size());
+                size_t max_consume_per_load                                         = std::min(ticket_controller->max_consume_size(), ticket_controller->max_consume_size());
 
                 return std::make_unique<client_impl1::RestController>(std::move(master_worker),
                                                                       std::move(request_container),
@@ -5670,7 +5737,7 @@ namespace dg_sock::network_rest_frame::client_instance
             void dg_reflect(const Reflector& reflector) const
             {
                 reflector(base_ticket_cap, ticket_controller_concurrency_sz,
-                          system_thr_count, concurrent_request_cap,
+                          system_thread_count, concurrent_request_cap,
                           max_wait_dur, recv_channel, send_channel,
                           outbound_worker_sz, inbound_worker_sz,
                           expiry_worker_sz);
@@ -5680,7 +5747,7 @@ namespace dg_sock::network_rest_frame::client_instance
             void dg_reflect(const Reflector& reflector)
             {
                 reflector(base_ticket_cap, ticket_controller_concurrency_sz,
-                          system_thr_count, concurrent_request_cap,
+                          system_thread_count, concurrent_request_cap,
                           max_wait_dur, recv_channel, send_channel,
                           outbound_worker_sz, inbound_worker_sz,
                           expiry_worker_sz);   
@@ -5725,8 +5792,8 @@ namespace dg_sock::network_rest_frame::client_instance
 
             auto get_ticket_timeout_manager() -> std::unique_ptr<TicketTimeoutManagerInterface>
             {
-                return client_impl1::ComponentFactory::get_ticket_timeout_manager(stdx::ceil2(this->system_thread_count),
-                                                                                  stdx::ceil2(this->system_thread_count),
+                return client_impl1::ComponentFactory::get_ticket_timeout_manager(stdxx::ceil2(this->system_thread_count),
+                                                                                  stdxx::ceil2(this->system_thread_count),
                                                                                   this->get_concurrent_timeout_request_cap(),
                                                                                   this->max_wait_dur);
             }
@@ -5776,7 +5843,7 @@ namespace dg_sock::network_rest_frame::client_instance
                 }
 
                 std::unique_ptr<dg_sock::network_concurrency::WorkerInterface> worker = client_impl1::ComponentFactory::get_outbound_worker(request_container,
-                                                                                                                                            this->send_channel.value())
+                                                                                                                                            this->send_channel.value()); //its best practice to just wait here, we'd be back for optimizations
 
                 auto worker_handle = dg_sock::network_exception_handler::throw_nolog(dg_sock::network_concurrency::daemon_saferegister(dg_sock::network_concurrency::REST_CLIENT_DAEMON, std::move(worker)));
 
@@ -5813,29 +5880,46 @@ namespace dg_sock::network_rest_frame::client_instance
 
     struct Signature{};
 
-    using RestControllerSingleton = stdxx::singleton<Signature, std::unique_ptr<client::RequestControllerInterface>>;
-
-    void init(std::unique_ptr<client::RestControllerInterface> instance)
+    struct ClientInstanceResource
     {
-        RestControllerSingleton::get() = std::move(instance);
+        std::unique_ptr<client::RestControllerInterface> instance;
+        Address addr;
+    };
+
+    using RestControllerSingleton = stdxx::singleton<Signature, ClientInstanceResource>;
+
+    void init(std::unique_ptr<client::RestControllerInterface> instance,
+              const Address& instance_addr)
+    {
+        RestControllerSingleton::get() =
+        {
+            .instance   = std::move(instance),
+            .addr       = instance_addr
+        };
+
         std::atomic_thread_fence(std::memory_order_seq_cst);
     }
 
     void deinit() noexcept
     {
         std::atomic_thread_fence(std::memory_order_seq_cst);
-        RestControllerSingleton::get() = nullptr;
+        RestControllerSingleton::get() = {};
     }
 
-    auto get_instance() -> const std::unique_ptr<client::RequestControllerInterface>&
+    auto get_instance() -> const std::unique_ptr<client::RestControllerInterface>&
     {
-        return RestControllerSingleton::get();
+        return RestControllerSingleton::get().instance;
+    }
+
+    auto address() noexcept -> const Address&
+    {
+        return RestControllerSingleton::get().addr;
     }
 }
 
 namespace dg_sock::network_rest_frame::client
 {
-    using Url               = dg_sock::network_rest_frame::model::ResourceAddress;
+    using Url               = dg_sock::network_rest_frame::model::Url;
     using ClientRequest     = dg_sock::network_rest_frame::model::ClientRequest;
     using ClientResponse    = dg_sock::network_rest_frame::model::ClientResponse;
 
@@ -5942,11 +6026,11 @@ namespace dg_sock::network_rest_frame::client
                     throw std::invalid_argument("bad exception rule, null");
                 }
 
-                this->bucket            = dg_sock::network_allocation::make_shared<Bucket>();
-                this->bucket.complete_status.exchange(false, std::memory_order_relaxed);
-                this->bucket.result     = std::nullopt;
-                this->bucket.exception  = nullptr;
-                this->wait_broke        = false;
+                this->bucket                = dg_sock::network_allocation::make_shared<Bucket>();
+                this->bucket->complete_status.exchange(false, std::memory_order_relaxed);
+                this->bucket->result        = std::nullopt;
+                this->bucket->err           = dg_sock::network_exception::SUCCESS;
+                this->wait_broke            = false;
 
                 coroutine_x::run_detached(dg_sock::network_allocation::make_shared<InternalCoroutine>(this->bucket,
                                                                                                       first_retry_dur,
@@ -5954,7 +6038,8 @@ namespace dg_sock::network_rest_frame::client
                                                                                                       timeout_dur,
                                                                                                       retry_count,
                                                                                                       std::move(promise_factory),
-                                                                                                      std::move(exception_rule)));
+                                                                                                      std::move(exception_rule)),
+                                          coroutine_x::NETWORK_COROUTINE);
             }
 
             auto is_completed() noexcept -> bool
@@ -5974,10 +6059,10 @@ namespace dg_sock::network_rest_frame::client
 
                 if (!this->bucket->result.has_value())
                 {
-                    dg::network_exception::throw_exception(this->bucket->err);
+                    dg_sock::network_exception::throw_exception(this->bucket->err);
                 }
 
-                return std::move(this->bucket.result.value()); //I guess this is dangerous in the sense of memory ownership, where we'd rely on the shared_ptr<> for deallocation synchronizations
+                return std::move(this->bucket->result.value()); //I guess this is dangerous in the sense of memory ownership, where we'd rely on the shared_ptr<> for deallocation synchronizations
             }
 
         private:
@@ -6094,7 +6179,7 @@ namespace dg_sock::network_rest_frame::client
                         {
                             if (this->retry_idx == this->max_retry_count)
                             {
-                                this->error_finalize(dg_sock::network_exception::MAX_REST_RETRY_REACHED);
+                                this->error_finalize(dg_sock::network_exception::wrap_std_exception(std::current_exception()));
                                 return true;
                             }
 
@@ -6136,7 +6221,8 @@ namespace dg_sock::network_rest_frame::client
 
                     auto get_retry_sleep_duration() -> std::chrono::nanoseconds
                     {
-                        return std::min(this->first_retry_dur * (size_t{1} << this->on_retry_idx), this->max_retry_dur);
+                        return std::min(std::chrono::duration_cast<std::chrono::nanoseconds>(this->first_retry_dur * (size_t{1} << this->on_retry_idx)),
+                                        this->max_retry_dur);
                     }
 
                     void result_finalize(T result) noexcept
@@ -6150,7 +6236,7 @@ namespace dg_sock::network_rest_frame::client
                             }
                         }
 
-                        static_assert(std::is_nothrow_move_copyable_v<T>);
+                        static_assert(std::is_nothrow_move_assignable_v<T>);
                         
                         this->bucket->result    = std::move(result);
 
@@ -6296,11 +6382,6 @@ namespace dg_sock::network_rest_frame::client
             }
     };
 
-    class RequestRetryMachineFactory<void>
-    {
-        using retry_policy_t = uint8_t;
-    };
-
     using retry_policy_t = typename RequestRetryMachineFactory<>::retry_policy_t;
 
     class RequestFactory
@@ -6362,7 +6443,7 @@ namespace dg_sock::network_rest_frame::client
                     .requestee_url                  = this->_url.value(),
                     .requestor                      = dg_sock::network_rest_frame::client_instance::address(),
                     .payload                        = this->_payload.value(),
-                    .payload_serialization_method   = this->_serialization_method.value(),
+                    .payload_serialization_format   = this->_serialization_method.value(),
                     .client_timeout_dur             = DEFAULT_CLIENT_TIMEOUT_DUR,
                     .server_abs_timeout             = std::nullopt,
                     .designated_request_id          = std::nullopt
@@ -6426,7 +6507,7 @@ namespace dg_sock::network_rest_frame::client
 
             auto set_retry_policy(retry_policy_t retry_policy) -> self&
             {
-                this->check_and_throw_retry_policy(retry_policy)
+                this->check_and_throw_retry_policy(retry_policy);
                 this->retry_policy = retry_policy;
 
                 return *this;
@@ -6434,7 +6515,7 @@ namespace dg_sock::network_rest_frame::client
 
             auto set_request(ClientRequest client_request) -> self&
             {
-                this->client_request = dg_sock::network_allocation::make_shared(std::move(client_request));
+                this->client_request = dg_sock::network_allocation::make_shared<ClientRequest>(std::move(client_request));
 
                 return *this;
             }
@@ -6442,10 +6523,10 @@ namespace dg_sock::network_rest_frame::client
             template <class NewResolutor>
             auto set_resolutor(NewResolutor&& resolutor) -> RequestDispatcher<std::decay_t<NewResolutor>>
             {
-                RequestDispatcher rs(std::forward<NewResolutor>(resolutor),
-                                     this->retry_policy,
-                                     this->client_request,
-                                     this->is_distinct_request);
+                RequestDispatcher<std::decay_t<NewResolutor>> rs(std::forward<NewResolutor>(resolutor),
+                                                                 this->retry_policy,
+                                                                 this->client_request,
+                                                                 this->is_distinct_request);
 
                 return rs;
             }
@@ -6468,8 +6549,8 @@ namespace dg_sock::network_rest_frame::client
             {
                 if (this->retry_policy.has_value())
                 {
-                    return RequestRetryMachineFactor<value_type>{}.get(this->retry_policy.value())->get_retryable_promise(this->get_promise_factory(),
-                                                                                                                          this->get_exception_rule());
+                    return RequestRetryMachineFactory<value_type>{}.get(this->retry_policy.value())->get_retryable_promise(this->get_promise_factory(),
+                                                                                                                           this->get_exception_rule());
                 }
 
                 return this->get_raw_promise();
@@ -6542,7 +6623,7 @@ namespace dg_sock::network_rest_frame::client
 
             void check_and_throw_retry_policy(retry_policy_t retry_policy)
             {
-                RequestRetryMachineFactory{}.get(retry_policy);
+                RequestRetryMachineFactory<value_type>{}.get(retry_policy);
             }
 
             class PromiseWrapper: public virtual Promise<value_type>
@@ -6563,7 +6644,7 @@ namespace dg_sock::network_rest_frame::client
                         return this->base->is_completed();
                     }
 
-                    auto wait() -> ClientResponse
+                    auto wait() -> value_type
                     {
                         std::expected<ClientResponse, exception_t> response = this->base->response();
 
@@ -6589,10 +6670,17 @@ namespace dg_sock::network_rest_frame::client
                                            Resolutor resolutor): request(std::move(request)),
                                                                  resolutor(std::move(resolutor)){}
 
-                    auto get() -> dg_sock::unique_ptr<Promise<ClientResponse>>
+                    auto get() -> dg_sock::unique_ptr<Promise<value_type>>
                     {
-                        return dg_sock::make_unique<PromiseWrapper>(client_instance::get_instance()->request(this->request),
-                                                                    this->resolutor);
+                        ClientRequest cpy = this->request;
+                        std::expected<dg_sock::unique_ptr<ResponseInterface>, exception_t> rs = client_instance::get_instance()->request(std::move(cpy));
+
+                        if (!rs.has_value())
+                        {
+                            dg_sock::network_exception::throw_exception(rs.error());
+                        }
+
+                        return dg_sock::make_unique<PromiseWrapper>(std::move(rs.value()), this->resolutor);
                     }
             };
     };
@@ -6604,14 +6692,16 @@ namespace dg_sock::network_rest_frame::client
             std::optional<retry_policy_t> retry_policy;
             bool is_unique_request;
 
+            using self = RequestClient;
+
         public:
 
-            RequestClient(): retry_policy(this->get_default_retry_policy()),
+            RequestClient(): retry_policy(std::nullopt),
                              is_unique_request(false){}
 
             auto set_retry_policy(retry_policy_t retry_policy) -> self&
             {
-                this->check_and_nothrow_retry_policy(retry_policy);
+                this->check_and_throw_retry_policy(retry_policy);
                 this->retry_policy = retry_policy;
 
                 return *this;
@@ -6628,7 +6718,11 @@ namespace dg_sock::network_rest_frame::client
             {
                 auto rs = RequestDispatcher<>{};
 
-                rs.set_retry_policy(this->retry_policy);
+                if (this->retry_policy.has_value())
+                {
+                    rs.set_retry_policy(this->retry_policy.value());
+                }
+
                 rs.set_request(std::move(client_request));
 
                 if (this->is_unique_request)
@@ -6645,14 +6739,9 @@ namespace dg_sock::network_rest_frame::client
 
         private:
 
-            consteval auto get_default_retry_policy() const -> std::optional<retry_policy_t>
-            {
-                return std::nullopt;
-            }
-
             void check_and_throw_retry_policy(retry_policy_t retry_policy)
             {
-                RequestRetryMachineFactory{}.get(retry_policy);
+                RequestRetryMachineFactory<int>{}.get(retry_policy);
             }
     };
 }

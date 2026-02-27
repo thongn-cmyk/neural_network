@@ -17,6 +17,7 @@
 #include <memory>
 #include "network_trivial_serializer.h"
 #include "network_datastructure.h"
+#include "network_hash.h"
 #include <bit>
 
 namespace dg_sock::network_allocation
@@ -374,14 +375,13 @@ namespace dg_sock::network_allocation
             std::vector<MemoryPool> pool_vec;
             std::shared_ptr<BestBinaryUnitAllocator> base_allocator;
             unordered_map<size_t, pow2_cyclic_queue<void *>> cache_map;
-            size_t total_memory_counter;
 
         public:
 
             static inline constexpr size_t FLUSH_THRESHOLD                  = size_t{1} << 24;
             static inline constexpr size_t STACK_CAPTURE_POOL_SZ            = size_t{1} << 6;
             static inline constexpr size_t STACK_CAPTURE_POOL_POPULATION    = size_t{1} << 6;
-            static inline constexpr size_t DEFAULT_ALIGNMENT_SZ             = BestBinaryUnitAllocator::DEFAULT_ALIGNMENT_SZ;
+            static inline constexpr size_t DEFAULT_ALIGNMENT_SZ             = std::min(BestBinaryUnitAllocator::DEFAULT_ALIGNMENT_SZ, static_cast<size_t>(sizeof(uint32_t)));
 
             AffinedAllocator(std::shared_ptr<BestBinaryUnitAllocator> base_allocator)
             {
@@ -390,10 +390,9 @@ namespace dg_sock::network_allocation
                     throw std::invalid_argument("bad base allocator, null");
                 }
 
-                this->pool_vec              = {};
-                this->base_allocator        = std::move(base_allocator);
-                this->cache_map             = {};
-                this->total_memory_counter  = 0u;
+                this->pool_vec          = {};
+                this->base_allocator    = std::move(base_allocator);
+                this->cache_map         = {};
 
                 for (size_t i = 0u; i < STACK_CAPTURE_POOL_SZ; ++i)
                 {
@@ -404,6 +403,11 @@ namespace dg_sock::network_allocation
                         .pool = std::move(pool)
                     });
                 }
+            }
+
+            ~AffinedAllocator() noexcept
+            {
+                this->flush();
             }
 
             inline auto malloc(size_t sz) -> void *
@@ -459,7 +463,6 @@ namespace dg_sock::network_allocation
                 uint32_t buf_usr_sz;
                 std::memcpy(&buf_usr_sz, previous_buf, sizeof(uint32_t));
 
-                size_t buf_actual_sz    = buf_usr_sz + sizeof(uint32_t);
                 auto map_ptr            = this->cache_map.find(buf_usr_sz);
 
                 if (map_ptr != this->cache_map.end() && map_ptr->second.size() != map_ptr->second.capacity()) [[likely]]
@@ -473,8 +476,6 @@ namespace dg_sock::network_allocation
                             std::abort();
                         }
                     }
-    
-                    this->total_memory_counter += buf_actual_sz;
                 }
                 else [[unlikely]]
                 {
@@ -545,16 +546,10 @@ namespace dg_sock::network_allocation
                 uint32_t buf_usr_sz;
                 std::memcpy(&buf_usr_sz, previous_buf, sizeof(uint32_t));
 
-                size_t buf_actual_sz    = buf_usr_sz + sizeof(uint32_t);
                 auto map_ptr            = this->cache_map.find(buf_usr_sz);
 
                 if (map_ptr == this->cache_map.end())
                 {
-                    if (this->total_memory_counter + buf_actual_sz >= FLUSH_THRESHOLD)
-                    {
-                        this->flush();
-                    }
-
                     if (this->pool_vec.empty())
                     {
                         this->flush();
@@ -575,8 +570,8 @@ namespace dg_sock::network_allocation
 
                 if (map_ptr->second.size() == map_ptr->second.capacity())
                 {
+                    this->free_user_ptr(map_ptr->second.front());
                     map_ptr->second.pop_front();
-                    this->total_memory_counter -= buf_actual_sz;
                 }
 
                 exception_t err = map_ptr->second.push_back(buf);
@@ -588,8 +583,11 @@ namespace dg_sock::network_allocation
                         std::abort();
                     }
                 }
+            }
 
-                this->total_memory_counter += buf_actual_sz;
+            inline void free_user_ptr(void * ptr) noexcept
+            {
+                this->base_allocator->free(std::prev(static_cast<char *>(ptr), sizeof(uint32_t)));
             }
 
             void flush() noexcept
@@ -598,8 +596,7 @@ namespace dg_sock::network_allocation
                 {
                     for (void * mempiece: map_pair.second)
                     {
-                        void * previous_mempiece = std::prev(static_cast<char *>(mempiece), sizeof(uint32_t));
-                        this->base_allocator->free(previous_mempiece);
+                        this->free_user_ptr(mempiece);
                     }
 
                     map_pair.second.clear();
@@ -610,11 +607,119 @@ namespace dg_sock::network_allocation
                 }
 
                 this->cache_map.clear();
-                this->total_memory_counter = 0u;
             }
     };
 
-    class RoundBucketAffinedAllocator: private AffinedAllocator
+    class LargeSmallAffinedAllocator: private AffinedAllocator
+    {
+        private:
+
+            std::shared_ptr<BestBinaryUnitAllocator> _allocator;
+
+            static inline constexpr uint8_t SMALL_ALLOCATION_FLAG       = 0u;
+            static inline constexpr uint8_t LARGE_ALLOCATION_FLAG       = 1u;
+
+        public:
+
+            static inline constexpr size_t DEFAULT_ALIGNMENT_SZ         = 1u;
+            static inline constexpr size_t LARGE_BUFFER_SIZE            = size_t{1} << 18;
+
+            LargeSmallAffinedAllocator(std::shared_ptr<BestBinaryUnitAllocator> allocator): AffinedAllocator(allocator)
+            {
+                if (allocator == nullptr)
+                {
+                    throw std::invalid_argument("bad allocator, null");
+                }
+
+                this->_allocator = allocator;
+            }
+
+            inline auto malloc(size_t sz) -> void *
+            {
+                if (sz == 0u) [[unlikely]]
+                {
+                    return nullptr;
+                }
+
+                if (sz < LARGE_BUFFER_SIZE) [[likely]]
+                {
+                    return this->small_malloc(sz);
+                }
+                else [[unlikely]]
+                {
+                    return this->large_malloc(sz);
+                }
+            }
+
+            inline void free(void * buf) noexcept
+            {
+                if (buf == nullptr)
+                {
+                    return;
+                }
+
+                uint8_t header = this->read_allocation_header(buf);
+
+                if (header == SMALL_ALLOCATION_FLAG) [[likely]]
+                {
+                    this->small_free(buf);
+                }
+                else [[unlikely]]
+                {
+                    this->large_free(buf);
+                }
+            }
+
+        private:
+
+            inline auto to_internal_ptr(void * usr_ptr) noexcept -> void *
+            {
+                return std::prev(static_cast<char *>(usr_ptr), sizeof(uint8_t));
+            }
+
+            inline auto read_allocation_header(void * usr_ptr) noexcept -> uint8_t
+            {
+                void * prev_usr_ptr = std::prev(static_cast<char *>(usr_ptr), sizeof(uint8_t));
+                uint8_t rs;
+
+                std::memcpy(&rs, prev_usr_ptr, sizeof(uint8_t));
+
+                return rs;
+            }
+
+            inline auto small_malloc(size_t sz) -> void *
+            {
+                size_t new_sz   = sz + sizeof(uint8_t);
+                void * rs       = AffinedAllocator::malloc(new_sz);
+
+                std::memcpy(rs, &SMALL_ALLOCATION_FLAG, sizeof(uint8_t));
+
+                return std::next(static_cast<char *>(rs), sizeof(uint8_t));
+            }
+
+            inline void small_free(void * usr_ptr) noexcept
+            {
+                AffinedAllocator::free(this->to_internal_ptr(usr_ptr));
+            }
+
+            __attribute__((noinline)) auto large_malloc(size_t sz) -> void *
+            {
+                size_t new_sz   = sz + sizeof(uint8_t);
+                void * rs       = this->_allocator->malloc(new_sz);
+
+                std::memcpy(rs, &LARGE_ALLOCATION_FLAG, sizeof(uint8_t));
+
+                return std::next(static_cast<char *>(rs), sizeof(uint8_t));
+            }
+
+            __attribute__((noinline)) void large_free(void * usr_ptr) noexcept
+            {
+                this->_allocator->free(this->to_internal_ptr(usr_ptr));
+            }
+
+    };
+
+    class RoundBucketAffinedAllocator: private LargeSmallAffinedAllocator
     {
         private:
 
@@ -622,23 +727,18 @@ namespace dg_sock::network_allocation
 
         public:
 
-            static inline constexpr size_t DEFAULT_ALIGNMENT_SZ         = AffinedAllocator::DEFAULT_ALIGNMENT_SZ;
+            static inline constexpr size_t DEFAULT_ALIGNMENT_SZ         = LargeSmallAffinedAllocator::DEFAULT_ALIGNMENT_SZ;
 
-            RoundBucketAffinedAllocator(std::shared_ptr<BestBinaryUnitAllocator> base_allocator): AffinedAllocator(std::move(base_allocator)){}
+            RoundBucketAffinedAllocator(std::shared_ptr<BestBinaryUnitAllocator> base_allocator): LargeSmallAffinedAllocator(std::move(base_allocator)){}
 
             inline auto malloc(size_t sz) -> void *
             {
-                return AffinedAllocator::malloc(this->promote_size(sz));
-            }
-
-            inline auto realloc(void * buf, size_t blk_sz) -> void *
-            {
-                return AffinedAllocator::realloc(buf, this->promote_size(blk_sz));
+                return LargeSmallAffinedAllocator::malloc(this->promote_size(sz));
             }
 
             inline void free(void * buf) noexcept
             {
-                AffinedAllocator::free(buf);
+                LargeSmallAffinedAllocator::free(buf);
             }
 
         private:
@@ -679,18 +779,6 @@ namespace dg_sock::network_allocation
                 }
 
                 return this->affined_allocator_vec[thr_idx]->malloc(sz);
-            }
-
-            inline auto realloc(void * buf, size_t blk_sz) -> void *
-            {
-                size_t thr_idx  = dg_sock::network_concurrency::this_thread_idx();
-
-                if (thr_idx >= this->affined_allocator_vec.size())
-                {
-                    std::abort();
-                }
-
-                return this->affined_allocator_vec[thr_idx]->realloc(buf, blk_sz);
             }
 
             inline void free(void * buf) noexcept
@@ -754,11 +842,6 @@ namespace dg_sock::network_allocation
     {
         return allocation_resource_obj::get()->malloc(blk_sz); 
     }
-
-    extern auto dg_realloc(void * buf, size_t blk_sz) -> void *
-    {
-        return allocation_resource_obj::get()->realloc(buf, blk_sz);
-    } 
 
     extern void dg_free(void * ptr) noexcept
     {
@@ -1074,37 +1157,63 @@ namespace dg_sock::network_allocation
     template <class T>
     struct unique_ptr_chooser<T, std::void_t<std::enable_if_t<std::is_array_v<T>, bool>>>: std::enable_if<std::is_unbounded_array_v<T>, std::unique_ptr<T, decltype(&std_delete_array<std::remove_extent_t<T>>)>>{};
 
-    template <class T>
-    using unique_ptr = typename unique_ptr_chooser<T>::type;
-
-    template <class T, class ...Args>
-    auto make_unique(Args&& ...args) -> unique_ptr<T>
-    {
-        if constexpr(std::is_array_v<T>)
-        {
-            if constexpr(std::is_unbounded_array_v<T>)
-            {
-                using elemental_t = std::remove_extent_t<T>;
-                return unique_ptr<T>(std_new_array<elemental_t>(std::forward<Args>(args)...), std_delete_array<elemental_t>);
-            }
-            else
-            {
-                static_assert(FALSE_VAL<>);
-            }
-        }
-        else
-        {
-            return unique_ptr<T>(std_new_object<T>(std::forward<Args>(args)...), std_delete_object<T>);
-        }
-    }
+    // template <class T>
+    // using unique_ptr = typename unique_ptr_chooser<T>::type;
 
     template <class T>
     using shared_ptr = std::shared_ptr<T>;
 
+    template <class T>
+    using unique_ptr = shared_ptr<T>;
+
     template <class T, class ...Args>
     auto make_shared(Args&& ...args) -> std::shared_ptr<T>
     {
-        return std::allocate_shared(NoExceptAllocator<char>{}, std::forward<Args>(args)...);
+        return std::allocate_shared<T>(NoExceptAllocator<char>{}, std::forward<Args>(args)...);
+    }
+
+    template <class T, class ...Args>
+    auto make_unique(Args&& ...args) -> unique_ptr<T> //people in the prophecy said that if we change unique_ptr -> shared_ptr most people wouldn't notice
+    {
+        return std::allocate_shared<T>(NoExceptAllocator<char>{}, std::forward<Args>(args)...);
+
+        // if constexpr(std::is_array_v<T>)
+        // {
+        //     if constexpr(std::is_unbounded_array_v<T>)
+        //     {
+        //         using elemental_t = std::remove_extent_t<T>;
+        //         return unique_ptr<T>(std_new_array<elemental_t>(std::forward<Args>(args)...), std_delete_array<elemental_t>);
+        //     }
+        //     else
+        //     {
+        //         static_assert(FALSE_VAL<>);
+        //     }
+        // }
+        // else
+        // {
+        //     return unique_ptr<T>(std_new_object<T>(std::forward<Args>(args)...), std_delete_object<T>);
+        // }
+    }
+}
+
+namespace dg_sock
+{
+    template <class T>
+    using unique_ptr = dg_sock::network_allocation::unique_ptr<T>;
+
+    template <class T>
+    using shared_ptr = dg_sock::network_allocation::shared_ptr<T>;
+
+    template <class T, class ...Args>
+    auto make_unique(Args&& ...args) -> unique_ptr<T>
+    {
+        return dg_sock::network_allocation::make_unique<T>(std::forward<Args>(args)...);
+    }
+
+    template <class T, class ...Args>
+    auto make_shared(Args&& ...args) -> shared_ptr<T>
+    {
+        return dg_sock::network_allocation::make_shared<T>(std::forward<Args>(args)...);
     }
 }
 

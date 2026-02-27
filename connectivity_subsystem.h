@@ -6,7 +6,11 @@
 #include <unordered_map>
 #include <vector>
 #include <variant>
-#include "stdx.h"
+#include <stdx.h>
+#include <fair_mutex.h>
+#include <internal_rest/network_rest_frame.h>
+#include <compact_serializer.h>
+#include <cron_subsystem/cron_subsystem.h>
 
 namespace connectivity_subsystem
 {
@@ -16,15 +20,111 @@ namespace connectivity_subsystem
     //in the not normal case, the hint should close the remote resource in the worst time of master_alive_time + connectivity_timeout_dur
     //so it's a guarantee and a hint of lifetime
 
+    using local_err_code_t = uint8_t;
+
+    static inline constexpr local_err_code_t SUCCESS                            = 0u;
+    static inline constexpr local_err_code_t CONNECTION_NOT_FOUND_ERROR_CODE    = 1u;
+    static inline constexpr local_err_code_t CLOSED_CONNECTION_ERROR_CODE       = 2u;
+    static inline constexpr local_err_code_t PING_ROOM_OVERFLOW_ERROR_CODE      = 3u;
+    static inline constexpr local_err_code_t OTHER_ERROR_CODE                   = 4u;
+
     struct connection_not_found_error: std::invalid_argument
     {
-        conneciton_not_found_error(): std::invalid_argument("specified connection_id does not link to a registered entity"){}
+        connection_not_found_error(): std::invalid_argument("specified connection_id does not link to a registered entity"){}
+    };
+
+    struct closed_connection_error: std::runtime_error
+    {
+        closed_connection_error(): std::runtime_error("connection not found for the specified entity"){}
     };
 
     struct ping_room_overflow_error: std::runtime_error
     {
         ping_room_overflow_error(): std::runtime_error("max ping population reached for the specified connection entity"){}
     };
+
+    auto exception_to_verbal_string(std::exception_ptr exception) -> std::string_view
+    {
+        try
+        {
+            std::rethrow_exception(exception);
+        }
+        catch (connection_not_found_error& e)
+        {
+            return "conenction not found error";
+        }
+        catch (closed_connection_error& e)
+        {
+            return "closed connection error";
+        }
+        catch (ping_room_overflow_error& e)
+        {
+            return "ping room overflow error";
+        }
+        catch (std::exception& e)
+        {
+            return "unidentifier error";
+        }
+
+        return "";
+    }
+
+    auto exception_to_error_code(std::exception_ptr exception) -> local_err_code_t
+    {
+        try
+        {
+            std::rethrow_exception(exception);
+        }
+        catch (connection_not_found_error& e)
+        {
+            return CONNECTION_NOT_FOUND_ERROR_CODE;
+        }
+        catch (closed_connection_error& e)
+        {
+            return CLOSED_CONNECTION_ERROR_CODE;
+        }
+        catch (ping_room_overflow_error& e)
+        {
+            return PING_ROOM_OVERFLOW_ERROR_CODE;
+        }
+        catch (std::exception& e)
+        {
+            return OTHER_ERROR_CODE;
+        }
+
+        return SUCCESS;
+    }
+
+    void throw_error_code(local_err_code_t err_code)
+    {
+        switch (err_code)
+        {
+            case SUCCESS:
+            {
+                break;
+            }
+            case CONNECTION_NOT_FOUND_ERROR_CODE:
+            {
+                throw connection_not_found_error{};
+            }
+            case CLOSED_CONNECTION_ERROR_CODE:
+            {
+                throw closed_connection_error{};
+            }
+            case PING_ROOM_OVERFLOW_ERROR_CODE:
+            {
+                throw ping_room_overflow_error{};
+            }
+            case OTHER_ERROR_CODE:
+            {
+                throw std::runtime_error("something went wrong");
+            }
+            default:
+            {
+                throw std::runtime_error("invalid error code");
+            }
+        }
+    }
 
     struct MasterConfiguration
     {
@@ -60,7 +160,7 @@ namespace connectivity_subsystem
 
     struct MasterPayload
     {
-        internal_rest_controller::Url url;
+        dg_sock::network_rest_frame::model::Url url;
         uint64_t topic_id;
         uint64_t ping_retry_count;
         std::chrono::nanoseconds ping_retry_break_dur;
@@ -128,7 +228,7 @@ namespace connectivity_subsystem
 
     struct PingResponse
     {
-        connectivity_subsystem::exception_t result;
+        local_err_code_t result;
         std::string err_verbal_description;
 
         template <class Reflector>
@@ -187,12 +287,12 @@ namespace connectivity_subsystem
         public:
 
             virtual ~ConnectionPingerInterface() noexcept = default;
-            virtual auto ping(const MasterPayload& payload) -> std::unique_ptr<internal_rest_controller::Promise<void>> = 0;
+            virtual auto ping(const MasterPayload& payload) -> std::shared_ptr<dg_sock::network_rest_frame::client::Promise<stdx::fancy_void>> = 0;
     };
 
     struct RestConfiguration
     {
-        static auto get_ping_resolver_url() -> internal_rest_controller::Url
+        static auto get_ping_resolver_url() -> dg_sock::network_rest_frame::model::Url
         {
             return {};
         }
@@ -259,11 +359,11 @@ namespace connectivity_subsystem
                         throw ping_room_overflow_error();
                     }
 
-                    auto [_, new_map_ptr]   = map_ptr->second.who_when_map.insert({who, {}});
+                    auto [new_map_ptr, _]   = map_ptr->second.who_when_map.insert({who, {}});
                     map_ptr_2               = new_map_ptr;
                 }
 
-                map_ptr_2->second = std::system_clock::now();
+                map_ptr_2->second = std::chrono::system_clock::now();
             }
 
             void close_connection(uint64_t connection_id) noexcept
@@ -283,14 +383,13 @@ namespace connectivity_subsystem
 
         public:
 
-            DistributedConnectionController(uint32_t concurrency_sz)
+            DistributedConnectionController(uint32_t concurrency_sz): base_vec()
             {
                 if (concurrency_sz == 0u)
                 {
                     throw std::invalid_argument("bad concurrency size, 0");
                 }
 
-                this->base_vec  = {};
                 this->seed      = std::make_unique<std::atomic<size_t>>(0u);
 
                 for (size_t i = 0u; i < concurrency_sz; ++i)
@@ -364,7 +463,7 @@ namespace connectivity_subsystem
             }
     };
 
-    class PingResolver: public virtual internal_rest_controller::ResolvableInterface
+    class PingResolver: public virtual dg_sock::network_rest_frame::server::OneRequestHandlerInterface
     {
         private:
 
@@ -372,16 +471,25 @@ namespace connectivity_subsystem
 
         public:
 
-            PingResolver(std::shared_ptr<ConnectionControllerInterface> connection_controller) noexcept: connection_controller(std::move(connection_controller)){}
+            using Request   = dg_sock::network_rest_frame::model::Request;
+            using Response  = dg_sock::network_rest_frame::model::Response;
 
-            auto resolve(const internal_rest_controller::Request& request) -> internal_rest_controller::Response
+            PingResolver(std::shared_ptr<ConnectionControllerInterface> connection_controller): connection_controller(std::move(connection_controller))
             {
-                if (request.serialization_kind != dg::network_compact_serializer::get_dgstd_serialization_identifier())
+                if (connection_controller == nullptr)
+                {
+                    throw std::invalid_argument("bad connection controller, null");
+                }
+            }
+
+            auto handle(const Request& request) -> Response
+            {
+                if (request.payload_serialization_format != dg::network_compact_serializer::get_dgstd_serialization_identifier())
                 {
                     throw std::invalid_argument("unexpected request type, bad serialization method");
                 }
 
-                PingRequest semantic_request = dg::network_compact_seerializer::dgstd_deserialize<PingRequest>(request.content);
+                PingRequest semantic_request = dg::network_compact_serializer::dgstd_deserialize<PingRequest>(request.payload);
                 PingResponse semantic_response;
 
                 try
@@ -398,14 +506,15 @@ namespace connectivity_subsystem
                     semantic_response = PingResponse
                     {
                         .result = exception_to_error_code(std::current_exception()),
-                        .err_verbal_description = exception_to_verbal_string(std::current_exception())
+                        .err_verbal_description = std::string(exception_to_verbal_string(std::current_exception()))
                     };
                 }
 
-                return internal_rest_controller::Response
+                return Response
                 {
-                    .content = dg::network_compact_serializer::dgstd_serialize<std::string>(semantic_response),
-                    .serialization_kind = dg::network_compact_serializer::get_dgstd_serialization_identifier()
+                    .response = dg::network_compact_serializer::dgstd_serialize<std::string>(semantic_response),
+                    .response_serialization_format = dg::network_compact_serializer::get_dgstd_serialization_identifier(),
+                    .err_code = dg_sock::network_exception::SUCCESS
                 };
             }
     };
@@ -414,7 +523,7 @@ namespace connectivity_subsystem
     {
         private:
 
-            internal_rest_controller::RequestClient client;
+            dg_sock::network_rest_frame::client::RequestClient client;
             std::string identifier;
 
         public:
@@ -422,47 +531,42 @@ namespace connectivity_subsystem
             MasterPinger(): client(),
                             identifier(stdx::get_random_identifier()){}
 
-            auto ping(const MasterPayload& payload) -> std::unique_ptr<internal_rest_controller::Promise<void>>
+            auto ping(const MasterPayload& payload) -> std::shared_ptr<dg_sock::network_rest_frame::client::Promise<stdx::fancy_void>>
             {
+                using namespace dg_sock::network_rest_frame::client;
+
                 PingRequest ping_request
                 {
                     .topic_id   = payload.topic_id,
                     .pinger     = this->identifier
                 };
 
-                std::string ping_payload = dg::network_compact_serializer::dgstd_serialize<std::string>(ping_request);
+                std::string ping_payload    = dg::network_compact_serializer::dgstd_serialize<std::string>(ping_request);
+                ClientRequest request       = RequestFactory{}.url(payload.url)
+                                                              .payload(ping_payload)
+                                                              .serialization_method(dg::network_compact_serializer::get_dgstd_serialization_identifier())
+                                                              .get();
 
-                internal_rest_controller::ClientRequest request   = internal_rest_controller::RequestFactory{}.url(payload.url)
-                                                                                                              .payload(ping_payload)
-                                                                                                              .serialization_method(dg::network_compact_serializer::get_dgstd_serialization_identifier())
-                                                                                                              .get();
-
-                auto resolutor = [](const internal_rest_controller::ClientResponse& response)
+                auto resolutor = [](const ClientResponse& response)
                 {
-                    if (response.serialization_kind != dg::network_compact_serializer::get_dgstd_serialization_identifier())
+                    if (dg_sock::network_exception::is_failed(response.err_code))
+                    {
+                        throw std::runtime_error(dg_sock::network_exception::verbose(response.err_code));
+                    }
+
+                    if (response.response_serialization_format != dg::network_compact_serializer::get_dgstd_serialization_identifier())
                     {
                         throw std::runtime_error("unexpected serialization format");
                     }
 
-                    PingResponse semantic_response = dg::network_compact_serializer::dgstd_deserialize<PingResponse>(response.content);
+                    PingResponse semantic_response = dg::network_compact_serializer::dgstd_deserialize<PingResponse>(response.response);
+                    throw_error_code(semantic_response.result);
 
-                    if (semantic_response.result != SUCCESS)
-                    {
-                        if (semantic_response.result == CONNECTION_NOT_FOUND_ERROR_CODE)
-                        {
-                            throw connection_not_found_error();
-                        }
-                        else
-                        {
-                            std::runtime_error(semantic_response.err_verbal_description);
-                        }
-                    }
+                    return stdx::fancy_void{};
                 };
 
-                return this->client.set_retry_policy(internal_rest_controller::UniformRetryPolicy{}.set_break_duration(payload.ping_retry_break_dur)
-                                                                                                   .set_retry_count(payload.ping_retry_count)
-                                                                                                   .get())
-                                   .set_request(request)
+                return this->client.request(request)
+                                   .set_retry_policy(RequestRetryMachineFactory<>::EXPONENTIAL_MEDIUM)
                                    .set_resolutor(resolutor)
                                    .get_promise();
             }
@@ -477,12 +581,13 @@ namespace connectivity_subsystem
     void init()
     {
         ConnectionControllerSingleton::initialize(CONCURRENCY_SZ);
-        internal_rest_controller::hook(RestConfiguration::get_ping_resolver_url(), std::make_unique<PingResolver>(ConnectionControllerSingeton::get()));
+
+        dg_sock::network_rest_frame::server_instance::hook(RestConfiguration::get_ping_resolver_url(), std::make_unique<PingResolver>(ConnectionControllerSingleton::get()));
     }
 
     void deinit() noexcept
     {
-        internal_rest_controller::unhook(RestConfiguration::get_ping_resolver_url());
+        dg_sock::network_rest_frame::server_instance::unhook(RestConfiguration::get_ping_resolver_url());
         ConnectionControllerSingleton::deinitialize();
     }
 
@@ -502,7 +607,7 @@ namespace connectivity_subsystem
             static inline const std::chrono::nanoseconds MIN_CONNECTION_TIMEOUT_DUR = {};
             static inline const std::chrono::nanoseconds MAX_CONNECTION_TIMEOUT_DUR = {};
             static inline const std::chrono::nanoseconds MIN_CONNECTION_BROKE_DUR   = {};
-            static inline const std::chrono::nanoseconds MAX_CONENCTION_BROKE_DUR   = {};
+            static inline const std::chrono::nanoseconds MAX_CONNECTION_BROKE_DUR   = {};
             static inline const std::chrono::nanoseconds MIN_ABS_TIMEOUT_DUR        = {};
             static inline const std::chrono::nanoseconds MAX_ABS_TIMEOUT_DUR        = {};
             static inline const std::chrono::nanoseconds CRON_JOB_DURATION          = {};
@@ -546,6 +651,9 @@ namespace connectivity_subsystem
                     throw;
                 }
             }
+
+            MasterConnection(const MasterConnection&) = delete;
+            MasterConnection& operator =(const MasterConnection&) = delete;
 
             ~MasterConnection() noexcept
             {
@@ -613,7 +721,7 @@ namespace connectivity_subsystem
                 }
             }
 
-            auto get_master_payload_url() -> internal_rest_controller::Url
+            auto get_master_payload_url() -> dg_sock::network_rest_frame::model::Url
             {
                 return RestConfiguration::get_ping_resolver_url();
             }
@@ -745,6 +853,7 @@ namespace connectivity_subsystem
             static inline const std::chrono::nanoseconds MAX_CONNECTION_TIMEOUT_DUR = {};
             static inline const std::chrono::nanoseconds MIN_ABS_TIMEOUT_DUR        = {};
             static inline const std::chrono::nanoseconds MAX_ABS_TIMEOUT_DUR        = {};
+            static inline const std::chrono::nanoseconds CRON_JOB_DURATION          = {};
 
             SlaveConnection(const SlaveConfiguration& config)
             {
@@ -759,6 +868,9 @@ namespace connectivity_subsystem
                 this->cron_obj          = cron_subsystem::register_periodic_cronjob(resolutor_obj, CRON_JOB_DURATION);
                 this->is_closed         = false;
             }
+
+            SlaveConnection(const SlaveConnection&) = delete;
+            SlaveConnection& operator =(const SlaveConnection&) = delete;
 
             ~SlaveConnection() noexcept
             {
@@ -794,7 +906,7 @@ namespace connectivity_subsystem
                     throw std::invalid_argument("bad ping retry break duration, duration out of range");
                 }
 
-                if (std::clamp(config.connection_timeout_dur, MIN_CONNECTION_TIMEOUT_DUR, MAX_CONNECTION_TIMEOUT_DUR != config.connection_timeout_dur))
+                if (std::clamp(config.connection_timeout_dur, MIN_CONNECTION_TIMEOUT_DUR, MAX_CONNECTION_TIMEOUT_DUR) != config.connection_timeout_dur)
                 {
                     throw std::invalid_argument("bad connection timeout duration, duration out of range");
                 }
@@ -811,7 +923,7 @@ namespace connectivity_subsystem
 
                     struct PingPromise
                     {
-                        std::unique_ptr<internal_rest_controller::Promise<void>> base_promise;
+                        std::shared_ptr<dg_sock::network_rest_frame::client::Promise<stdx::fancy_void>> base_promise;
                         std::chrono::time_point<std::chrono::system_clock> since;
                     };
 
@@ -883,7 +995,7 @@ namespace connectivity_subsystem
                                 }
                             }
 
-                            std::chrono::nanoseconds lapsed = std::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now() - this->ping_promise->since);
+                            std::chrono::nanoseconds lapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now() - this->ping_promise->since);
 
                             if (lapsed < this->slave_config.connection_timeout_dur)
                             {
@@ -892,14 +1004,13 @@ namespace connectivity_subsystem
                             }
 
                             this->is_alive_flag->exchange(false, std::memory_order_relaxed);
-                            this->ping_promise->base_promise->detach();
                             this->ping_promise = std::nullopt;
 
                             return;
                         }
 
                         {
-                            std::chrono::nanoseconds lapsed = std::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now() - this->last_updated.value());
+                            std::chrono::nanoseconds lapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now() - this->last_updated.value());
 
                             if (lapsed >= this->slave_config.connection_timeout_dur)
                             {
@@ -909,7 +1020,7 @@ namespace connectivity_subsystem
                         }
 
                         {
-                            std::chrono::nanoseconds lapsed = std::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now() - this->since.value());
+                            std::chrono::nanoseconds lapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now() - this->since.value());
 
                             if (lapsed >= this->slave_config.abs_timeout_dur)
                             {

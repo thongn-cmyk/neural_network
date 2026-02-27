@@ -22,7 +22,9 @@ namespace dg_sock::network_concurrency_impl1::daemon_option_ns{
         COMPUTING_DAEMON        = 0u,
         TRANSPORTATION_DAEMON   = 1u,
         IO_DAEMON               = 2u,
-        HEARTBEAT_DAEMON        = 3u
+        HEARTBEAT_DAEMON        = 3u,
+        REST_SERVER_DAEMON      = 4u,
+        REST_CLIENT_DAEMON      = 5u
     };
 } 
 

@@ -1,5 +1,5 @@
-#ifndef __NETWORK_LOGGING_SUBSYSTEM_H__
-#define __NETWORK_LOGGING_SUBSYSTEM_H__
+#ifndef __LOGGING_SUBSYSTEM_H__
+#define __LOGGING_SUBSYSTEM_H__
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -10,9 +10,8 @@
 #include <format>
 #include <string>
 #include <spdlog/sinks/rotating_file_sink.h>
-#include "network_allocation.h"
 
-namespace dg_sock::network_logging_subsystem
+namespace logging_subsystem
 {
     struct Signature{};
 
@@ -21,42 +20,32 @@ namespace dg_sock::network_logging_subsystem
         bad_msg_log_topic(): std::invalid_argument("bad log message, msg kind enumeration out of range"){}
     };
 
-    using SingletonContainer = stdxx::singleton<Signature, std::shared_ptr<spdlog::logger>>;
+    //this is hard because shared pointer is not thread safe, and access to such (that is not const reference& -> ) would be undefined, not many people would get this
+
+    using SingletonContainer = stdx::singleton_container<std::shared_ptr<spdlog::logger>, Signature>;
 
     static inline constexpr uint8_t MSG_KIND_DEBUG              = 0u;
     static inline constexpr uint8_t MSG_KIND_INFO               = 1u;
     static inline constexpr uint8_t MSG_KIND_WARN               = 2u;
     static inline constexpr uint8_t MSG_KIND_ERROR              = 3u;
     static inline constexpr uint8_t MSG_KIND_CRITICAL           = 4u;
+
     static inline constexpr uint64_t LOG_BYTE_SIZE_PER_FILE     = 1024ULL * 1024ULL * 10ULL;
     static inline constexpr uint64_t LOG_FILE_COUNT             = 1u;
 
     static inline const std::chrono::nanoseconds FLUSH_DURATION = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(1));
 
-    using string_type   = std::basic_string<char, std::char_traits<char>, dg_sock::network_allocation::NoExceptAllocator<char>>;
-
-    template <class T>
-    using vector_type   = std::vector<T, dg_sock::network_allocation::NoExceptAllocator<T>>;
-
     struct GenericLogMessage
     {
         uint8_t msg_kind;
-        string_type msg;
+        std::string msg;
     };
 
-    void init(const std::filesystem::path& file_path, bool is_debug_mode = false, bool flush_on_error = true)
+    void init(const std::filesystem::path& file_path, bool is_debug_mode = false)
     {
         SingletonContainer::get() = spdlog::rotating_logger_mt("basic_logger", file_path.native(), LOG_BYTE_SIZE_PER_FILE, LOG_FILE_COUNT);
         SingletonContainer::get()->set_pattern("%v");
-
-        if (flush_on_error)
-        {
-            SingletonContainer::get()->flush_on(spdlog::level::err);
-        }
-        else
-        {
-            SingletonContainer::get()->flush_on(spdlog::level::critical);
-        }
+        SingletonContainer::get()->flush_on(spdlog::level::err);
 
         spdlog::flush_every(FLUSH_DURATION);
 
@@ -117,7 +106,7 @@ namespace dg_sock::network_logging_subsystem
     {
         try
         {
-            dg_sock::network_logging_subsystem::log(msg);
+            logging_subsystem::log(msg);
         }
         catch (const bad_msg_log_topic& e)
         {
@@ -130,9 +119,9 @@ namespace dg_sock::network_logging_subsystem
     {
         private:
 
-            vector_type<string_type> topic_vec;
+            std::vector<std::string> topic_vec;
             std::exception_ptr custom_exception_ptr;
-            string_type custom_log_msg;
+            std::string custom_log_msg;
             bool has_timestamp;
             uint8_t log_kind;
             bool has_stacktrace;
@@ -148,7 +137,7 @@ namespace dg_sock::network_logging_subsystem
 
             auto topic(std::string_view topic) -> LogFactory&
             {
-                this->topic_vec.push_back(string_type(topic));
+                this->topic_vec.push_back(std::string(topic));
 
                 return *this;
             }
@@ -216,11 +205,6 @@ namespace dg_sock::network_logging_subsystem
                 return *this;
             }
 
-            operator GenericLogMessage()
-            {
-                return this->get();
-            }
-
             auto get() -> GenericLogMessage
             {
                 return GenericLogMessage
@@ -232,7 +216,7 @@ namespace dg_sock::network_logging_subsystem
 
         private:
 
-            auto format_timestamp() -> string_type
+            auto format_timestamp() -> std::string
             {
                 std::chrono::seconds since_epoch(0);
 
@@ -241,13 +225,10 @@ namespace dg_sock::network_logging_subsystem
                     since_epoch = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch());
                 }
 
-                string_type rs{};
-                std::format_to(std::back_inserter(rs), "{} seconds_since_epoch", std::to_string(static_cast<uint64_t>(since_epoch.count())));
-                
-                return rs;
+                return std::format("{} seconds_since_epoch", std::to_string(static_cast<uint64_t>(since_epoch.count())));
             }
 
-            auto format_logkind() -> string_type
+            auto format_logkind() -> std::string
             {
                 switch (this->log_kind)
                 {
@@ -278,15 +259,15 @@ namespace dg_sock::network_logging_subsystem
                 }
             }
 
-            auto format_topic() -> string_type
+            auto format_topic() -> std::string
             {
-                string_type result = "<begin_topic>";
+                std::string result = "<begin_topic>";
 
                 for (size_t i = 0u; i < this->topic_vec.size(); ++i)
                 {
-                    result = result + string_type(std::format("<begin_subtopic_{}>", std::to_string(i)));
+                    result = result + std::format("<begin_subtopic_{}>", std::to_string(i));
                     result = result + this->topic_vec[i];
-                    result = result + string_type(std::format("<end_subtopic_{}>", std::to_string(i)));
+                    result = result + std::format("<end_subtopic_{}>", std::to_string(i));
                 }
 
                 result = result + "<end_topic>";
@@ -294,17 +275,14 @@ namespace dg_sock::network_logging_subsystem
                 return result;
             }
 
-            auto format_content() -> string_type
+            auto format_content() -> std::string
             {
                 return this->custom_log_msg;
             }
 
-            auto prettify() -> string_type
+            auto prettify() -> std::string
             {
-                string_type rs{};
-                std::format_to(std::back_inserter(rs), "{},{},{}{}", this->format_timestamp(), this->format_logkind(), this->format_topic(), this->format_content());
-
-                return rs;
+                return std::format("{},{},{}{}", this->format_timestamp(), this->format_logkind(), this->format_topic(), this->format_content());
             }
     };
 }

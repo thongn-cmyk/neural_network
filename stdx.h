@@ -20,10 +20,13 @@
 #include <type_traits>
 #include <numbers>
 #include <bit>
-#include "fair_mutex.h"
+#include <fair_mutex.h>
+#include <climits>
 
 namespace stdx
 {
+    struct fancy_void{};
+
     struct reflectible_monostate
     {
         template <class Reflector>
@@ -808,6 +811,26 @@ namespace stdx
             }
     };
 
+    auto get_random_identifier() -> std::string
+    {
+        static std::unique_ptr<fair_mutex::fair_atomic_flag> mtx = fair_mutex::make_unique_fair_atomic_flag();
+
+        static auto randomizer          = std::bind(std::uniform_int_distribution<char>{}, std::mt19937_64{static_cast<uint32_t>(std::chrono::system_clock::now().time_since_epoch().count())});
+        constexpr size_t IDENTIFIER_SZ  = 15u;
+
+        std::string rs(IDENTIFIER_SZ, ' ');
+
+        {
+            fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*mtx);
+
+            for (size_t i = 0u; i < IDENTIFIER_SZ; ++i)
+            {
+                rs[i] = randomizer();
+            }
+        }
+
+        return rs;
+    }
 }
 
 #endif

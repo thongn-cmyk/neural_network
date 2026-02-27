@@ -12,60 +12,78 @@
 #include <chrono>
 #include <vector>
 #include <optional>
-#include "network_kernel_mailbox_impl1.h"
-#include "network_kernel_mailbox_impl1_x.h" 
+// #include "network_kernel_mailbox_impl1.h"
+// #include "network_kernel_mailbox_impl1_x.h" 
 
-namespace dg_sock::network_kernel_mailbox_channel{
+namespace dg_sock::network_kernel_mailbox
+{
+    using Address           = uint8_t;
+    using channel_t         = uint8_t;
 
-    using radix_t = uint8_t; 
+    struct Config{};
 
-    enum mailbox_channel: radix_t{
-        CHANNEL_HEARTBEAT       = 0u,
-        CHANNEL_EXTMEMCOMMIT    = 1u,
-        CHANNEL_REST            = 2u
-    };
-} 
+    struct Signature{};
 
-namespace dg_sock::network_kernel_mailbox{
+    // using SingletonObject = sdtxx::singleton<Signature, std::shared_ptr<dg_sock::network_kernel_mailbox_impl1_x::channel::MailboxInterface>>;
 
-    using MailBoxArgument   = dg_sock::network_kernel_mailbox_impl1::model::MailBoxArgument; 
-    using Address           = dg_sock::network_kernel_mailbox_impl1::model::Address;
-    using channel_t         = network_kernel_mailbox_channel::radix_t;
-
-    struct Config{
-        size_t outbound_worker_count;
-        size_t inbound_worker_count;
-        size_t retransmission_worker_count;
-        // dg_sock::vector<ip_t> host_ips;
-        dg_sock::vector<uint16_t> host_ports;
-        std::chrono::nanoseconds retransmission_delay;
-        size_t retranmission_count;
-        std::optional<size_t> inbound_exhaustion_control_sz;
-        std::optional<size_t> outbound_exhaustion_control_sz;
-        bool is_meterlog_enabled;
-        bool is_heartbeat_enabled;
-        bool is_recovery_on_failure_enabled;
-    };
-
-    inline std::unique_ptr<dg_sock::network_kernel_mailbox_impl1::core::MailboxInterface> mailbox;
-
-    void init(){
-
+    void init(const Config& config)
+    {
+        // SingletonObject::get() = dg_sock::network_kernel_mailbox_impl1_x::channel::SolutionBuilder{}.set_config(config).build();
+        // std::atomic_thread_fence(std::memory_order_seq_cst);
     }
 
-    void send(...) noexcept{
-
-        // mailbox->send(std::move(addr), std::move(msg));
+    void deinit() noexcept
+    {
+        // std::atomic_thread_fence(std::memory_order_seq_cst);
+        // SingletonObject::get() = nullptr;
     }
 
-    auto recv(...) noexcept -> std::optional<dg_sock::string>{ //optional string because string.empty() does not mean that it is not a packet
-        
-        // return mailbox->recv();
+    //be very careful about lifetime of packets here, because the lifetime of recv and send should be unbounded as it is referenced
+    //but internally for mailbox_impl1_x and mailbox_impl1, we have patched all the memory holes there could be
 
-        return {};
+    //as we already discussed last time, synchronization of packet transfer from REST_Controller guarantees the destination pool to be of consistent and stable size
+    //allowing us to have a 100% transfer rate and success rate across compute nodes in AWS and Google Cloud architecture if we partition the bandwidth by using capacity correctly
+
+    //our job is to anticipate for the worst case scenerio of the mayhem, such is that we compromise memory but not crash the system at the mailbox site
+    //and that we know that our global pool has to be referenced by the rest request client or rest request handler, whose lifetime is clear and never in a fault state
+
+    //truth be told, I've seen too many systems that are not fair, and does not hold unique reference of the process, this is usually very bad
+    //doing thing this way, we can make sure that maybe we aren't coverign 100% of other use cases, but in our use case, we'd be 100%
+
+    void send(uint32_t channel,
+              Address * addr_arr, dg_sock::string * content_arr, size_t sz,
+              exception_t * exception_arr) noexcept
+    {
+        // if constexpr(DEBUG_MODE_FLAG)
+        // {
+        //     if (sz > SingletonObject::get()->max_consume_size())
+        //     {
+        //         dg_sock::network_log_stackdump::critical(dg_sock::network_exception::verbose(dg_sock::network_exception::INTERNAL_CORRUPTION));
+        //         std::abort();
+        //     }
+        // }
+
+        // dg_sock::network_stack_allocation::NoExceptAllocation<MailBoxArgument[]> mailbox_arr(sz);
+
+        // for (size_t i = 0u; i < sz; ++i)
+        // {
+        //     mailbox_arr[i].to           = addr_arr[i];
+        //     mailbox_arr[i].content      = content_arr[i].data();
+        //     mailbox_arr[i].content_sz   = content_arr[i].size();
+        // }
+
+        // SingletonObject::get()->send(channel, mailbox_arr.get(), sz, exception_arr);
     }
 
-    auto max_consume_size() noexcept -> size_t{
+    void recv(uint32_t channel,
+              dg_sock::string * output_arr, size_t output_arr_sz, size_t output_arr_cap) noexcept
+    {
+        // SingletonObject::get()->recv(channel, output_arr, output_arr_sz, output_arr_cap);
+    }
+
+    auto max_consume_size() noexcept -> size_t
+    {
+        // return SingletonObject::get()->max_consume_size();
 
         return {};
     }
