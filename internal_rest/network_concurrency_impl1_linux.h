@@ -188,7 +188,7 @@ namespace dg_sock::network_concurrency_impl1{
 
             std::shared_ptr<DaemonRunnerInterface> daemon_runner;
             std::shared_ptr<std::thread> thread;
-        
+
         public:
 
             StdRaiiDaemonRunner(std::shared_ptr<DaemonRunnerInterface> daemon_runner, 

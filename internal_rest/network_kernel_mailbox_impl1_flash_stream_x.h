@@ -1,5 +1,5 @@
-#ifndef __NETWORK_KERNEL_MAILBOX_IMPL1_X_H__
-#define __NETWORK_KERNEL_MAILBOX_IMPL1_X_H__
+#ifndef __NETWORK_KERNEL_MAILBOX_IMPL1_FLASH_STREAM_X_H__
+#define __NETWORK_KERNEL_MAILBOX_IMPL1_FLASH_STREAM_X_H__
 
 //define HEADER_CONTROL 10
 
@@ -16,61 +16,38 @@
 #include <chrono>
 #include "network_chrono.h"
 #include "network_sock_traffic_status_controller.h"
+#include "network_allocation.h"
 
-namespace dg_sock::network_kernel_mailbox_impl1_flash_streamx{
-
+namespace dg_sock::network_kernel_mailbox_impl1_flash_stream_x
+{
     struct Signature{};
     struct Signature1{};
     struct Signature2{};
     struct Signature3{};
 
     using MemoryConfig                      = dg_sock::network_kernel_allocator_singleton::Config;
-    using HugeAllocatorInstance             = dg_sock::network_kernel_allocator_singleton::AllocatorInstance<Signature>;
-    using VectorAllocatorInstance           = dg_sock::network_kernel_allocator_singleton::AllocatorInstance<Signature1>;
-
-    template <class T>
-    using HugeStdWrappedAllocator           = dg_sock::network_kernel_allocator_singleton::StdWrappedAllocator<T, HugeAllocatorInstance>;
-
-    template <class T>
-    using VectorStdWrappedAllocator         = dg_sock::network_kernel_allocator_singleton::StdWrappedAllocator<T, VectorAllocatorInstance>;
-
     using SegmentAllocatorInstance          = dg_sock::network_kernel_allocator_singleton::AllocatorInstance<Signature2>;
 
-    template <class T>
-    using SegmentStdWrappedAllocator        = dg_sock::network_kernel_allocator_singleton::StdWrappedAllocator<T, SegmentAllocatorInstance>;
-
-    using UrgentAllocatorInstance           = dg_sock::network_kernel_allocator_singleton::AllocatorInstance<Signature3>;
-    
-    template <class T>
-    using UrgentStdWrappedAllocator         = dg_sock::network_kernel_allocator_singleton::StdWrappedAllocator<T, UrgentAllocatorInstance>;
-
-    void init_memory(MemoryConfig big_packet_config,
-                     MemoryConfig segment_packet_config,
-                     MemoryConfig urgent_packet_config)
+    void init_memory(MemoryConfig segment_packet_config)
     {
-        HugeAllocatorInstance::init(big_packet_config);
-        VectorAllocatorInstance::init(big_packet_config);
         SegmentAllocatorInstance::init(segment_packet_config);
-        UrgentAllocatorInstance::init(urgent_packet_config);
     }
 
     void deinit_memory() noexcept
     {
-        HugeAllocatorInstance::deinit();
         SegmentAllocatorInstance::deinit();
-        UrgentAllocatorInstance::deinit();
     }
 
     using internal_huge_kernel_buffer       = dg_sock::string;
     using internal_segment_kernel_buffer    = dg_sock::network_kernel_buffer::kernel_string<SegmentAllocatorInstance>; 
 
     template <class T>
-    using internal_vector                   = std::vector<T, VectorStdWrappedAllocator<T>>;
+    using internal_vector                   = dg_sock::vector<T>;
 
     template <class T, class ...Args>
-    auto urgent_make_shared(Args&& ...args){
-
-        return std::allocate_shared<T>(UrgentStdWrappedAllocator<T>{}, std::forward<Args>(args)...);
+    auto urgent_make_shared(Args&& ...args)
+    {
+        return dg_sock::make_shared<T>(std::forward<Args>(args)...);
     } 
 
     using Address                           = dg_sock::network_kernel_mailbox_impl1::model::Address; 
@@ -82,23 +59,27 @@ namespace dg_sock::network_kernel_mailbox_impl1_flash_streamx{
     static inline constexpr uint32_t PACKET_INTEGRITY_SECRET                = 2203221141ULL;
 
     //OK
-    struct GlobalIdentifier{
+    struct GlobalIdentifier
+    {
         Address addr;
-        std::pair<uint64_t, uint64_t> local_id; //avoid __uint128_t
+        std::pair<uint64_t, uint64_t> local_id;
 
         template <class Reflector>
-        constexpr void dg_reflect(const Reflector& reflector) const{
+        constexpr void dg_reflect(const Reflector& reflector) const
+        {
             reflector(addr, local_id);
         }
 
         template <class Reflector>
-        constexpr void dg_reflect(const Reflector& reflector){
+        constexpr void dg_reflect(const Reflector& reflector)
+        {
             reflector(addr, local_id);
         }
     };
 
     //OK
-    struct PacketSegment{
+    struct PacketSegment
+    {
         internal_segment_kernel_buffer buf;
         GlobalIdentifier id;
         uint64_t segment_idx;
@@ -109,7 +90,8 @@ namespace dg_sock::network_kernel_mailbox_impl1_flash_streamx{
     };
 
     //OK
-    struct AssembledPacket{
+    struct AssembledPacket
+    {
         internal_vector<std::optional<internal_segment_kernel_buffer>> data;
         size_t collected_segment_sz;
         size_t total_segment_sz;
@@ -141,8 +123,8 @@ namespace dg_sock::network_kernel_mailbox_impl1_flash_streamx{
     };
 
     //OK
-    static auto serialize_packet_segment(PacketSegment&& segment) noexcept -> std::expected<internal_segment_kernel_buffer, exception_t>{
-
+    static auto serialize_packet_segment(PacketSegment&& segment) noexcept -> std::expected<internal_segment_kernel_buffer, exception_t>
+    {
         using header_t      = std::tuple<GlobalIdentifier, uint64_t, uint64_t, uint64_t, bool>; //
 
         size_t header_sz    = dg_sock::network_compact_trivial_serializer::size(header_t{});
@@ -160,8 +142,8 @@ namespace dg_sock::network_kernel_mailbox_impl1_flash_streamx{
     }
 
     //OK
-    static auto deserialize_packet_segment(internal_segment_kernel_buffer&& buf) noexcept -> std::expected<PacketSegment, exception_t>{
-
+    static auto deserialize_packet_segment(internal_segment_kernel_buffer&& buf) noexcept -> std::expected<PacketSegment, exception_t>
+    {
         using header_t      = std::tuple<GlobalIdentifier, uint64_t, uint64_t, uint64_t, bool>; //
 
         size_t header_sz    = dg_sock::network_compact_trivial_serializer::size(header_t{});
@@ -191,8 +173,8 @@ namespace dg_sock::network_kernel_mailbox_impl1_flash_streamx{
     }
 
     //OK
-    static auto internal_assembled_packet_to_buffer(AssembledPacket&& pkt) noexcept -> std::expected<internal_huge_kernel_buffer, exception_t>{
-
+    static auto internal_assembled_packet_to_buffer(AssembledPacket&& pkt) noexcept -> std::expected<internal_huge_kernel_buffer, exception_t>
+    {
         if (pkt.total_segment_sz != pkt.collected_segment_sz){
             return std::unexpected(dg_sock::network_exception::SOCKET_STREAM_CORRUPTED_PACKET);
         }
@@ -239,8 +221,8 @@ namespace dg_sock::network_kernel_mailbox_impl1_flash_streamx{
     }
 
     //OK
-    static auto internal_integrity_assembled_packet_to_buffer(AssembledPacket&& pkt) noexcept -> std::expected<internal_huge_kernel_buffer, exception_t>{
-
+    static auto internal_integrity_assembled_packet_to_buffer(AssembledPacket&& pkt) noexcept -> std::expected<internal_huge_kernel_buffer, exception_t>
+    {
         uint64_t mm_integrity_value                                 = pkt.mm_integrity_value;
         bool has_mm_integrity_value                                 = pkt.has_mm_integrity_value;
         std::expected<internal_huge_kernel_buffer, exception_t> rs  = internal_assembled_packet_to_buffer(static_cast<AssembledPacket&&>(pkt));
@@ -262,35 +244,45 @@ namespace dg_sock::network_kernel_mailbox_impl1_flash_streamx{
 
     //OK
     template <class T>
-    struct UnitAllocatorInterface{
+    struct UnitAllocatorInterface
+    {
         virtual ~UnitAllocatorInterface() noexcept = default;
+
         virtual auto get() noexcept -> std::expected<T, exception_t> = 0;
         virtual void free(T item) noexcept = 0;
     };
 
     //OK
-    struct ExhaustionControllerInterface{
+    struct ExhaustionControllerInterface
+    {
         virtual ~ExhaustionControllerInterface() noexcept = default;
+
         virtual auto is_should_wait() noexcept -> bool = 0;
         virtual auto update_waiting_size(size_t) noexcept -> exception_t = 0;
     };
 
     //OK
-    struct PacketIDGeneratorInterface{
+    struct PacketIDGeneratorInterface
+    {
         virtual ~PacketIDGeneratorInterface() noexcept = default;
+
         virtual auto get_id() noexcept -> GlobalIdentifier = 0;
     };
 
     //OK
-    struct ProducerDrainerPredicateInterface{
+    struct ProducerDrainerPredicateInterface
+    {
         virtual ~ProducerDrainerPredicateInterface() noexcept = default;
+
         virtual auto is_should_drain() noexcept -> bool = 0;
         virtual void reset() noexcept = 0;
     };
 
     //OK
-    struct PacketizerInterface{
+    struct PacketizerInterface
+    {
         virtual ~PacketizerInterface() noexcept = default;
+
         virtual auto packetize(internal_segment_kernel_buffer&&) noexcept -> std::expected<internal_vector<PacketSegment>, exception_t> = 0;
         virtual auto segment_byte_size() const noexcept -> size_t = 0;
         virtual auto max_packet_size() const noexcept -> size_t = 0;
@@ -298,55 +290,68 @@ namespace dg_sock::network_kernel_mailbox_impl1_flash_streamx{
     };
 
     //OK
-    struct InBoundGateInterface{
+    struct InBoundGateInterface
+    {
         virtual ~InBoundGateInterface() noexcept = default;
+
         virtual void thru(GlobalIdentifier * global_id_arr, size_t sz, exception_t * exception_arr) noexcept = 0;
         virtual auto max_consume_size() noexcept -> size_t = 0;
     };
 
     //OK
-    struct BlackListGateInterface: virtual InBoundGateInterface{
+    struct BlackListGateInterface: virtual InBoundGateInterface
+    {
         virtual ~BlackListGateInterface() noexcept = default;
+
         virtual void blacklist(GlobalIdentifier * global_id_arr, size_t sz, exception_t * exception_arr) noexcept = 0;
     };
 
     //OK
-    struct EntranceControllerInterface{
+    struct EntranceControllerInterface
+    {
         virtual ~EntranceControllerInterface() noexcept = default;
+
         virtual void tick(GlobalIdentifier * global_id_arr, size_t sz, exception_t * exception_arr) noexcept = 0; 
         virtual void get_expired_id(GlobalIdentifier * output_arr, size_t& sz, size_t cap) noexcept = 0;
         virtual auto max_consume_size() noexcept -> size_t = 0;
     };
 
     //OK
-    struct PacketAssemblerInterface{
+    struct PacketAssemblerInterface
+    {
         virtual ~PacketAssemblerInterface() noexcept = default;
+
         virtual void assemble(std::move_iterator<PacketSegment *> segment_arr, size_t sz, std::expected<AssembledPacket, exception_t> * assembled_arr) noexcept = 0; //it seems like this breaks the rule of unexpected == no_consume, we have to alter the semantic, exception_t is only for exceptions, we dont really know if std::optional<> is worth it
         virtual void destroy(GlobalIdentifier * id_arr, size_t sz) noexcept = 0;
         virtual auto max_consume_size() noexcept -> size_t = 0;
     };
 
     //OK
-    struct ContainerBusyAdapterInterface{
+    struct ContainerBusyAdapterInterface
+    {
         virtual ~ContainerBusyAdapterInterface() noexcept = default;
+
         virtual auto set_busy() noexcept -> exception_t = 0;
         virtual auto set_ease() noexcept -> exception_t = 0;
     };
 
     //OK
-    struct NetworkBusyObserverInterface{
+    struct NetworkBusyObserverInterface
+    {
         using busy_level_t = uint8_t;
-        
+
         static inline constexpr busy_level_t BUSY_0 = 0u;
         static inline constexpr busy_level_t BUSY_1 = 1u;
         static inline constexpr busy_level_t BUSY_2 = 2u;
 
         virtual ~NetworkBusyObserverInterface() noexcept = default;
+
         virtual void notify(busy_level_t) noexcept = 0;
     };
 
     //OK
-    struct NetworkBusyStatusRetrieverInterface{
+    struct NetworkBusyStatusRetrieverInterface
+    {
         using busy_level_t = uint8_t;
 
         static inline constexpr busy_level_t BUSY_0  = 0u;
@@ -354,21 +359,46 @@ namespace dg_sock::network_kernel_mailbox_impl1_flash_streamx{
         static inline constexpr busy_level_t BUSY_2  = 2u; 
 
         virtual ~NetworkBusyStatusRetrieverInterface() noexcept = default;
+
         virtual auto get() noexcept -> std::expected<busy_level_t, exception_t> = 0;
     };
 
     //OK
-    struct InBoundContainerInterface{
+    struct InBoundContainerInterface
+    {
         virtual ~InBoundContainerInterface() noexcept = default;
+
         virtual void push(std::move_iterator<internal_huge_kernel_buffer *> arr, size_t sz, exception_t * exception_arr) noexcept = 0;
         virtual void pop(internal_huge_kernel_buffer * output_arr, size_t& sz, size_t cap) noexcept = 0;
         virtual auto max_consume_size() noexcept -> size_t = 0;
     };
 
     //OK
-    struct OutBoundRuleInterface{
+    struct OutBoundRuleInterface
+    {
         virtual ~OutBoundRuleInterface() noexcept = default;
+
         virtual auto thru(const Address&) noexcept -> std::expected<bool, exception_t> = 0;
+    };
+
+    struct OutputContainableInterface
+    {
+        public:
+
+            virtual ~OutputContainableInterface() noexcept = default;
+
+            virtual void resize(size_t sz) = 0; 
+            virtual auto data() noexcept -> std::add_pointer_t<char> = 0;
+    };
+
+    struct DynamicMailboxInterface
+    {
+        virtual ~DynamicMailboxInterface() noexcept = default;
+
+        virtual void send(MailBoxArgument * data_arr, size_t sz, exception_t * exception_arr) noexcept = 0;
+        virtual void recv(std::add_pointer_t<OutputContainableInterface> * output_container_arr,
+                          size_t& recv_sz, size_t recv_cap,
+                          exception_t * exception_arr) noexcept = 0;
     };
 
     template <class T>
@@ -3209,8 +3239,8 @@ namespace dg_sock::network_kernel_mailbox_impl1_flash_streamx{
     };
 
     //OK
-    class MailBox: public virtual dg_sock::network_kernel_mailbox_impl1::core::MailboxInterface{
-
+    class MailBox: public virtual dg_sock::network_kernel_mailbox_impl1::core::MailboxInterface
+    {
         private:
 
             dg_sock::vector<dg_sock::network_concurrency::daemon_raii_handle_t> daemon_vec;
@@ -3293,8 +3323,8 @@ namespace dg_sock::network_kernel_mailbox_impl1_flash_streamx{
                       size_t * output_cap_arr,
                       size_t * output_sz_arr,
                       size_t& output_arr_sz,
-                      size_t output_arr_cap) noexcept{
-
+                      size_t output_arr_cap) noexcept
+            {
                 dg_sock::network_stack_allocation::NoExceptAllocation<internal_huge_kernel_buffer[]> buffer_arr(output_arr_cap);                
                 this->inbound_container->pop(buffer_arr.get(), output_arr_sz, output_arr_cap);
 
@@ -3366,7 +3396,184 @@ namespace dg_sock::network_kernel_mailbox_impl1_flash_streamx{
                     }
                 }
             };
+    };
 
+    class DynamicMailBox: public virtual DynamicMailboxInterface
+    {
+        private:
+
+            dg_sock::vector<dg_sock::network_concurrency::daemon_raii_handle_t> daemon_vec;
+            std::unique_ptr<PacketizerInterface> packetizer;
+            std::shared_ptr<dg_sock::network_kernel_mailbox_impl1::core::MailboxInterface> base;
+            std::shared_ptr<InBoundContainerInterface> inbound_container;
+            std::shared_ptr<OutBoundRuleInterface> outbound_rule;
+            size_t transmission_vectorization_sz;
+
+        public:
+
+            MailBox(dg_sock::vector<dg_sock::network_concurrency::daemon_raii_handle_t> daemon_vec,
+                    std::unique_ptr<PacketizerInterface> packetizer,
+                    std::shared_ptr<dg_sock::network_kernel_mailbox_impl1::core::MailboxInterface> base,
+                    std::shared_ptr<InBoundContainerInterface> inbound_container,
+                    std::shared_ptr<OutBoundRuleInterface> outbound_rule,
+                    size_t transmission_vectorization_sz) noexcept: daemon_vec(std::move(daemon_vec)),
+                                                                    packetizer(std::move(packetizer)),
+                                                                    base(std::move(base)),
+                                                                    inbound_container(std::move(inbound_container)),
+                                                                    outbound_rule(std::move(outbound_rule)),
+                                                                    transmission_vectorization_sz(transmission_vectorization_sz){}
+
+            void send(MailBoxArgument * data_arr, size_t sz, exception_t * exception_arr) noexcept
+            {
+                MailBoxArgument * base_data_arr = data_arr;
+
+                auto feed_resolutor             = InternalFeedResolutor{};
+                feed_resolutor.dst              = this->base.get(); 
+
+                size_t trimmed_mailbox_feed_sz  = std::min(std::min(this->transmission_vectorization_sz, sz * this->packetizer->max_segment_count()), this->base->max_consume_size());
+                size_t feeder_allocation_cost   = dg_sock::network_producer_consumer::delvrsrv_kv_allocation_cost(&feed_resolutor, trimmed_mailbox_feed_sz);
+                dg_sock::network_stack_allocation::NoExceptRawAllocation<char[]> feeder_mem(feeder_allocation_cost);
+                auto feeder                     = dg_sock::network_exception_handler::nothrow_log(dg_sock::network_producer_consumer::delvrsrv_kv_open_preallocated_raiihandle(&feed_resolutor, trimmed_mailbox_feed_sz, feeder_mem.get()));
+
+                std::fill(exception_arr, std::next(exception_arr, sz), dg_sock::network_exception::SUCCESS);
+
+                for (size_t i = 0u; i < sz; ++i)
+                {
+                    std::expected<bool, exception_t> outbound_thru_status = this->outbound_rule->thru(base_data_arr[i].to);
+
+                    if (!outbound_thru_status.has_value())
+                    {
+                        exception_arr[i] = outbound_thru_status.error();
+                        continue;
+                    }
+
+                    if (!outbound_thru_status.value())
+                    {
+                        exception_arr[i] = dg_sock::network_exception::SOCKET_STREAM_BAD_OUTBOUND_RULE;
+                        continue;
+                    }
+
+                    std::expected<internal_segment_kernel_buffer, exception_t> buf          = dg_sock::network_exception::cstyle_initialize<internal_segment_kernel_buffer>(std::string_view(static_cast<const char *>(base_data_arr[i].content),
+                                                                                                                                                                                        base_data_arr[i].content_sz)); //
+
+                    if (!buf.has_value())
+                    {
+                        exception_arr[i] = buf.error();
+                        continue;
+                    }
+
+                    std::expected<internal_vector<PacketSegment>, exception_t> segment_vec  = this->packetizer->packetize(std::move(buf.value()));
+
+                    if (!segment_vec.has_value())
+                    {
+                        exception_arr[i] = segment_vec.error();
+                        continue;
+                    }
+
+                    for (size_t j = 0u; j < segment_vec.value().size(); ++j)
+                    {
+                        InternalFeedArgument arg
+                        {
+                            .segment    = std::move(segment_vec.value()[j]),
+                            .err        = std::next(exception_arr, i)
+                        };
+
+                        dg_sock::network_producer_consumer::delvrsrv_kv_deliver(feeder.get(), base_data_arr[i].to, std::move(arg));
+                    }
+                }
+            }
+
+            void recv(std::add_pointer_t<OutputContainableInterface> * output_container_arr,
+                      size_t& recv_sz, size_t recv_cap,
+                      exception_t * exception_arr) noexcept
+            {
+                size_t output_arr_sz;
+                size_t output_arr_cap   = recv_cap;
+
+                dg_sock::network_stack_allocation::NoExceptAllocation<internal_huge_kernel_buffer[]> buffer_arr(output_arr_cap);                
+                this->inbound_container->pop(buffer_arr.get(), output_arr_sz, output_arr_cap);
+
+                recv_sz = output_arr_sz;
+
+                for (size_t i = 0u; i < output_arr_sz; ++i)
+                {
+                    try
+                    {
+                        output_container_arr[i]->resize(buffer_arr[i].size());
+                        std::copy(buffer_arr[i].begin(), buffer_arr[i].end(), output_container_arr[i]->data());
+
+                        exception_arr[i] = dg_sock::network_exception::SUCCESS;
+                    }
+                    catch (...)
+                    {
+                        exception_arr[i] = dg_sock::network_exception::wrap_std_exception(std::current_exception());
+                    }
+                }
+            }
+
+            auto max_consume_size() noexcept -> size_t
+            {
+                return this->base->max_consume_size();
+            }
+
+            auto max_content_size() const noexcept -> size_t
+            {
+                return this->packetizer->max_packet_size();
+            }
+
+        private:
+
+            struct InternalFeedArgument
+            {
+                PacketSegment segment;
+                exception_t * err;
+            };
+
+            struct InternalFeedResolutor: dg_sock::network_producer_consumer::KVConsumerInterface<Address, InternalFeedArgument>
+            {
+                dg_sock::network_kernel_mailbox_impl1::core::MailboxInterface * dst;
+
+                void push(const Address& to, std::move_iterator<InternalFeedArgument *> data_arr, size_t sz) noexcept
+                {
+                    InternalFeedArgument * base_data_arr    = data_arr.base();
+                    size_t arr_cap                          = sz;
+                    size_t arr_sz                           = 0u;
+
+                    dg_sock::network_stack_allocation::NoExceptAllocation<MailBoxArgument[]> mailbox_arg_arr(arr_cap);
+                    dg_sock::network_stack_allocation::NoExceptAllocation<exception_t[]> exception_arr(arr_cap);
+                    dg_sock::network_stack_allocation::NoExceptAllocation<std::add_pointer_t<exception_t>[]> exception_ptr_arr(arr_cap);
+                    dg_sock::network_stack_allocation::NoExceptAllocation<internal_segment_kernel_buffer[]> segment_arr(arr_cap);
+
+                    for (size_t i = 0u; i < sz; ++i)
+                    {
+                        std::expected<internal_segment_kernel_buffer, exception_t> serialized = serialize_packet_segment(static_cast<PacketSegment&&>(base_data_arr[i].segment));
+
+                        if (!serialized.has_value())
+                        {
+                            *base_data_arr[i].err = serialized.error();
+                            continue;
+                        }
+
+                        segment_arr[arr_sz]                 = std::move(serialized.value());
+                        mailbox_arg_arr[arr_sz].content     = segment_arr[arr_sz].data();
+                        mailbox_arg_arr[arr_sz].content_sz  = segment_arr[arr_sz].size();
+                        mailbox_arg_arr[arr_sz].to          = to;
+                        exception_ptr_arr[arr_sz]           = base_data_arr[i].err;
+
+                        arr_sz                              += 1;
+                    }
+
+                    this->dst->send(mailbox_arg_arr.get(), arr_sz, exception_arr.get());
+
+                    for (size_t i = 0u; i < arr_sz; ++i)
+                    {
+                        if (dg_sock::network_exception::is_failed(exception_arr[i]))
+                        {
+                            *exception_ptr_arr[i] = exception_arr[i];
+                        }
+                    }
+                }
+            };
     };
 
     struct ComponentFactory{

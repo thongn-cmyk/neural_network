@@ -38,18 +38,6 @@ namespace dg_sock::network_kernel_mailbox
         // SingletonObject::get() = nullptr;
     }
 
-    //be very careful about lifetime of packets here, because the lifetime of recv and send should be unbounded as it is referenced
-    //but internally for mailbox_impl1_x and mailbox_impl1, we have patched all the memory holes there could be
-
-    //as we already discussed last time, synchronization of packet transfer from REST_Controller guarantees the destination pool to be of consistent and stable size
-    //allowing us to have a 100% transfer rate and success rate across compute nodes in AWS and Google Cloud architecture if we partition the bandwidth by using capacity correctly
-
-    //our job is to anticipate for the worst case scenerio of the mayhem, such is that we compromise memory but not crash the system at the mailbox site
-    //and that we know that our global pool has to be referenced by the rest request client or rest request handler, whose lifetime is clear and never in a fault state
-
-    //truth be told, I've seen too many systems that are not fair, and does not hold unique reference of the process, this is usually very bad
-    //doing thing this way, we can make sure that maybe we aren't coverign 100% of other use cases, but in our use case, we'd be 100%
-
     void send(uint32_t channel,
               Address * addr_arr, dg_sock::string * content_arr, size_t sz,
               exception_t * exception_arr) noexcept
