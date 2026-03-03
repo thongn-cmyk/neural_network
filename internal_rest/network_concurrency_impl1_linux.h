@@ -24,7 +24,8 @@ namespace dg_sock::network_concurrency_impl1::daemon_option_ns{
         IO_DAEMON               = 2u,
         HEARTBEAT_DAEMON        = 3u,
         REST_SERVER_DAEMON      = 4u,
-        REST_CLIENT_DAEMON      = 5u
+        REST_CLIENT_DAEMON      = 5u,
+        CHANNEL_DAEMON          = 6u
     };
 } 
 

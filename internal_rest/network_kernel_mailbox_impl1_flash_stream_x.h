@@ -4,7 +4,7 @@
 //define HEADER_CONTROL 10
 
 #include <memory>
-#include "network_kernel_mailbox_impl1.h"
+// #include "network_kernel_mailbox_impl1.h"
 #include "network_compact_trivial_serializer.h"
 #include "network_concurrency.h"
 #include "network_std_container.h"
@@ -14,9 +14,149 @@
 #include "stdx.h"
 #include "network_exception_handler.h"
 #include <chrono>
-#include "network_chrono.h"
 #include "network_sock_traffic_status_controller.h"
 #include "network_allocation.h"
+#include "network_exception.h"
+#include "network_producer_consumer.h"
+#include "network_stack_allocation.h"
+#include "network_kernel_allocator_singleton.h"
+#include "network_kernel_buffer.h"
+#include <expected>
+#include "network_ticket_timeout_manager.h"
+#include "network_concurrency.h"
+#include <cron_subsystem/cron_subsystem.h>
+
+namespace dg_sock::network_kernel_mailbox_impl1::model
+{
+    static inline constexpr int AF_INET     = 0;
+    static inline constexpr int AF_INET6    = 1;
+
+    struct IPv4{
+        std::array<char, 4u> ip_buf;
+
+        auto data() const noexcept -> const char *{
+
+            return this->ip_buf.data();
+        }
+
+        template <class Reflector>
+        constexpr void dg_reflect(const Reflector& reflector) const{
+            reflector(ip_buf);
+        }
+
+        template <class Reflector>
+        constexpr void dg_reflect(const Reflector& reflector){
+            reflector(ip_buf);
+        }
+    };
+
+    struct IPv6{
+        std::array<char, 16u> ip_buf;
+
+        auto data() const noexcept -> const char *{
+
+            return this->ip_buf.data();
+        }
+
+        template <class Reflector>
+        constexpr void dg_reflect(const Reflector& reflector) const{
+            reflector(ip_buf);
+        }
+
+        template <class Reflector>
+        constexpr void dg_reflect(const Reflector& reflector){
+            reflector(ip_buf);
+        }
+    };
+
+    struct IP{
+        std::variant<IPv4, IPv6> ip;
+
+        auto data() const noexcept -> const char *{
+
+            if (std::holds_alternative<IPv4>(this->ip)){
+                return std::get<IPv4>(this->ip).data();
+            } else if (std::holds_alternative<IPv6>(this->ip)){
+                return std::get<IPv6>(this->ip).data();
+            } else{
+                if constexpr(DEBUG_MODE_FLAG){
+                    dg_sock::network_log_stackdump::critical(dg_sock::network_exception::verbose(dg_sock::network_exception::INTERNAL_CORRUPTION));
+                    std::abort();
+                } else{
+                    std::unreachable();
+                }
+            }
+        }
+
+        auto sin_fam() const noexcept{
+
+            if (std::holds_alternative<IPv4>(this->ip)){
+                return AF_INET;
+            } else if (std::holds_alternative<IPv6>(this->ip)){
+                return AF_INET6;
+            } else{
+                if constexpr(DEBUG_MODE_FLAG){
+                    dg_sock::network_log_stackdump::critical(dg_sock::network_exception::verbose(dg_sock::network_exception::INTERNAL_CORRUPTION));
+                    std::abort();
+                } else{
+                    std::unreachable();
+                }
+            }
+        }
+
+        template <class Reflector>
+        constexpr void dg_reflect(const Reflector& reflector) const{
+            reflector(ip);
+        }
+
+        template <class Reflector>
+        constexpr void dg_reflect(const Reflector& reflector){
+            reflector(ip);
+        }
+    };
+
+    struct Address{
+        IP ip;
+        uint16_t port;
+
+        template <class Reflector>
+        constexpr void dg_reflect(const Reflector& reflector) const{
+            reflector(ip, port);
+        }
+
+        template <class Reflector>
+        constexpr void dg_reflect(const Reflector& reflector){
+            reflector(ip, port);
+        }
+    };
+
+    struct MailBoxArgument{
+        Address to;
+        const void * content;
+        size_t content_sz;
+    };
+}
+
+namespace dg_sock::network_kernel_mailbox_impl1::core
+{
+    using namespace dg_sock::network_kernel_mailbox_impl1::model;
+
+    class MailboxInterface{
+
+        public: 
+
+            virtual ~MailboxInterface() noexcept = default;
+            virtual void send(MailBoxArgument * mailbox_arr, size_t mailbox_arr_sz, exception_t * exception_arr) noexcept = 0;
+            virtual void recv(std::add_pointer_t<void> * output_arr,
+                              size_t * output_elemental_capacity_arr,
+                              size_t * output_elemental_sz_arr,
+                              size_t& output_arr_sz,
+                              size_t output_arr_cap) noexcept = 0;
+
+            virtual auto max_consume_size() noexcept -> size_t = 0;
+            virtual auto max_content_size() const noexcept -> size_t = 0;
+    };
+}
 
 namespace dg_sock::network_kernel_mailbox_impl1_flash_stream_x
 {
@@ -205,7 +345,7 @@ namespace dg_sock::network_kernel_mailbox_impl1_flash_stream_x
             total_bsz += pkt.data[i]->size();
         }
 
-        std::expected<internal_huge_kernel_buffer, exception_t> rs = dg_sock::network_exception::cstyle_initialize<internal_huge_kernel_buffer>(total_bsz);
+        std::expected<internal_huge_kernel_buffer, exception_t> rs = dg_sock::network_exception::cstyle_initialize<internal_huge_kernel_buffer>(total_bsz, ' ');
 
         if (!rs.has_value()){
             return std::unexpected(rs.error());
@@ -313,6 +453,7 @@ namespace dg_sock::network_kernel_mailbox_impl1_flash_stream_x
 
         virtual void tick(GlobalIdentifier * global_id_arr, size_t sz, exception_t * exception_arr) noexcept = 0; 
         virtual void get_expired_id(GlobalIdentifier * output_arr, size_t& sz, size_t cap) noexcept = 0;
+        virtual void void_id(GlobalIdentifier * output_arr, size_t sz) noexcept = 0;
         virtual auto max_consume_size() noexcept -> size_t = 0;
     };
 
@@ -399,6 +540,8 @@ namespace dg_sock::network_kernel_mailbox_impl1_flash_stream_x
         virtual void recv(std::add_pointer_t<OutputContainableInterface> * output_container_arr,
                           size_t& recv_sz, size_t recv_cap,
                           exception_t * exception_arr) noexcept = 0;
+
+        virtual auto max_consume_size() noexcept -> size_t = 0;
     };
 
     template <class T>
@@ -840,9 +983,9 @@ namespace dg_sock::network_kernel_mailbox_impl1_flash_stream_x
                     bool try_lock_rs = stdxx::try_lock(this->mtx_mtx_queue, std::memory_order_relaxed); 
 
                     if (!try_lock_rs){
-                        stdxx::lock_yield(FAILED_LOCK_SLEEP); //we proved that this just needs to yield the time of critical sections (so we could transfer the responsibility of waking up to whoever holding the lock then on)
-                                                             //so a lock acquisition is not mandatory here
-                                                             //the odd cases of anomaly, such as kernel intervention of round-robin + etc. is handled by the default wakers
+                        // stdxx::lock_yield(FAILED_LOCK_SLEEP); //we proved that this just needs to yield the time of critical sections (so we could transfer the responsibility of waking up to whoever holding the lock then on)
+                        //                                      //so a lock acquisition is not mandatory here
+                        //                                      //the odd cases of anomaly, such as kernel intervention of round-robin + etc. is handled by the default wakers
                         continue;
                     }
 
@@ -881,7 +1024,7 @@ namespace dg_sock::network_kernel_mailbox_impl1_flash_stream_x
                     return;
                 }
 
-                std::shared_ptr<dg_binary_semaphore> waiting_smp = dg_sock::network_kernel_mailbox_impl1_flash_streamx::urgent_make_shared<dg_binary_semaphore>(0);
+                std::shared_ptr<dg_binary_semaphore> waiting_smp = dg_sock::network_kernel_mailbox_impl1_flash_stream_x::urgent_make_shared<dg_binary_semaphore>(0);
 
                 [&, this]() noexcept{
                     stdxx::xlock_guard<stdxx::fair_atomic_flag> lck_grd(this->mtx_mtx_queue);
@@ -1009,20 +1152,20 @@ namespace dg_sock::network_kernel_mailbox_impl1_flash_stream_x
 
                 stdxx::xlock_guard<stdxx::fair_atomic_flag> lck_grd(*this->mtx);
 
-                auto ticking_steady_clock = dg_sock::ticking_clock<std::chrono::steady_clock>(this->ticking_clock_resolution); 
+                auto now = std::chrono::steady_clock::now();
 
                 for (size_t i = 0u; i < sz; ++i){
                     auto map_ptr = this->abstimeout_map.find(global_id_arr[i]);
 
                     if (map_ptr == this->abstimeout_map.end()){
-                        auto timeout_value = ticking_steady_clock.get() + this->abs_timeout_dur;
+                        auto timeout_value = now + this->abs_timeout_dur;
                         auto [emplace_ptr, status] = this->abstimeout_map.try_emplace(global_id_arr[i], timeout_value);
                         dg_sock::network_exception_handler::dg_assert(status);
                         exception_arr[i] = dg_sock::network_exception::SUCCESS; 
                         continue;
                     }
 
-                    if (map_ptr->second <= ticking_steady_clock.get()){
+                    if (map_ptr->second <= now){
                         exception_arr[i] = dg_sock::network_exception::SOCKET_STREAM_TIMEOUT;
                         continue;                        
                     }
@@ -1537,351 +1680,59 @@ namespace dg_sock::network_kernel_mailbox_impl1_flash_stream_x
 
         private:
 
-            dg_sock::pow2_cyclic_queue<EntranceControllerWaitingItem> tick_wait_queue;
-            dg_sock::pow2_cyclic_queue<EntranceEntry> entrance_entry_pq; //no exhausted container
-            const size_t entrance_entry_pq_cap; 
-            dg_sock::unordered_unstable_map<GlobalIdentifier, __uint128_t> key_id_map; //no exhausted container
-            __uint128_t id_ticker;
-            const std::chrono::nanoseconds expiry_period;
-            std::unique_ptr<stdxx::fair_atomic_flag> mtx;
-            stdxx::hdi_container<size_t> tick_sz_per_load;
+            std::unique_ptr<dg_sock::ticket_system::TicketTimeoutManagerInterface<GlobalIdentifier>> base;
+            std::chrono::nanoseconds punch_lifetime;
 
         public:
 
-            EntranceController(dg_sock::pow2_cyclic_queue<EntranceControllerWaitingItem> tick_wait_queue,
-                               dg_sock::pow2_cyclic_queue<EntranceEntry> entrance_entry_pq,
-                               size_t entrance_entry_pq_cap,
-                               dg_sock::unordered_unstable_map<GlobalIdentifier, __uint128_t> key_id_map,
-                               __uint128_t id_ticker,
-                               std::chrono::nanoseconds expiry_period,
-                               std::unique_ptr<stdxx::fair_atomic_flag> mtx,
-                               stdxx::hdi_container<size_t> tick_sz_per_load) noexcept: tick_wait_queue(std::move(tick_wait_queue)),
-                                                                                       entrance_entry_pq(std::move(entrance_entry_pq)),
-                                                                                       entrance_entry_pq_cap(entrance_entry_pq_cap),
-                                                                                       key_id_map(std::move(key_id_map)),
-                                                                                       id_ticker(id_ticker),
-                                                                                       expiry_period(std::move(expiry_period)),
-                                                                                       mtx(std::move(mtx)),
-                                                                                       tick_sz_per_load(std::move(tick_sz_per_load)){}
+            EntranceController(std::unique_ptr<dg_sock::ticket_system::TicketTimeoutManagerInterface<GlobalIdentifier>> base,
+                               std::chrono::nanoseconds punch_lifetime) noexcept: base(std::move(base)),
+                                                                                  punch_lifetime(punch_lifetime){}
 
-            void tick(GlobalIdentifier * global_id_arr, size_t sz, exception_t * exception_arr) noexcept{
-
-                if constexpr(DEBUG_MODE_FLAG){
-                    if (sz > this->max_consume_size()){
+            void tick(GlobalIdentifier * global_id_arr, size_t sz, exception_t * exception_arr) noexcept
+            {
+                if constexpr(DEBUG_MODE_FLAG)
+                {
+                    if (sz > this->max_consume_size())
+                    {
                         dg_sock::network_log_stackdump::critical(dg_sock::network_exception::verbose(dg_sock::network_exception::INTERNAL_CORRUPTION)); //exceeding clock + queue accuracy
                         std::abort();
                     }
                 }
 
-                std::binary_semaphore smp(0);
-                bool need_wait;
-                std::fill(exception_arr, std::next(exception_arr, sz), dg_sock::network_exception::SUCCESS);
+                using ClockInArgument = dg_sock::ticket_system::ClockInArgument<GlobalIdentifier>;
 
+                dg_sock::network_stack_allocation::NoExceptAllocation<ClockInArgument[]> arg_arr(sz);
+
+                for (size_t i = 0u; i < sz; ++i)
                 {
-                    stdxx::xlock_guard<stdxx::fair_atomic_flag> lck_grd(*this->mtx);
-
-                    auto now            = this->get_now();
-                    size_t wait_offset  = sz; 
-
-                    for (size_t i = 0u; i < sz; ++i){
-                        if (this->entrance_entry_pq.size() == this->entrance_entry_pq_cap){
-                            wait_offset = i; 
-                            break;
-                        }
-
-                        auto entry      = EntranceEntry{};
-                        entry.timestamp = now;
-                        entry.key       = global_id_arr[i];
-                        entry.entry_id  = this->id_ticker++;
-
-                        dg_sock::network_exception_handler::nothrow_log(this->entrance_entry_pq.push_back(entry));
-                        this->key_id_map[global_id_arr[i]] = entry.entry_id;
-                    }
-
-                    if (wait_offset == sz)
+                    arg_arr[i] = ClockInArgument
                     {
-                        need_wait = false;
-                    }
-                    else
-                    {
-                        need_wait = true;
-                        dg_sock::network_exception_handler::nothrow_log(this->tick_wait_queue.push_back(EntranceControllerWaitingItem
-                        {
-                            .id_arr         = std::next(global_id_arr, wait_offset),
-                            .id_arr_sz      = sz - wait_offset,
-                            .release_smp    = &smp
-                        }));
-                    }
+                        .clocked_in_ticket = global_id_arr[i],
+                        .expiry_dur = this->punch_lifetime
+                    };
                 }
 
-                if (need_wait)
-                {
-                    smp.acquire();
-                }
+                this->base->clock_in(arg_arr.get(), sz, exception_arr);
             }
 
-            //assume finite sorted queue of entrance_entry_pq
-            //assume key_id_map points to the lastest GlobalIdentifier guy in the entrance_entry_pq
-
-            void get_expired_id(GlobalIdentifier * output_arr, size_t& sz, size_t cap) noexcept{ //bad
-
-                stdxx::xlock_guard<stdxx::fair_atomic_flag> lck_grd(*this->mtx);
-
-                auto bar_time   = std::chrono::steady_clock::now() - this->expiry_period;
-                sz              = 0u;
-
-                while (true){
-                    if (sz == cap){
-                        return;
-                    }
-
-                    if (this->entrance_entry_pq.empty()){
-                        return;
-                    }
-
-                    if (this->entrance_entry_pq.front().timestamp > bar_time){ //bad
-                        return;
-                    }
-
-                    EntranceEntry entry = this->entrance_entry_pq.front();
-                    this->entrance_entry_pq.pop_front();
-                    auto map_ptr        = this->key_id_map.find(entry.key); 
-
-                    if constexpr(DEBUG_MODE_FLAG){
-                        if (map_ptr == this->key_id_map.end()){
-                            dg_sock::network_log_stackdump::critical(dg_sock::network_exception::verbose(dg_sock::network_exception::INTERNAL_CORRUPTION));
-                            std::abort();
-                        }
-                    }
-
-                    if (map_ptr->second == entry.entry_id){
-                        output_arr[sz++] = entry.key;
-                        this->key_id_map.erase(map_ptr);
-                    }
-
-                    this->fulfill_one_push_wait_queue();
-                }
-            }
-
-            auto max_consume_size() noexcept -> size_t{
-
-                return this->tick_sz_per_load.value;
-            }
-
-        private:
-
-            void fulfill_one_push_wait_queue() noexcept
+            void get_expired_id(GlobalIdentifier * output_arr, size_t& sz, size_t cap) noexcept
             {
-                if (this->tick_wait_queue.empty())
-                {
-                    return;
-                }
-
-                if (this->tick_wait_queue.front().id_arr_sz == 0u)
-                {
-                    std::abort();
-                }
-
-                auto entry      = EntranceEntry{};
-                entry.timestamp = this->get_now();
-                entry.key       = this->tick_wait_queue.front().id_arr[0];
-                entry.entry_id  = this->id_ticker++;
-
-                dg_sock::network_exception_handler::nothrow_log(this->entrance_entry_pq.push_back(entry));
-                this->key_id_map[entry.key] = entry.entry_id;
-                
-                this->tick_wait_queue.front() = EntranceControllerWaitingItem
-                {
-                    .id_arr         = std::next(this->tick_wait_queue.front().id_arr),
-                    .id_arr_sz      = this->tick_wait_queue.front().id_arr_sz - 1,
-                    .release_smp    = this->tick_wait_queue.front().release_smp
-                };
-
-                if (this->tick_wait_queue.front().id_arr_sz == 0u)
-                {
-                    this->tick_wait_queue.front().release_smp->release();
-                    this->tick_wait_queue.pop_front();
-                }
+                this->base->get_expired_ticket(output_arr, sz, cap);
             }
 
-            auto get_now() const noexcept -> std::chrono::time_point<std::chrono::steady_clock>{
-
-                if (this->entrance_entry_pq.empty()){
-                    return std::chrono::steady_clock::now();
-                }
-
-                return std::max(this->entrance_entry_pq.back().timestamp, std::chrono::steady_clock::now());
-            }
-    };
-
-    //OK
-    class RandomHashDistributedEntranceController: public virtual EntranceControllerInterface{
-
-        private:
-
-            std::unique_ptr<std::unique_ptr<EntranceControllerInterface>[]> base_arr;
-            const size_t pow2_base_arr_sz;
-            const size_t keyvalue_feed_cap;
-            const size_t max_tick_per_load; 
-
-        public:
-
-            RandomHashDistributedEntranceController(std::unique_ptr<std::unique_ptr<EntranceControllerInterface>[]> base_arr,
-                                                    size_t pow2_base_arr_sz,
-                                                    size_t keyvalue_feed_cap,
-                                                    size_t max_tick_per_load) noexcept: base_arr(std::move(base_arr)),
-                                                                                        pow2_base_arr_sz(pow2_base_arr_sz),
-                                                                                        keyvalue_feed_cap(keyvalue_feed_cap),
-                                                                                        max_tick_per_load(max_tick_per_load){}
-
-            void tick(GlobalIdentifier * global_id_arr, size_t sz, exception_t * exception_arr) noexcept{
-
-                auto feed_resolutor                 = InternalFeedResolutor{};
-                feed_resolutor.dst                  = this->base_arr.get();
-
-                size_t trimmed_keyvalue_feed_cap    = std::min(this->keyvalue_feed_cap, sz);
-                size_t feed_allocation_cost         = dg_sock::network_producer_consumer::delvrsrv_kv_allocation_cost(&feed_resolutor, trimmed_keyvalue_feed_cap);
-                dg_sock::network_stack_allocation::NoExceptRawAllocation<char[]> feed_mem(feed_allocation_cost);
-                auto feeder                         = dg_sock::network_exception_handler::nothrow_log(dg_sock::network_producer_consumer::delvrsrv_kv_open_preallocated_raiihandle(&feed_resolutor, trimmed_keyvalue_feed_cap, feed_mem.get()));
-
-                std::fill(exception_arr, std::next(exception_arr, sz), dg_sock::network_exception::SUCCESS);
-
-                for (size_t i = 0u; i < sz; ++i){
-                    size_t hashed_value     = dg_sock::network_hash::hash_reflectible(global_id_arr[i]);
-                    size_t partitioned_idx  = hashed_value & (this->pow2_base_arr_sz - 1u); //bad
-                    auto feed_arg           = InternalFeedArgument{};
-                    feed_arg.id             = global_id_arr[i];
-                    feed_arg.failed_err_ptr = std::next(exception_arr, i);
-
-                    dg_sock::network_producer_consumer::delvrsrv_kv_deliver(feeder.get(), partitioned_idx, feed_arg);
-                }
+            void void_id(GlobalIdentifier * id_arr, size_t sz) noexcept
+            {
+                this->base->void_ticket(id_arr, sz);
             }
 
-            void get_expired_id(GlobalIdentifier * output_arr, size_t& sz, size_t cap) noexcept{
-
-                sz = 0u;
-                size_t seed = dg_sock::network_randomizer::randomize_int<size_t>() >> 1;  
-
-                for (size_t i = 0u; i < this->pow2_base_arr_sz; ++i){
-                    size_t rem_cap  = cap - sz;
-
-                    if (rem_cap == 0u){
-                        return;
-                    }
-
-                    size_t idx = (seed + i) & (this->pow2_base_arr_sz - 1u);
-                    GlobalIdentifier * tmp_output_arr = std::next(output_arr, sz);
-                    size_t tmp_output_arr_sz{};
-
-                    this->base_arr[idx]->get_expired_id(tmp_output_arr, tmp_output_arr_sz, rem_cap);
-                    sz += tmp_output_arr_sz;
-                }
-            }
-
-            auto max_consume_size() noexcept -> size_t{
-
-                return this->max_tick_per_load;
-            }
-        
-        private:
-
-            struct InternalFeedArgument{
-                GlobalIdentifier id;
-                exception_t * failed_err_ptr;
-            };
-
-            struct InternalFeedResolutor: dg_sock::network_producer_consumer::KVConsumerInterface<size_t, InternalFeedArgument>{
-
-                std::unique_ptr<EntranceControllerInterface> * dst;
-
-                void push(const size_t& idx, std::move_iterator<InternalFeedArgument *> data_arr, size_t sz) noexcept{
-
-                    InternalFeedArgument * base_data_arr = data_arr.base();
-
-                    dg_sock::network_stack_allocation::NoExceptAllocation<GlobalIdentifier[]> global_id_arr(sz);
-                    dg_sock::network_stack_allocation::NoExceptAllocation<exception_t[]> exception_arr(sz);
-
-                    for (size_t i = 0u; i < sz; ++i){
-                        global_id_arr[i] = base_data_arr[i].id;
-                    }
-
-                    this->dst[idx]->tick(global_id_arr.get(), sz, exception_arr.get());
-
-                    for (size_t i = 0u; i < sz; ++i){
-                        if (dg_sock::network_exception::is_failed(exception_arr[i])){
-                            *base_data_arr[i].failed_err_ptr = exception_arr[i];
-                        }
-                    }
-                }
-            };
-    };
-
-    //OK
-    class ExhaustionControlledEntranceController: public virtual EntranceControllerInterface{
-
-        private:
-
-            std::unique_ptr<EntranceControllerInterface> base;
-            std::shared_ptr<dg_sock::network_concurrency_infretry_x::ExecutorInterface> executor;
-            std::shared_ptr<ExhaustionControllerInterface> exhaustion_controller;
-
-        public:
-
-            ExhaustionControlledEntranceController(std::unique_ptr<EntranceControllerInterface> base,
-                                                   std::shared_ptr<dg_sock::network_concurrency_infretry_x::ExecutorInterface> executor,
-                                                   std::shared_ptr<ExhaustionControllerInterface> exhaustion_controller) noexcept: base(std::move(base)),
-                                                                                                                                   executor(std::move(executor)),
-                                                                                                                                   exhaustion_controller(std::move(exhaustion_controller)){}
-
-            void tick(GlobalIdentifier * global_id_arr, size_t sz, exception_t * exception_arr) noexcept{
-
-                GlobalIdentifier * first_id_ptr     = global_id_arr;
-                GlobalIdentifier * last_id_ptr      = std::next(first_id_ptr, sz);
-                exception_t * first_exception_ptr   = exception_arr;
-                exception_t * last_exception_ptr    = std::next(exception_arr, sz);
-                size_t sliding_window_sz            = sz;
-
-                //let's try to grasp what's going on here
-                //we are protected by range bro
-                //assume we are to resolve every QUEUE_FULL, our state is correct at all time
-                //we are to maintain the state of peeking the next sliding_window of QUEUE_FULL
-                //such is we are to decay one state -> another state of lesser std::distance(first_id_ptr, last_id_ptr)
-
-                auto task = [&, this]() noexcept{
-                    this->base->tick(first_id_ptr, sliding_window_sz, first_exception_ptr);
-                    size_t queueing_sz                          = std::count(first_exception_ptr, last_exception_ptr, dg_sock::network_exception::QUEUE_FULL);
-                    exception_t err                             = this->exhaustion_controller->update_waiting_size(queueing_sz);
-
-                    if (dg_sock::network_exception::is_failed(err)){
-                        dg_sock::network_log_stackdump::error_fast_optional(dg_sock::network_exception::verbose(err));
-                    }
-
-                    exception_t * first_retriable_exception_ptr = std::find(first_exception_ptr, last_exception_ptr, dg_sock::network_exception::QUEUE_FULL);
-                    exception_t * last_retriable_exception_ptr  = std::find_if(first_retriable_exception_ptr, last_exception_ptr, [](exception_t err){return err != dg_sock::network_exception::QUEUE_FULL;});
-                    sliding_window_sz                           = std::distance(first_retriable_exception_ptr, last_retriable_exception_ptr);
-                    size_t relative_offset                      = std::distance(first_exception_ptr, first_retriable_exception_ptr);
-
-                    std::advance(first_id_ptr, relative_offset);
-                    std::advance(first_exception_ptr, relative_offset);
-
-                    return !this->exhaustion_controller->is_should_wait() || first_id_ptr == last_id_ptr;
-                };
-
-                auto virtual_task = dg_sock::network_concurrency_infretry_x::ExecutableWrapper<decltype(task)>(std::move(task));
-                this->executor->exec(virtual_task);
-            }
-
-            void get_expired_id(GlobalIdentifier * output_arr, size_t& sz, size_t cap) noexcept{
-
-                this->base->get_expired_id(output_arr, sz, cap);
-            }
-
-            auto max_consume_size() noexcept -> size_t{
-
+            auto max_consume_size() noexcept -> size_t
+            {
                 return this->base->max_consume_size();
             }
     };
 
+    //OK
     class VoidEntranceController: public virtual EntranceControllerInterface
     {
         public:
@@ -1894,6 +1745,11 @@ namespace dg_sock::network_kernel_mailbox_impl1_flash_stream_x
             void get_expired_id(GlobalIdentifier * output_arr, size_t& sz, size_t cap) noexcept
             {
                 sz = 0u;
+            }
+
+            void void_id(GlobalIdentifier * id_arr, size_t sz) noexcept
+            {
+                (void) id_arr;
             }
 
             auto max_consume_size() noexcept -> size_t
@@ -3031,6 +2887,15 @@ namespace dg_sock::network_kernel_mailbox_impl1_flash_stream_x
 
                 this->recv(buf_arr.get(), consuming_sz, consuming_cap);
 
+                auto oc_feed_resolutor                      = InternalOnCompleteResolutor{};
+                oc_feed_resolutor.entrance_controller       = this->entrance_controller.get();
+                oc_feed_resolutor.packet_assembler          = this->packet_assembler.get();
+
+                size_t trimmed_oc_feed_cap                  = std::min(std::min(std::min(std::min(this->entrance_controller_vectorization_sz, consuming_sz), this->entrance_controller->max_consume_size()), this->packet_assembler->max_consume_size()), this->packet_assembler_vectorization_sz);
+                size_t oc_feeder_allocation_cost            = dg_sock::network_producer_consumer::delvrsrv_allocation_cost(&oc_feed_resolutor, trimmed_oc_feed_cap);
+                dg_sock::network_stack_allocation::NoExceptRawAllocation<char[]> oc_feeder_mem(oc_feeder_allocation_cost);
+                auto oc_feeder                              = dg_sock::network_exception_handler::nothrow_log(dg_sock::network_producer_consumer::delvrsrv_open_preallocated_raiihandle(&oc_feed_resolutor, trimmed_oc_feed_cap, oc_feeder_mem.get()));
+
                 auto et_feed_resolutor                      = InternalEntranceFeedResolutor{};
                 et_feed_resolutor.entrance_controller       = this->entrance_controller.get();
 
@@ -3052,6 +2917,7 @@ namespace dg_sock::network_kernel_mailbox_impl1_flash_stream_x
                 ps_feed_resolutor.entrance_feeder           = et_feeder.get();
                 ps_feed_resolutor.inbound_feeder            = ib_feeder.get();
                 ps_feed_resolutor.infretry_device           = this->infretry_device.get();
+                ps_feed_resolutor.oc_feeder                 = oc_feeder.get();
 
                 size_t trimmed_ps_feed_cap                  = std::min(std::min(this->packet_assembler_vectorization_sz, consuming_sz), this->packet_assembler->max_consume_size());
                 size_t ps_feeder_allocation_cost            = dg_sock::network_producer_consumer::delvrsrv_allocation_cost(&ps_feed_resolutor, trimmed_ps_feed_cap);
@@ -3111,6 +2977,19 @@ namespace dg_sock::network_kernel_mailbox_impl1_flash_stream_x
                 }
             }
 
+            struct InternalOnCompleteResolutor: dg_sock::network_producer_consumer::ConsumerInterface<GlobalIdentifier>
+            {
+                EntranceControllerInterface * entrance_controller;
+                PacketAssemblerInterface * packet_assembler;
+
+                void push(std::move_iterator<GlobalIdentifier *> id_arr, size_t sz) noexcept
+                {
+                    this->entrance_controller->void_id(id_arr.base(), sz);
+                    std::atomic_signal_fence(std::memory_order_seq_cst);
+                    this->packet_assembler->destroy(id_arr.base(), sz);
+                }
+            };
+
             struct InternalEntranceFeedResolutor: dg_sock::network_producer_consumer::ConsumerInterface<GlobalIdentifier>{
 
                 EntranceControllerInterface * entrance_controller;
@@ -3151,6 +3030,7 @@ namespace dg_sock::network_kernel_mailbox_impl1_flash_stream_x
                 dg_sock::network_producer_consumer::DeliveryHandle<GlobalIdentifier> * entrance_feeder;
                 dg_sock::network_producer_consumer::DeliveryHandle<internal_huge_kernel_buffer> * inbound_feeder;
                 dg_sock::network_concurrency_infretry_x::ExecutorInterface * infretry_device;
+                dg_sock::network_producer_consumer::DeliveryHandle<GlobalIdentifier> * oc_feeder;
 
                 void push(std::move_iterator<PacketSegment *> data_arr, size_t sz) noexcept{
 
@@ -3173,6 +3053,8 @@ namespace dg_sock::network_kernel_mailbox_impl1_flash_stream_x
 
                     for (size_t i = 0u; i < sz; ++i){
                         if (assembled_arr[i].has_value()){
+                            dg_sock::network_producer_consumer::delvrsrv_deliver(this->oc_feeder, global_id_arr[i]);
+
                             std::expected<internal_huge_kernel_buffer, exception_t> buf = std::unexpected(dg_sock::network_exception::EXPECTED_NOT_INITIALIZED);
 
                             auto resolutor = [&]() noexcept{
@@ -3398,6 +3280,7 @@ namespace dg_sock::network_kernel_mailbox_impl1_flash_stream_x
             };
     };
 
+    //OK
     class DynamicMailBox: public virtual DynamicMailboxInterface
     {
         private:
@@ -3411,17 +3294,17 @@ namespace dg_sock::network_kernel_mailbox_impl1_flash_stream_x
 
         public:
 
-            MailBox(dg_sock::vector<dg_sock::network_concurrency::daemon_raii_handle_t> daemon_vec,
-                    std::unique_ptr<PacketizerInterface> packetizer,
-                    std::shared_ptr<dg_sock::network_kernel_mailbox_impl1::core::MailboxInterface> base,
-                    std::shared_ptr<InBoundContainerInterface> inbound_container,
-                    std::shared_ptr<OutBoundRuleInterface> outbound_rule,
-                    size_t transmission_vectorization_sz) noexcept: daemon_vec(std::move(daemon_vec)),
-                                                                    packetizer(std::move(packetizer)),
-                                                                    base(std::move(base)),
-                                                                    inbound_container(std::move(inbound_container)),
-                                                                    outbound_rule(std::move(outbound_rule)),
-                                                                    transmission_vectorization_sz(transmission_vectorization_sz){}
+            DynamicMailBox(dg_sock::vector<dg_sock::network_concurrency::daemon_raii_handle_t> daemon_vec,
+                           std::unique_ptr<PacketizerInterface> packetizer,
+                           std::shared_ptr<dg_sock::network_kernel_mailbox_impl1::core::MailboxInterface> base,
+                           std::shared_ptr<InBoundContainerInterface> inbound_container,
+                           std::shared_ptr<OutBoundRuleInterface> outbound_rule,
+                           size_t transmission_vectorization_sz) noexcept: daemon_vec(std::move(daemon_vec)),
+                                                                           packetizer(std::move(packetizer)),
+                                                                           base(std::move(base)),
+                                                                           inbound_container(std::move(inbound_container)),
+                                                                           outbound_rule(std::move(outbound_rule)),
+                                                                           transmission_vectorization_sz(transmission_vectorization_sz){}
 
             void send(MailBoxArgument * data_arr, size_t sz, exception_t * exception_arr) noexcept
             {
@@ -3801,102 +3684,23 @@ namespace dg_sock::network_kernel_mailbox_impl1_flash_stream_x
                                                 has_integrity_transmit);
         }  
 
-        static auto get_entrance_controller(size_t tick_wait_queue_cap,
+        static auto get_entrance_controller(size_t ticket_wait_queue_cap,
                                             size_t queue_cap,
                                             std::chrono::nanoseconds expiry_period,
                                             size_t max_consume_decay_factor = 2u) -> std::unique_ptr<EntranceControllerInterface>{
             
-            const size_t MIN_TICK_WAIT_QUEUE_CAP                = size_t{1};
-            const size_t MAX_TICK_WAIT_QUEUE_CAP                = size_t{1} << 30;
-            const size_t MIN_QUEUE_CAP                          = size_t{1};
-            const size_t MAX_QUEUE_CAP                          = size_t{1} << 30;
-
             const std::chrono::nanoseconds MIN_EXPIRY_PERIOD    = std::chrono::nanoseconds(1);
             const std::chrono::nanoseconds MAX_EXPIRY_PERIOD    = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::hours(1));
             
-            if (std::clamp(tick_wait_queue_cap, MIN_TICK_WAIT_QUEUE_CAP, MAX_TICK_WAIT_QUEUE_CAP) != tick_wait_queue_cap){
-                dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
-            }
-
-            if (std::clamp(queue_cap, MIN_QUEUE_CAP, MAX_QUEUE_CAP) != queue_cap){
-                dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
-            }
-
             if (std::clamp(expiry_period, MIN_EXPIRY_PERIOD, MAX_EXPIRY_PERIOD) != expiry_period){
                 dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
             }
 
-            size_t upqueue_cap              = stdxx::ceil2(queue_cap);
-            size_t tentative_max_consume_sz = upqueue_cap >> max_consume_decay_factor;
-            size_t max_consume_sz           = std::max(size_t{1}, tentative_max_consume_sz);
-            auto tick_wait_queue            = dg_sock::pow2_cyclic_queue<EntranceControllerWaitingItem>(stdxx::ulog2(stdxx::ceil2(tick_wait_queue_cap)));
-            auto entrance_entry_pq          = dg_sock::pow2_cyclic_queue<EntranceEntry>(stdxx::ulog2(upqueue_cap));
-            auto key_id_map                 = dg_sock::unordered_unstable_map<GlobalIdentifier, __uint128_t>{};
-
-            return std::make_unique<EntranceController>(std::move(tick_wait_queue),
-                                                        std::move(entrance_entry_pq),
-                                                        upqueue_cap,
-                                                        std::move(key_id_map),
-                                                        __uint128_t{0u},
-                                                        expiry_period,
-                                                        stdxx::make_unique_fair_atomic_flag(),
-                                                        stdxx::hdi_container<size_t>{max_consume_sz});
-        }
-
-        static auto get_random_hash_distributed_entrance_controller(std::vector<std::unique_ptr<EntranceControllerInterface>> base_vec,
-                                                                    size_t keyvalue_feed_cap    = DEFAULT_KEYVALUE_FEED_SIZE) -> std::unique_ptr<EntranceControllerInterface>{
-
-            const size_t MIN_KEYVALUE_FEED_CAP  = size_t{1};
-            const size_t MAX_KEYVALUE_FEED_CAP  = size_t{1} << 25;
-
-            if (!stdxx::is_pow2(base_vec.size())){
-                dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
-            }
-
-            if (std::clamp(keyvalue_feed_cap, MIN_KEYVALUE_FEED_CAP, MAX_KEYVALUE_FEED_CAP) != keyvalue_feed_cap){
-                dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
-            }
-
-            auto base_arr           = std::make_unique<std::unique_ptr<EntranceControllerInterface>[]>(base_vec.size());
-            size_t base_arr_sz      = base_vec.size();
-            size_t max_consume_sz   = std::numeric_limits<size_t>::max(); 
-
-            for (size_t i = 0u; i < base_arr_sz; ++i){
-                if (base_vec[i] == nullptr){
-                    dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
-                }
-
-                max_consume_sz  = std::min(max_consume_sz, base_vec[i]->max_consume_size());
-                base_arr[i]     = std::move(base_vec[i]);
-            }
-
-            size_t trimmed_feed_cap = std::min(max_consume_sz, keyvalue_feed_cap);
-
-            return std::make_unique<RandomHashDistributedEntranceController>(std::move(base_arr),
-                                                                             base_arr_sz,
-                                                                             trimmed_feed_cap,
-                                                                             max_consume_sz);
-        }
-
-        static auto get_exhaustion_controlled_entrance_controller(std::unique_ptr<EntranceControllerInterface> base,
-                                                                  std::shared_ptr<dg_sock::network_concurrency_infretry_x::ExecutorInterface> executor,
-                                                                  std::shared_ptr<ExhaustionControllerInterface> exhaustion_controller) -> std::unique_ptr<EntranceControllerInterface>{
-            
-            if (base == nullptr){
-                dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
-            }
-
-            if (executor == nullptr){
-                dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
-            }
-
-            if (exhaustion_controller == nullptr){
-                dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
-            }
-
-            return std::make_unique<ExhaustionControlledEntranceController>(std::move(base),
-                                                                            std::move(executor),
-                                                                            std::move(exhaustion_controller));
+            return std::make_unique<EntranceController>(dg_sock::ticket_system::ComponentFactory::get_ticket_timeout_manager<GlobalIdentifier>(ticket_wait_queue_cap,
+                                                                                                                                               ticket_wait_queue_cap,
+                                                                                                                                               queue_cap,
+                                                                                                                                               MAX_EXPIRY_PERIOD),
+                                                        expiry_period);
         }
 
         static auto get_void_entrance_controller() -> std::unique_ptr<EntranceControllerInterface>
@@ -4636,37 +4440,9 @@ namespace dg_sock::network_kernel_mailbox_impl1_flash_stream_x
                     dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
                 }
 
-                if (config.latency_controller_has_exhaustion_control){
-                    if (config.latency_controller_component_sz == 1u){
-                        return ComponentFactory::get_exhaustion_controlled_entrance_controller(ComponentFactory::get_entrance_controller(config.latency_controller_tick_wait_queue_cap,
-                                                                                                                                         config.latency_controller_queue_cap,
-                                                                                                                                         config.latency_controller_expiry_period),
-                                                                                               config.infretry_device,
-                                                                                               ComponentFactory::get_no_exhaustion_controller());
-                    } else{
-                        std::vector<std::unique_ptr<EntranceControllerInterface>> entrance_controller_vec(config.latency_controller_component_sz);
-                        auto gen = std::bind_front(ComponentFactory::get_entrance_controller, config.latency_controller_tick_wait_queue_cap, config.latency_controller_queue_cap, config.latency_controller_expiry_period, 2u);
-                        std::generate(entrance_controller_vec.begin(), entrance_controller_vec.end(), gen);
-
-                        return ComponentFactory::get_exhaustion_controlled_entrance_controller(ComponentFactory::get_random_hash_distributed_entrance_controller(std::move(entrance_controller_vec),
-                                                                                                                                                                 config.latency_controller_keyvalue_feed_cap),
-                                                                                               config.infretry_device,
-                                                                                               ComponentFactory::get_no_exhaustion_controller());
-                    }
-                } else{
-                    if (config.latency_controller_component_sz == 1u){
-                        return ComponentFactory::get_entrance_controller(config.latency_controller_tick_wait_queue_cap,
-                                                                         config.latency_controller_queue_cap,
-                                                                         config.latency_controller_expiry_period);
-                    } else{
-                        std::vector<std::unique_ptr<EntranceControllerInterface>> entrance_controller_vec(config.latency_controller_component_sz);
-                        auto gen = std::bind_front(ComponentFactory::get_entrance_controller, config.latency_controller_tick_wait_queue_cap, config.latency_controller_queue_cap, config.latency_controller_expiry_period, 2u);
-                        std::generate(entrance_controller_vec.begin(), entrance_controller_vec.end(), gen);
-
-                        return ComponentFactory::get_random_hash_distributed_entrance_controller(std::move(entrance_controller_vec),
-                                                                                                 config.latency_controller_keyvalue_feed_cap);
-                    }
-                }
+                return ComponentFactory::get_entrance_controller(config.latency_controller_tick_wait_queue_cap,
+                                                                 config.latency_controller_queue_cap,
+                                                                 config.latency_controller_expiry_period);
             }
 
             static auto make_mailbox_x(std::shared_ptr<dg_sock::network_kernel_mailbox_impl1::core::MailboxInterface> base,

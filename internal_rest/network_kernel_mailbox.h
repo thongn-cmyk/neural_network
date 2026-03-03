@@ -12,68 +12,108 @@
 #include <chrono>
 #include <vector>
 #include <optional>
+#include "network_log.h"
+#include "network_kernel_mailbox_impl1_channel_x.h"
+
 // #include "network_kernel_mailbox_impl1.h"
 // #include "network_kernel_mailbox_impl1_x.h" 
 
 namespace dg_sock::network_kernel_mailbox
 {
-    using Address           = uint8_t;
-    using channel_t         = uint8_t;
+    using Address           = dg_sock::network_kernel_mailbox_impl1::model::Address;
 
     struct Config{};
 
     struct Signature{};
 
-    // using SingletonObject = sdtxx::singleton<Signature, std::shared_ptr<dg_sock::network_kernel_mailbox_impl1_x::channel::MailboxInterface>>;
+    using SingletonObject   = stdxx::singleton<Signature, std::shared_ptr<dg_sock::network_kernel_mailbox_impl1_channel_x::ChannelMailboxInterface>>;
+    using MailBoxArgument   = dg_sock::network_kernel_mailbox_impl1::model::MailBoxArgument;
+
+    struct InternalRecvWrapper: virtual dg_sock::network_kernel_mailbox_impl1_channel_x::OutputContainableInterface
+    {
+        private:
+
+            dg_sock::string * reference;
+
+        public:
+
+            InternalRecvWrapper() = default;
+
+            InternalRecvWrapper(dg_sock::string * reference): reference(reference){}
+
+            void resize(size_t sz)
+            {
+                stdxx::safe_ptr_access(this->reference)->resize(sz);
+            }
+
+            auto data() noexcept -> std::add_pointer_t<char>
+            {
+                return stdxx::safe_ptr_access(this->reference)->data();
+            }
+    };
 
     void init(const Config& config)
     {
-        // SingletonObject::get() = dg_sock::network_kernel_mailbox_impl1_x::channel::SolutionBuilder{}.set_config(config).build();
-        // std::atomic_thread_fence(std::memory_order_seq_cst);
+
     }
 
     void deinit() noexcept
     {
-        // std::atomic_thread_fence(std::memory_order_seq_cst);
-        // SingletonObject::get() = nullptr;
+        SingletonObject::get() = nullptr;
     }
 
     void send(uint32_t channel,
               Address * addr_arr, dg_sock::string * content_arr, size_t sz,
               exception_t * exception_arr) noexcept
     {
-        // if constexpr(DEBUG_MODE_FLAG)
-        // {
-        //     if (sz > SingletonObject::get()->max_consume_size())
-        //     {
-        //         dg_sock::network_log_stackdump::critical(dg_sock::network_exception::verbose(dg_sock::network_exception::INTERNAL_CORRUPTION));
-        //         std::abort();
-        //     }
-        // }
+        dg_sock::network_stack_allocation::NoExceptAllocation<MailBoxArgument[]> mailbox_arr(sz);
 
-        // dg_sock::network_stack_allocation::NoExceptAllocation<MailBoxArgument[]> mailbox_arr(sz);
+        for (size_t i = 0u; i < sz; ++i)
+        {
+            mailbox_arr[i] = MailBoxArgument
+            {
+                .to         = addr_arr[i],
+                .content    = static_cast<const void *>(content_arr[i].data()),
+                .content_sz = content_arr[i].size()
+            };
+        }
 
-        // for (size_t i = 0u; i < sz; ++i)
-        // {
-        //     mailbox_arr[i].to           = addr_arr[i];
-        //     mailbox_arr[i].content      = content_arr[i].data();
-        //     mailbox_arr[i].content_sz   = content_arr[i].size();
-        // }
-
-        // SingletonObject::get()->send(channel, mailbox_arr.get(), sz, exception_arr);
+        SingletonObject::get()->send(channel, mailbox_arr.get(), sz, exception_arr);
     }
 
     void recv(uint32_t channel,
-              dg_sock::string * output_arr, size_t output_arr_sz, size_t output_arr_cap) noexcept
+              dg_sock::string * output_arr, size_t& output_arr_sz, size_t output_arr_cap) noexcept
     {
-        // SingletonObject::get()->recv(channel, output_arr, output_arr_sz, output_arr_cap);
+        dg_sock::network_stack_allocation::NoExceptAllocation<InternalRecvWrapper[]> recv_container_arr(output_arr_cap);
+        dg_sock::network_stack_allocation::NoExceptAllocation<std::add_pointer_t<dg_sock::network_kernel_mailbox_impl1_channel_x::OutputContainableInterface>[]> virtual_recv_container_arr(output_arr_cap);
+        dg_sock::network_stack_allocation::NoExceptAllocation<exception_t[]> exception_arr(output_arr_cap);
+
+        for (size_t i = 0u; i < output_arr_cap; ++i)
+        {
+            recv_container_arr[i]           = InternalRecvWrapper(std::next(output_arr, i));
+            virtual_recv_container_arr[i]   = &recv_container_arr[i];
+        }
+
+        SingletonObject::get()->recv(channel,
+                                     virtual_recv_container_arr.get(), output_arr_sz, output_arr_cap,
+                                     exception_arr.get());
+
+        if constexpr(DEBUG_MODE_FLAG)
+        {
+            for (size_t i = 0u; i < output_arr_sz; ++i)
+            {
+                if (dg_sock::network_exception::is_failed(exception_arr[i]))
+                {
+                    dg_sock::network_log_stackdump::critical(dg_sock::network_exception::verbose(dg_sock::network_exception::INTERNAL_CORRUPTION));
+                    std::abort();
+                }
+            }
+        }
     }
 
     auto max_consume_size() noexcept -> size_t
     {
-        // return SingletonObject::get()->max_consume_size();
-
-        return {};
+        return SingletonObject::get()->max_consume_size();
     }
 }
 

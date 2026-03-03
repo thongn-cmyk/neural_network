@@ -2,11 +2,19 @@
 #define __NETWORK_KERNEL_MAILBOX_IMPL1_CHANNEL_X_H__
 
 #include <memory>
-#include "network_kernel_mailbox_impl1.h"
+#include "network_kernel_mailbox_impl1_flash_stream_x.h"
+#include <unordered_map>
+#include "network_stack_allocation.h"
+#include "network_std_container.h"
+#include "network_producer_consumer.h"
+#include "network_log.h"
 
 namespace dg_sock::network_kernel_mailbox_impl1_channel_x
 {
-    using str_buffer = dg_sock::string;
+    using str_buffer        = dg_sock::string;
+    using MailBoxArgument   = dg_sock::network_kernel_mailbox_impl1::model::MailBoxArgument;
+
+    static inline constexpr uint32_t SERIALIZATION_SECRET = 1656166028UL;
 
     struct ChannelMessage
     {
@@ -204,7 +212,7 @@ namespace dg_sock::network_kernel_mailbox_impl1_channel_x
                     {
                         auto [new_map_ptr, status] = this->channel_buffer_map.insert(std::make_pair(channel, dg_sock::pow2_cyclic_queue<str_buffer>(stdxx::ulog2(this->pow2_max_channel_buffer_sz))));
                         map_ptr = new_map_ptr;
-                        dg_sock::network_exception_handler::dg_assert();
+                        dg_sock::network_exception_handler::dg_assert(status);
                     }
 
                     for (size_t i = 0u; i < base_str_arr_sz; ++i)
@@ -317,8 +325,7 @@ namespace dg_sock::network_kernel_mailbox_impl1_channel_x
             static inline constexpr size_t MILLION_CHANNEL_STICKY_CHANNEL_QUEUE_SZ      = size_t{1} << 16;
             static inline constexpr size_t MILLION_CHANNEL_STICKY_CHANNEL_CONSUME_SZ    = size_t{1} << 8;
 
-            static inline constexpr size_t CONSUMPTION_SZ                               = std::min(ONE_CHANNEL_STICKY_CHANNEL_QUEUE_CONSUME_SZ,
-                                                                                                   THOUSAND_CHANNEL_STICKY_CHANNEL_CONSUME_SZ,
+            static inline constexpr size_t CONSUMPTION_SZ                               = std::min(std::min(ONE_CHANNEL_STICKY_CHANNEL_QUEUE_CONSUME_SZ, THOUSAND_CHANNEL_STICKY_CHANNEL_CONSUME_SZ),
                                                                                                    MILLION_CHANNEL_STICKY_CHANNEL_CONSUME_SZ);
 
         public:
@@ -330,7 +337,7 @@ namespace dg_sock::network_kernel_mailbox_impl1_channel_x
             static inline constexpr uint8_t MILLION_CHANNEL_CODEX   = 2u;
 
             PreconfiguratedStickyChannelContainer(const std::unordered_map<uint32_t, channel_t>& channel_choice_map,
-                                                  const std::unordered_map<uint32_t, size_t>& channel_msg_cap_map = std::unordered_map<uint32_t, size_t>{}): sticky_channeL_map()
+                                                  const std::unordered_map<uint32_t, size_t>& channel_msg_cap_map = std::unordered_map<uint32_t, size_t>{}): sticky_channel_map()
             {
                 for (const auto& [channel, channel_type]: channel_choice_map)
                 {
@@ -361,7 +368,7 @@ namespace dg_sock::network_kernel_mailbox_impl1_channel_x
                             this->sticky_channel_map[channel]   = Bucket
                             {
                                 .channel_container  = std::make_unique<StickyChannelContainer>(MILLION_CHANNEL_STICKY_CHANNEL_QUEUE_SZ, MILLION_CHANNEL_STICKY_CHANNEL_CONSUME_SZ),
-                                .max_unit_sz        = this->get_unit_size(channel_msg_cap_map, channel);
+                                .max_unit_sz        = this->get_unit_size(channel_msg_cap_map, channel)
                             };
 
                             break;
@@ -414,7 +421,7 @@ namespace dg_sock::network_kernel_mailbox_impl1_channel_x
                 }
 
                 dg_sock::network_stack_allocation::NoExceptAllocation<exception_t[]> tmp_exception_arr(thru_str_arr_sz);
-                map_ptr->second.channel_container->push(channel, thru_str_arr.get(), thru_str_arr_sz, tmp_exception_arr.get());
+                map_ptr->second.channel_container->push(channel, std::make_move_iterator(thru_str_arr.get()), thru_str_arr_sz, tmp_exception_arr.get());
 
                 for (size_t i = 0u; i < thru_str_arr_sz; ++i)
                 {
@@ -520,7 +527,7 @@ namespace dg_sock::network_kernel_mailbox_impl1_channel_x
                 }
 
                 size_t recv_sz;
-                this->base_mailbox->recv(virtual_output_container_arr.get(), recv_sz, this->pull_sz);
+                this->base_mailbox->recv(virtual_output_container_arr.get(), recv_sz, this->pull_sz, exception_arr.get());
 
                 auto resolutor  = ChannelFeedResolutor{};
                 resolutor.sink  = this->channel_container.get();
@@ -662,7 +669,7 @@ namespace dg_sock::network_kernel_mailbox_impl1_channel_x
                 }
 
                 dg_sock::network_stack_allocation::NoExceptAllocation<exception_t[]> tmp_exception_arr(thru_sz);
-                this->base_mailbox->send(channel, new_data_arr.get(), thru_sz, tmp_exception_arr.get());
+                this->base_mailbox->send(new_data_arr.get(), thru_sz, tmp_exception_arr.get());
 
                 for (size_t i = 0u; i < thru_sz; ++i)
                 {
@@ -671,7 +678,7 @@ namespace dg_sock::network_kernel_mailbox_impl1_channel_x
             }
 
             void recv(uint32_t channel,
-                      std::add_pointer_t<OutputContainbleInterface> * output_container_arr,
+                      std::add_pointer_t<OutputContainableInterface> * output_container_arr,
                       size_t& recv_sz, size_t recv_cap,
                       exception_t * exception_arr) noexcept
             {
@@ -746,7 +753,7 @@ namespace dg_sock::network_kernel_mailbox_impl1_channel_x
                     dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
                 }
 
-                if (std::clamp(push_sz, MIM_PUSH_SZ, MAX_PUSH_SZ) != push_sz)
+                if (std::clamp(push_sz, MIN_PUSH_SZ, MAX_PUSH_SZ) != push_sz)
                 {
                     dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
                 }
@@ -761,6 +768,104 @@ namespace dg_sock::network_kernel_mailbox_impl1_channel_x
                                                         pull_sz,
                                                         push_sz,
                                                         busy_pull_sz);
+            }
+    };
+
+    class SolutionBuilder
+    {
+        private:
+
+            std::shared_ptr<dg_sock::network_kernel_mailbox_impl1_flash_stream_x::DynamicMailboxInterface> base;
+
+            std::unordered_map<uint32_t, PreconfiguratedStickyChannelContainer::channel_t> channel_kind_map;
+            std::unordered_map<uint32_t, uint64_t> channel_msg_cap_map;
+
+            uint64_t assorter_worker_sz;
+
+            static inline constexpr size_t DEFAULT_ASSORTER_WORKER_SZ   = 1u;
+            static inline constexpr size_t DEFAULT_PULL_SZ              = 1u;
+            static inline constexpr size_t DEFAULT_PUSH_SZ              = 1u;
+            static inline constexpr size_t DEFAULT_BUSY_PULL_SZ         = 0u;
+
+        public:
+
+            SolutionBuilder(): base(nullptr),
+                               channel_kind_map(),
+                               channel_msg_cap_map(),
+                               assorter_worker_sz(DEFAULT_ASSORTER_WORKER_SZ){}
+
+            auto set_base(std::shared_ptr<dg_sock::network_kernel_mailbox_impl1_flash_stream_x::DynamicMailboxInterface> base) -> SolutionBuilder&
+            {
+                if (base == nullptr)
+                {
+                    dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
+                }
+
+                this->base = std::move(base);
+
+                return *this;
+            }
+
+            auto add_channel(uint32_t channel, PreconfiguratedStickyChannelContainer::channel_t channel_kind, uint64_t msg_cap) -> SolutionBuilder&
+            {
+                this->channel_kind_map[channel]     = channel_kind;
+                this->channel_msg_cap_map[channel]  = msg_cap;
+
+                return *this;
+            }
+
+            auto set_worker_size(size_t sz) -> SolutionBuilder&
+            {
+                this->assorter_worker_sz = sz;
+
+                return *this;
+            }
+
+            auto build() -> std::unique_ptr<ChannelMailboxInterface>
+            {
+                if (this->base == nullptr)
+                {
+                    dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
+                }
+
+                std::shared_ptr<ChannelContainerInterface> channel_container = this->get_channel_container();
+                std::shared_ptr<void> daemon = this->get_daemon_worker(channel_container);
+
+                return std::make_unique<ChannelMailbox>(std::move(daemon),
+                                                        std::move(channel_container),
+                                                        this->base);
+            }
+
+            template <class Reflector>
+            void dg_reflect(const Reflector& reflector) const
+            {
+                reflector(channel_kind_map, channel_msg_cap_map, assorter_worker_sz);
+            }
+
+            template <class Reflector>
+            void dg_reflect(const Reflector& reflector)
+            {
+                reflector(channel_kind_map, channel_msg_cap_map, assorter_worker_sz);
+            }
+
+        private:
+
+            auto get_channel_container() -> std::unique_ptr<ChannelContainerInterface>
+            {
+                return ComponentFactory::get_preconfigurated_sticky_channel_container(this->channel_kind_map,
+                                                                                      {this->channel_msg_cap_map.begin(), this->channel_msg_cap_map.end()});
+            }
+
+            auto get_daemon_worker(std::shared_ptr<ChannelContainerInterface> channel) -> std::shared_ptr<void>
+            {
+                auto worker_handle = dg_sock::network_exception_handler::throw_nolog(dg_sock::network_concurrency::daemon_saferegister(dg_sock::network_concurrency::CHANNEL_DAEMON,
+                                                                                                                                       ComponentFactory::get_assorter_worker(channel,
+                                                                                                                                                                             this->base,
+                                                                                                                                                                             DEFAULT_PULL_SZ,
+                                                                                                                                                                             DEFAULT_PUSH_SZ,
+                                                                                                                                                                             DEFAULT_BUSY_PULL_SZ)));
+
+                return std::make_shared<decltype(worker_handle)>(std::move(worker_handle));
             }
     };
 }
