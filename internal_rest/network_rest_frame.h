@@ -4775,7 +4775,7 @@ namespace dg_sock::network_rest_frame::client_instance
 
             SolutionBuilder(): base_ticket_cap(DEFAULT_BASE_TICKET_CAP),
                                ticket_controller_concurrency_sz(DEFAULT_TICKET_CONTROLLER_CONCURRENCY_SZ),
-                               system_thread_count(dg_sock::network_concurrency::MAX_THREAD_COUNT),
+                               system_thread_count(dg_sock::network_concurrency::get_thread_count()),
                                concurrent_request_cap(DEFAULT_CONCURRENT_REQUEST_CAP),
                                max_wait_dur(DEFAULT_MAX_WAIT_DUR),
                                recv_channel(std::nullopt),

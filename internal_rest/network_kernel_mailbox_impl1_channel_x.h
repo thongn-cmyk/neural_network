@@ -771,6 +771,25 @@ namespace dg_sock::network_kernel_mailbox_impl1_channel_x
             }
     };
 
+    struct Config
+    {
+        std::unordered_map<uint32_t, PreconfiguratedStickyChannelContainer::channel_t> channel_kind_map;
+        std::unordered_map<uint32_t, uint64_t> channel_msg_cap_map;
+        uint64_t assorter_worker_sz;
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector) const
+        {
+            reflector(channel_kind_map, channel_msg_cap_map, assorter_worker_sz);
+        }
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector)
+        {
+            reflector(channel_kind_map, channel_msg_cap_map, assorter_worker_sz);
+        }
+    };
+
     class SolutionBuilder
     {
         private:
@@ -836,16 +855,31 @@ namespace dg_sock::network_kernel_mailbox_impl1_channel_x
                                                         this->base);
             }
 
-            template <class Reflector>
-            void dg_reflect(const Reflector& reflector) const
+            auto dump_config() -> Config
             {
-                reflector(channel_kind_map, channel_msg_cap_map, assorter_worker_sz);
+                return Config
+                {
+                    .channel_kind_map       = this->channel_kind_map,
+                    .channel_msg_cap_map    = this->channel_msg_cap_map,
+                    .assorter_worker_sz     = this->assorter_worker_sz
+                };
             }
 
-            template <class Reflector>
-            void dg_reflect(const Reflector& reflector)
+            auto load_config(Config config) -> SolutionBuilder&
             {
-                reflector(channel_kind_map, channel_msg_cap_map, assorter_worker_sz);
+                for (const auto& [channel, kind]: config.channel_kind_map)
+                {
+                    if (!config.channel_msg_cap_map.contains(channel))
+                    {
+                        dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
+                    }
+
+                    this->add_channel(channel, kind, config.channel_msg_cap_map[channel]);
+                }
+
+                this->set_worker_size(config.assorter_worker_sz);
+
+                return *this;
             }
 
         private:
@@ -858,7 +892,7 @@ namespace dg_sock::network_kernel_mailbox_impl1_channel_x
 
             auto get_daemon_worker(std::shared_ptr<ChannelContainerInterface> channel) -> std::shared_ptr<void>
             {
-                auto worker_handle = dg_sock::network_exception_handler::throw_nolog(dg_sock::network_concurrency::daemon_saferegister(dg_sock::network_concurrency::CHANNEL_DAEMON,
+                auto worker_handle = dg_sock::network_exception_handler::throw_nolog(dg_sock::network_concurrency::daemon_saferegister(dg_sock::network_concurrency::MAILBOX_CHANNEL_DAEMON,
                                                                                                                                        ComponentFactory::get_assorter_worker(channel,
                                                                                                                                                                              this->base,
                                                                                                                                                                              DEFAULT_PULL_SZ,

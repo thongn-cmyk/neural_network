@@ -40,7 +40,7 @@ namespace dg_sock::network_allocation
 
         public:
 
-            static inline constexpr size_t DEFAULT_ALIGNMENT_SZ = alignof(std::max_align_t);
+            static inline constexpr size_t DEFAULT_ALIGNMENT_SZ = 1u;
 
         private:
 
@@ -73,31 +73,6 @@ namespace dg_sock::network_allocation
                 }
             }
 
-            inline auto realloc(void * buf, size_t blk_sz) -> void *
-            {
-                if (buf == nullptr) [[unlikely]]
-                {
-                    return this->malloc(blk_sz);
-                }
-
-                size_t full_sz                  = blk_sz + sizeof(header_t);
-                size_t bucket_idx               = std::max(static_cast<size_t>(stdxx::ulog2(stdxx::ceil2(full_sz))), MIN_POW2_VALUE);
-                auto [org_buf, org_bucket_idx]  = this->to_original_buffer(static_cast<char *>(buf));
-
-                if (bucket_idx <= org_bucket_idx)
-                {
-                    return buf;
-                }
-
-                void * new_buf  = this->malloc(blk_sz);
-                size_t cpy_sz   = this->bucket_idx_to_buffer_size(org_bucket_idx);
-
-                std::memcpy(new_buf, buf, cpy_sz);
-                this->free(buf);
-
-                return new_buf;
-            }
-
             inline void free(void * buf) noexcept
             {
                 if (buf == nullptr) [[unlikely]]
@@ -127,14 +102,6 @@ namespace dg_sock::network_allocation
             {
                 size_t actual_sz                = this->bucket_idx_to_buffer_size(bucket_idx);
 
-                if constexpr(DEBUG_MODE_FLAG)
-                {
-                    if (actual_sz % DEFAULT_ALIGNMENT_SZ != 0u)
-                    {
-                        std::abort();
-                    }
-                }
-
                 auto std_memory_free_func       = [](char * mem) noexcept
                 {
                     std::free(mem);
@@ -145,11 +112,6 @@ namespace dg_sock::network_allocation
                 if (buf == nullptr)
                 {
                     throw std::bad_alloc();
-                }
-
-                if (reinterpret_cast<uintptr_t>(buf.get()) % DEFAULT_ALIGNMENT_SZ != 0u)
-                {
-                    std::abort();
                 }
 
                 char * buf_value                = this->internal_write_metadata_to_buffer(buf.get(), bucket_idx);
@@ -254,13 +216,6 @@ namespace dg_sock::network_allocation
                 return BinaryUnitAllocator::malloc(sz);
             }
 
-            inline auto realloc(void * buf, size_t blk_sz) -> void *
-            {
-                stdxx::xlock_guard<stdxx::fair_atomic_flag> lck_grd(this->mtx);
-
-                return BinaryUnitAllocator::realloc(buf, blk_sz);
-            }
-
             inline void free(void * buf) noexcept
             {
                 stdxx::xlock_guard<stdxx::fair_atomic_flag> lck_grd(this->mtx);
@@ -307,31 +262,6 @@ namespace dg_sock::network_allocation
                 std::memcpy(rs, &idx, sizeof(uint8_t));
 
                 return std::next(static_cast<char *>(rs), sizeof(uint8_t));
-            }
-
-            inline auto realloc(void * buf, size_t blk_sz) -> void *
-            {
-                if (buf == nullptr) [[unlikely]]
-                {
-                    return this->malloc(blk_sz);
-                }
-
-                uint8_t idx;
-                char * buf_head     = std::prev(static_cast<char *>(buf), sizeof(uint8_t));
-                std::memcpy(&idx, buf_head, sizeof(uint8_t));
-
-                if constexpr(DEBUG_MODE_FLAG)
-                {
-                    if (idx >= this->allocator_vec.size())
-                    {
-                        std::abort();
-                    }
-                }
-
-                size_t new_blk_sz   = blk_sz + sizeof(uint8_t);
-                void * new_ptr      = this->allocator_vec[idx]->realloc(buf_head, new_blk_sz);
-
-                return std::next(static_cast<char *>(new_ptr), sizeof(uint8_t));
             }
 
             inline void free(void * buf) noexcept
@@ -425,30 +355,6 @@ namespace dg_sock::network_allocation
                 {
                     return this->slow_malloc(sz);
                 }
-            }
-
-            inline auto realloc(void * buf, size_t blk_sz) -> void *
-            {
-                if (buf == nullptr) [[unlikely]]
-                {
-                    return this->malloc(blk_sz);
-                }
-
-                void * previous_buf = std::prev(static_cast<char *>(buf), sizeof(uint32_t));
-
-                uint32_t buf_usr_sz;
-                std::memcpy(&buf_usr_sz, previous_buf, sizeof(uint32_t));
-
-                if (blk_sz <= buf_usr_sz)
-                {
-                    return buf;
-                }
-
-                void * new_buf = this->malloc(blk_sz);
-                std::memcpy(new_buf, buf, buf_usr_sz);
-                this->free(buf);
-
-                return new_buf;
             }
 
             inline void free(void * buf) noexcept
@@ -679,7 +585,7 @@ namespace dg_sock::network_allocation
 
             inline auto read_allocation_header(void * usr_ptr) noexcept -> uint8_t
             {
-                void * prev_usr_ptr = std::prev(static_cast<char *>(usr_ptr), sizeof(uint8_t));
+                void * prev_usr_ptr = this->to_internal_ptr(usr_ptr);
                 uint8_t rs;
 
                 std::memcpy(&rs, prev_usr_ptr, sizeof(uint8_t));
@@ -723,11 +629,11 @@ namespace dg_sock::network_allocation
     {
         private:
 
-            static inline constexpr size_t SLACK_BUFFER_SZ  = 8u;
+            static inline constexpr size_t SLACK_BUFFER_SZ      = 8u;
 
         public:
 
-            static inline constexpr size_t DEFAULT_ALIGNMENT_SZ         = LargeSmallAffinedAllocator::DEFAULT_ALIGNMENT_SZ;
+            static inline constexpr size_t DEFAULT_ALIGNMENT_SZ = LargeSmallAffinedAllocator::DEFAULT_ALIGNMENT_SZ;
 
             RoundBucketAffinedAllocator(std::shared_ptr<BestBinaryUnitAllocator> base_allocator): LargeSmallAffinedAllocator(std::move(base_allocator)){}
 
@@ -989,21 +895,6 @@ namespace dg_sock::network_allocation
         return metadata.blk_sz;
     }
 
-    template <class T>
-    using NoExceptAllocator = std::allocator<T>;
-
-    template <class T, class T1>
-    constexpr auto operator==(const NoExceptAllocator<T>&, const NoExceptAllocator<T1>&) noexcept -> bool
-    {
-        return true;
-    }
-
-    template<class T, class T1>
-    constexpr auto operator!=(const NoExceptAllocator<T>&, const NoExceptAllocator<T1>&) noexcept -> bool
-    {
-        return false;
-    }
-
     template <class T, class ...Args>
     auto std_new_object(Args&& ...args) -> T *
     {
@@ -1146,6 +1037,87 @@ namespace dg_sock::network_allocation
         }
 
         [[clang::noinline]] dg_sock::network_allocation::dg_xaligned_free(static_cast<void *>(arr));
+    }
+
+    // template <class T>
+    // using NoExceptAllocator = std::allocator<T>;
+
+    template <class T>
+    class NoExceptAllocator
+    {
+        private:
+
+            static consteval auto is_no_align_malloc() -> bool
+            {
+                return alignof(T) <= dg_sock::network_allocation::DEFAULT_ALIGNMENT_SZ;
+            }
+
+        public:
+
+            using value_type                                = T;
+            using pointer                                   = T*;
+            using const_pointer                             = const T*;
+            using reference                                 = T&;
+            using const_reference                           = const T&;
+            using size_type                                 = std::size_t;
+            using difference_type                           = std::ptrdiff_t;
+            using propagate_on_container_move_assignment    = std::true_type;
+            using is_always_equal                           = std::true_type; // Stateless
+
+            template <class U>
+            struct rebind
+            {
+                using other = NoExceptAllocator<U>; 
+            };
+
+            constexpr NoExceptAllocator() noexcept = default;
+            constexpr NoExceptAllocator(const NoExceptAllocator&) noexcept = default;
+            
+            template <class U>
+            constexpr NoExceptAllocator(const NoExceptAllocator<U>&) noexcept {}
+            
+            ~NoExceptAllocator() = default;
+
+            auto allocate(std::size_t n) -> pointer
+            {
+                if (allocation_resource_obj::get() == nullptr)
+                {
+                    std::abort();
+                }
+
+                if constexpr(is_no_align_malloc())
+                {
+                    return static_cast<pointer>(dg_sock::network_allocation::dg_malloc(sizeof(T) * n));
+                }
+                else
+                {
+                    return static_cast<pointer>(dg_sock::network_allocation::dg_aligned_alloc(alignof(T), sizeof(T) * n));
+                }
+            }
+
+            void deallocate(T* p, std::size_t n) noexcept
+            {
+                if constexpr(is_no_align_malloc())
+                {
+                    [[clang::noinline]] dg_sock::network_allocation::dg_free(p);
+                }
+                else
+                {
+                    [[clang::noinline]] dg_sock::network_allocation::dg_aligned_free(p);
+                }
+            }
+    };
+
+    template <class T, class T1>
+    constexpr auto operator==(const NoExceptAllocator<T>&, const NoExceptAllocator<T1>&) noexcept -> bool
+    {
+        return true;
+    }
+
+    template<class T, class T1>
+    constexpr auto operator!=(const NoExceptAllocator<T>&, const NoExceptAllocator<T1>&) noexcept -> bool
+    {
+        return false;
     }
 
     template <class T, class = void>

@@ -136,9 +136,15 @@ namespace stdxx
     }
 
     template <class Lambda>
-    inline void busy_wait(Lambda&& lambda){
+    inline void busy_wait(Lambda&& lambda)
+    {
+        (void) lambda;
+    }
 
-    } 
+    inline void critical_yield_for(std::chrono::nanoseconds dur)
+    {
+        (void) dur;
+    }
 
     inline __attribute__((always_inline)) bool fair_atomic_flag_memsafe_try_lock(fair_atomic_flag * volatile mtx, std::memory_order on_success_memorder = std::memory_order_seq_cst) noexcept{
 

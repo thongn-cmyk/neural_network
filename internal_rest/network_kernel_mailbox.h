@@ -22,7 +22,12 @@ namespace dg_sock::network_kernel_mailbox
 {
     using Address           = dg_sock::network_kernel_mailbox_impl1::model::Address;
 
-    struct Config{};
+    struct Config
+    {
+        dg_sock::network_kernel_mailbox_impl1::Config base_config;
+        dg_sock::network_kernel_mailbox_impl1_flash_stream_x::Config stream_config;
+        dg_sock::network_kernel_mailbox_impl1_channel_x::Config channel_config;
+    };
 
     struct Signature{};
 
@@ -54,7 +59,16 @@ namespace dg_sock::network_kernel_mailbox
 
     void init(const Config& config)
     {
+        stdxx::memtransaction_guard tx_grd;
 
+        std::shared_ptr<dg_sock::network_kernel_mailbox_impl1::core::MailboxInterface> base = dg_sock::network_kernel_mailbox_impl1::ConfigMaker::make(config.base_config);
+        dg_sock::network_kernel_mailbox_impl1_flash_stream_x::Config stream_config = config.stream_config;
+        stream_config.base = base;
+        std::shared_ptr<dg_sock::network_kernel_mailbox_impl1_flash_stream_x::DynamicMailboxInterface> stream_base = dg_sock::network_kernel_mailbox_impl1_flash_stream_x::spawn(stream_config);
+
+        SingletonObject::get() = dg_sock::network_kernel_mailbox_impl1_channel_x::SolutionBuilder{}.load_config(config.channel_config)
+                                                                                                   .set_base(stream_base)
+                                                                                                   .build();
     }
 
     void deinit() noexcept

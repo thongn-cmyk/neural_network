@@ -815,7 +815,7 @@ namespace stdx
     {
         static std::unique_ptr<fair_mutex::fair_atomic_flag> mtx = fair_mutex::make_unique_fair_atomic_flag();
 
-        static auto randomizer          = std::bind(std::uniform_int_distribution<char>{}, std::mt19937_64{static_cast<uint32_t>(std::chrono::system_clock::now().time_since_epoch().count())});
+        static auto randomizer          = std::bind(std::uniform_int_distribution<uint8_t>{}, std::mt19937_64{static_cast<uint32_t>(std::chrono::system_clock::now().time_since_epoch().count())});
         constexpr size_t IDENTIFIER_SZ  = 15u;
 
         std::string rs(IDENTIFIER_SZ, ' ');
@@ -825,7 +825,7 @@ namespace stdx
 
             for (size_t i = 0u; i < IDENTIFIER_SZ; ++i)
             {
-                rs[i] = randomizer();
+                rs[i] = std::bit_cast<char>(randomizer());
             }
         }
 

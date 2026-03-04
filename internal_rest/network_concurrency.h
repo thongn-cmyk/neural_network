@@ -16,58 +16,83 @@
 
 namespace dg_sock::network_concurrency{
 
-    static inline constexpr size_t THREAD_COUNT = 32u;
-    static inline constexpr size_t MAX_THREAD_COUNT = 10000u;
-
     using namespace dg_sock::network_concurrency_impl1::daemon_option_ns;
     
     using WorkerInterface = dg_sock::network_concurrency_impl1::WorkerInterface; 
-    // using Config = dg_sock::network_concurrency_impl1::planner::Config; 
 
-    struct signature_dg_network_concurrency{}; 
+    struct WorkerInformation
+    {
+        std::optional<int> cpu_id;
+        daemon_kind_t daemon;
+    };
 
-    struct ConcurrencyResource{
+    struct Config
+    {
+        std::vector<WorkerInformation> worker_vec;
+    };
+
+    struct Signature{}; 
+
+    struct ConcurrencyResource
+    {
         std::unique_ptr<dg_sock::network_concurrency_impl1::DaemonControllerInterface> daemon_controller; 
         dg_sock::network_datastructure::unordered_map_variants::unordered_node_map<std::thread::id, size_t> thrid_to_idx_map;
     };
 
-    inline ConcurrencyResource * volatile concurrency_resource;
+    using SingletonObject = stdxx::singleton<Signature, ConcurrencyResource>;
 
-    // extern void init(Config config)
-    // {
-    //     stdxx::memtransaction_guard tx_grd;
+    extern void init(Config config)
+    {
+        using namespace dg_sock::network_concurrency_impl1;
 
-    //     // // auto [daemon_controller, thr_id_vec] = dg_sock::network_concurrency_impl1::planner::spawn(config);
-    //     // auto thrid_to_idx_map = dg_sock::network_datastructure::unordered_map_variants::unordered_node_map<std::thread::id, size_t>(); 
-        
-    //     // for (size_t i = 0u; i < thr_id_vec.size(); ++i)
-    //     // {
-    //     //     thrid_to_idx_map[thr_id_vec[i]] = i;
-    //     // }
+        stdxx::memtransaction_guard tx_grd;
 
-    //     // concurrency_resource = new ConcurrencyResource(ConcurrencyResource{
-    //     //     .daemon_controller  = std::move(daemon_controller),
-    //     //     .thrid_to_idx_map   = std::move(thrid_to_idx_map)
-    //     // });
-    // }
+        std::vector<std::pair<std::unique_ptr<DaemonRunnerInterface>, daemon_kind_t>> runner_kind_vec{};
+        dg_sock::network_datastructure::unordered_map_variants::unordered_node_map<std::thread::id, size_t>  thrid_to_idx_map{};
+
+        for (size_t i = 0u; i < config.worker_vec.size(); ++i)
+        {
+            std::unique_ptr<DaemonDedicatedRunnerInterface> runner;
+
+            if (config.worker_vec[i].cpu_id.has_value())
+            {
+                runner = DaemonRunnerFactory::spawn_std_daemon_affined_runner({config.worker_vec[i].cpu_id.value()});
+            }
+            else
+            {
+                runner = DaemonRunnerFactory::spawn_std_daemon_runner();
+            }
+
+            thrid_to_idx_map[runner->id()] = i;
+            runner_kind_vec.push_back(std::make_pair(std::move(runner), config.worker_vec[i].daemon));
+        }
+
+        SingletonObject::get() =
+        {
+            .daemon_controller  = ControllerFactory::spawn_daemon_controller(std::move(runner_kind_vec)),
+            .thrid_to_idx_map   = std::move(thrid_to_idx_map)
+        };
+    }
 
     extern void deinit() noexcept
     {
-        delete concurrency_resource;
+        stdxx::memtransaction_guard tx_grd;
+
+        SingletonObject::get() = {};
     }
 
     extern auto get_thread_count() noexcept -> size_t
     {
-        return concurrency_resource->thrid_to_idx_map.size();
+        return SingletonObject::get().thrid_to_idx_map.size();
     }
 
     extern auto this_thread_idx() noexcept -> size_t
     {    
-        auto ptr = concurrency_resource->thrid_to_idx_map.find(std::this_thread::get_id());
+        auto ptr = SingletonObject::get().thrid_to_idx_map.find(std::this_thread::get_id());
 
         if constexpr(DEBUG_MODE_FLAG)
         {
-            if (ptr == concurrency_resource->thrid_to_idx_map.end())
+            if (ptr == SingletonObject::get().thrid_to_idx_map.end())
             {
                 std::abort();
             }
@@ -78,26 +103,26 @@ namespace dg_sock::network_concurrency{
 
     extern auto __attribute__((noipa)) daemon_register(daemon_kind_t daemon_kind, std::unique_ptr<WorkerInterface> worker) noexcept -> std::expected<size_t, exception_t>
     {
-        auto ptr = concurrency_resource->thrid_to_idx_map.find(std::this_thread::get_id());
+        // auto ptr = SingletonObject::get().thrid_to_idx_map.find(std::this_thread::get_id());
 
-        if (ptr != concurrency_resource->thrid_to_idx_map.end())
-        {
-            return std::unexpected(dg_sock::network_exception::PTHREAD_CAUSA_SUI);
-        }
+        // if (ptr != SingletonObject::get().thrid_to_idx_map.end())
+        // {
+        //     return std::unexpected(dg_sock::network_exception::PTHREAD_CAUSA_SUI);
+        // }
 
-        return concurrency_resource->daemon_controller->_register(daemon_kind, std::move(worker));
+        return SingletonObject::get().daemon_controller->_register(daemon_kind, std::move(worker));
     }
 
     extern void daemon_deregister(size_t id) noexcept
     {
-        auto ptr = concurrency_resource->thrid_to_idx_map.find(std::this_thread::get_id());
+        auto ptr = SingletonObject::get().thrid_to_idx_map.find(std::this_thread::get_id());
     
-        if (ptr != concurrency_resource->thrid_to_idx_map.end())
+        if (ptr != SingletonObject::get().thrid_to_idx_map.end())
         {
             std::abort();
         }
 
-        concurrency_resource->daemon_controller->deregister(id);
+        SingletonObject::get().daemon_controller->deregister(id);
     }
 
     using daemon_deregister_t = void (*)(size_t) noexcept; 

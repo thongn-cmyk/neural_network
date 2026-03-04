@@ -51,7 +51,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 #include "network_hash.h"
-#include "network_chrono.h"
+// #include "network_chrono.h"
 #include "network_sock_traffic_status_controller.h"
 #include "network_kernel_allocator_singleton.h"
 #include "network_kernel_buffer.h"
@@ -1256,7 +1256,8 @@ namespace dg_sock::network_kernel_mailbox_impl1::socket_utility{
         if (iovec_sz == 0u)
         {
             base_arr_sz = 0u;
-        } else
+        }
+        else
         {
             base_arr_sz = iovec_sz * sizeof(struct iovec) + alignof(struct iovec);
         }
@@ -1275,7 +1276,8 @@ namespace dg_sock::network_kernel_mailbox_impl1::socket_utility{
         {
             buf = buf;
             base_arr = nullptr;
-        } else 
+        }
+        else 
         {
             buf = stdxx::align_ptr(buf, std::integral_constant<size_t, alignof(struct iovec)>{});
             base_arr = new (buf) struct iovec[iovec_sz];
@@ -1338,7 +1340,8 @@ namespace dg_sock::network_kernel_mailbox_impl1::socket_utility{
         if (mmsghdr_sz == 0u)
         {
             base_arr_sz = 0u;
-        } else
+        }
+        else
         {
             base_arr_sz = mmsghdr_sz * sizeof(struct mmsghdr) + alignof(struct mmsghdr);
         }
@@ -1357,7 +1360,8 @@ namespace dg_sock::network_kernel_mailbox_impl1::socket_utility{
         {
             buf = buf;
             base_arr = nullptr;
-        } else
+        }
+        else
         {
             buf = stdxx::align_ptr(buf, std::integral_constant<size_t, alignof(struct mmsghdr)>());
             base_arr = new (buf) struct mmsghdr[mmsghdr_sz];
@@ -1935,13 +1939,15 @@ namespace dg_sock::network_kernel_mailbox_impl1::socket_service{
     static auto recv_block(const SocketHandle& sock,
                            void * dst,
                            size_t& dst_sz,
-                           size_t dst_cap) noexcept -> exception_t{
-
-        if (sock.comm != SOCK_DGRAM){
+                           size_t dst_cap) noexcept -> exception_t
+    {
+        if (sock.comm != SOCK_DGRAM)
+        {
             return dg_sock::network_exception::INVALID_ARGUMENT;
         }
 
-        if (dst_cap < constants::MAXIMUM_MSG_SIZE){
+        if (dst_cap < constants::MAXIMUM_MSG_SIZE)
+        {
             return dg_sock::network_exception::INVALID_ARGUMENT;
         }
 
@@ -1999,7 +2005,7 @@ namespace dg_sock::network_kernel_mailbox_impl1::socket_service{
         auto retval = recvmmsg(sock.kernel_sock_fd,
                                mmsghdr_vec->base_arr,
                                mmsghdr_vec->arr_sz,
-                               0,
+                               MSG_WAITFORONE,
                                nullptr);
 
         if (retval == -1)
@@ -2776,9 +2782,9 @@ namespace dg_sock::network_kernel_mailbox_impl1::packet_controller{
                     bool try_lock_rs = stdxx::try_lock(this->mtx_mtx_queue, std::memory_order_relaxed); 
 
                     if (!try_lock_rs){
-                        stdxx::lock_yield(FAILED_LOCK_SLEEP); //we proved that this just needs to yield the time of critical sections (so we could transfer the responsibility of waking up to whoever holding the lock then on)
-                                                             //so a lock acquisition is not mandatory here
-                                                             //the odd cases of anomaly, such as kernel intervention of round-robin + etc. is handled by the default wakers
+                        stdxx::critical_yield_for(FAILED_LOCK_SLEEP); //we proved that this just needs to yield the time of critical sections (so we could transfer the responsibility of waking up to whoever holding the lock then on)
+                                                                      //so a lock acquisition is not mandatory here
+                                                                      //the odd cases of anomaly, such as kernel intervention of round-robin + etc. is handled by the default wakers
                         continue;
                     }
 
@@ -3396,7 +3402,7 @@ namespace dg_sock::network_kernel_mailbox_impl1::packet_controller{
                         return;
                     }
 
-                    std::optional<Packet> nxt = this->pkt_map.get_expired_packet(time_bar);
+                    std::optional<Packet> nxt = this->pkt_map.get_expired_item(time_bar);
 
                     if (!nxt.has_value()){
                         return;
@@ -3436,7 +3442,7 @@ namespace dg_sock::network_kernel_mailbox_impl1::packet_controller{
                     }
 
                     Packet * base_pkt_arr   = pkt_arr.base(); 
-                    auto clock              = dg_sock::ticking_clock<std::chrono::utc_clock>(this->ticking_clock_resolution);
+                    auto now                = std::chrono::utc_clock::now();
 
                     for (size_t i = 0u; i < sz; ++i){
                         if (base_pkt_arr[i].retransmission_count >= this->max_retransmission_sz){
@@ -3465,8 +3471,9 @@ namespace dg_sock::network_kernel_mailbox_impl1::packet_controller{
                             continue;
                         }
 
-                        base_pkt_arr[i].retransmission_count    += 1;
-                        exception_t err                         = this->pkt_map.add(std::move(base_pkt_arr[i]), clock.get() + delay.value());
+                        base_pkt_arr[i].retransmission_count                    += 1;
+                        std::chrono::time_point<std::chrono::utc_clock> expiry  = std::chrono::time_point_cast<typename std::chrono::time_point<std::chrono::utc_clock>::duration>(now + delay.value());
+                        exception_t err                                         = this->pkt_map.add(std::move(base_pkt_arr[i]), expiry);
 
                         if (dg_sock::network_exception::is_failed(err)){
                             base_pkt_arr[i].retransmission_count    -= 1;
@@ -3516,7 +3523,7 @@ namespace dg_sock::network_kernel_mailbox_impl1::packet_controller{
 
                 Packet ** pkt_arr               = wait_item.pkt_arr;
                 exception_t ** exception_arr    = wait_item.exception_arr; 
-                auto clock                      = dg_sock::ticking_clock<std::chrono::utc_clock>(this->ticking_clock_resolution);
+                auto now                        = std::chrono::utc_clock::now();
 
                 for (size_t i = 0u; i < push_sz; ++i)
                 {
@@ -3528,8 +3535,9 @@ namespace dg_sock::network_kernel_mailbox_impl1::packet_controller{
                         continue;                        
                     }
 
-                    pkt_arr[i]->retransmission_count    += 1;
-                    exception_t err                     = this->pkt_map.add(std::move(*pkt_arr[i]), clock.get() + delay.value());
+                    pkt_arr[i]->retransmission_count                        += 1;
+                    std::chrono::time_point<std::chrono::utc_clock> expiry  = std::chrono::time_point_cast<typename std::chrono::time_point<std::chrono::utc_clock>::duration>(now + delay.value());
+                    exception_t err                                         = this->pkt_map.add(std::move(*pkt_arr[i]), expiry);
 
                     if (dg_sock::network_exception::is_failed(err))
                     {
@@ -6831,7 +6839,7 @@ namespace dg_sock::network_kernel_mailbox_impl1::packet_controller{
             return std::make_unique<ExhaustionControlledRetransmissionController>(std::move(base), std::move(executor), std::move(exhaustion_controller));
         } 
 
-        static auto get_randomhash_distributed_retransmission_controller(dg_sock::vector<std::unique_ptr<RetransmissionControllerInterface>> base_vec,
+        static auto get_randomhash_distributed_retransmission_controller(std::vector<std::unique_ptr<RetransmissionControllerInterface>> base_vec,
                                                                          size_t keyvalue_aggregation_cap = 2048u) -> std::unique_ptr<RetransmissionControllerInterface>{
 
             const size_t MIN_BASE_VEC_SZ                = size_t{1};
@@ -9540,7 +9548,7 @@ namespace dg_sock::network_kernel_mailbox_impl1::core{
                 dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
             }
 
-            if (std::clamp(num_kernel_rescue_worker, MIN_WORKER_SZ, MAX_WORKER_SZ) != num_kernel_rescue_worker){
+            if (std::clamp(num_kernel_rescue_worker, size_t{0u}, MAX_WORKER_SZ) != num_kernel_rescue_worker){
                 dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
             }
 
@@ -9587,7 +9595,7 @@ namespace dg_sock::network_kernel_mailbox_impl1::core{
                                                                                                 buffer_fair_container_push_cap,
                                                                                                 buffer_fair_container_busy_threshold);
 
-                auto daemon_handle  = dg_sock::network_exception_handler::nothrow_log(dg_sock::network_concurrency::daemon_saferegister(dg_sock::network_concurrency::IO_DAEMON, std::move(worker_ins)));
+                auto daemon_handle  = dg_sock::network_exception_handler::nothrow_log(dg_sock::network_concurrency::daemon_saferegister(dg_sock::network_concurrency::MAILBOX_UNIT_DAEMON, std::move(worker_ins)));
                 daemon_vec.emplace_back(std::move(daemon_handle));
 
                 ib_process_consume_end = intermediate_container;
@@ -9605,7 +9613,7 @@ namespace dg_sock::network_kernel_mailbox_impl1::core{
                                                                                                 packet_fair_container_push_cap,
                                                                                                 packet_fair_container_busy_threshold);
 
-                auto daemon_handle  = dg_sock::network_exception_handler::nothrow_log(dg_sock::network_concurrency::daemon_saferegister(dg_sock::network_concurrency::IO_DAEMON, std::move(worker_ins)));
+                auto daemon_handle  = dg_sock::network_exception_handler::nothrow_log(dg_sock::network_concurrency::daemon_saferegister(dg_sock::network_concurrency::MAILBOX_UNIT_DAEMON, std::move(worker_ins)));
                 daemon_vec.emplace_back(std::move(daemon_handle));
 
                 mailbox_consume_end = intermediate_container;
@@ -9618,7 +9626,7 @@ namespace dg_sock::network_kernel_mailbox_impl1::core{
                                                                                           socket_sp_vec[socket_sp_vec_ptr++ % socket_sp_vec.size()], 
                                                                                           DEFAULT_HEARTBEAT_INTERVAL, ib_buffer_accumulation_sz);
 
-                auto daemon_handle  = dg_sock::network_exception_handler::throw_nolog(dg_sock::network_concurrency::daemon_saferegister(dg_sock::network_concurrency::IO_DAEMON, std::move(worker_ins)));
+                auto daemon_handle  = dg_sock::network_exception_handler::throw_nolog(dg_sock::network_concurrency::daemon_saferegister(dg_sock::network_concurrency::MAILBOX_UNIT_DAEMON, std::move(worker_ins)));
                 daemon_vec.emplace_back(std::move(daemon_handle));
             }
 
@@ -9629,7 +9637,7 @@ namespace dg_sock::network_kernel_mailbox_impl1::core{
                                                                                            ack_packet_generator_sp, packet_integrity_validator_sp, ib_packet_consumption_cap,
                                                                                            ib_packet_busy_threshold_sz);
 
-                auto daemon_handle  = dg_sock::network_exception_handler::throw_nolog(dg_sock::network_concurrency::daemon_saferegister(dg_sock::network_concurrency::IO_DAEMON, std::move(worker_ins)));
+                auto daemon_handle  = dg_sock::network_exception_handler::throw_nolog(dg_sock::network_concurrency::daemon_saferegister(dg_sock::network_concurrency::MAILBOX_UNIT_DAEMON, std::move(worker_ins)));
                 daemon_vec.emplace_back(std::move(daemon_handle));
             }
 
@@ -9640,7 +9648,7 @@ namespace dg_sock::network_kernel_mailbox_impl1::core{
                                                                                     dedicated_outbound_socket_sp_vec[dedicated_outbound_socket_sp_vec_ptr++ % dedicated_outbound_socket_sp_vec.size()], 
                                                                                     ob_packet_consumption_cap, ob_packet_busy_threshold_sz);
 
-                auto daemon_handle  = dg_sock::network_exception_handler::throw_nolog(dg_sock::network_concurrency::daemon_saferegister(dg_sock::network_concurrency::IO_DAEMON, std::move(worker_ins)));
+                auto daemon_handle  = dg_sock::network_exception_handler::throw_nolog(dg_sock::network_concurrency::daemon_saferegister(dg_sock::network_concurrency::MAILBOX_UNIT_DAEMON, std::move(worker_ins)));
                 daemon_vec.emplace_back(std::move(daemon_handle));
             }
 
@@ -9648,7 +9656,7 @@ namespace dg_sock::network_kernel_mailbox_impl1::core{
                 auto worker_ins     = worker::ComponentFactory::get_kernel_rescue_worker(ob_packet_container_sp, rescue_post_sp, krescue_packet_generator_sp, 
                                                                                          rescue_dispatch_threshold, rescue_disaster_sleep_dur, rescue_packet_sz);
 
-                auto daemon_handle  = dg_sock::network_exception_handler::throw_nolog(dg_sock::network_concurrency::daemon_saferegister(dg_sock::network_concurrency::IO_DAEMON, std::move(worker_ins)));
+                auto daemon_handle  = dg_sock::network_exception_handler::throw_nolog(dg_sock::network_concurrency::daemon_saferegister(dg_sock::network_concurrency::MAILBOX_UNIT_DAEMON, std::move(worker_ins)));
                 daemon_vec.emplace_back(std::move(daemon_handle));
             }
 
@@ -9656,7 +9664,7 @@ namespace dg_sock::network_kernel_mailbox_impl1::core{
                 auto worker_ins     = worker::ComponentFactory::get_retransmission_worker(retransmission_controller_sp, ob_packet_container_sp, retransmission_consumption_cap,
                                                                                           retransmission_busy_threshold_sz);
 
-                auto daemon_handle  = dg_sock::network_exception_handler::throw_nolog(dg_sock::network_concurrency::daemon_saferegister(dg_sock::network_concurrency::IO_DAEMON, std::move(worker_ins)));
+                auto daemon_handle  = dg_sock::network_exception_handler::throw_nolog(dg_sock::network_concurrency::daemon_saferegister(dg_sock::network_concurrency::MAILBOX_UNIT_DAEMON, std::move(worker_ins)));
                 daemon_vec.emplace_back(std::move(daemon_handle));
             }
 
@@ -9666,7 +9674,7 @@ namespace dg_sock::network_kernel_mailbox_impl1::core{
 
             auto updater                = packet_controller::ComponentFactory::get_batch_updater(std::move(update_vec));
             auto traffic_update_ins     = worker::ComponentFactory::get_update_worker(std::move(updater), traffic_reset_duration);
-            auto traffic_daemon_handle  = dg_sock::network_exception_handler::throw_nolog(dg_sock::network_concurrency::daemon_saferegister(dg_sock::network_concurrency::IO_DAEMON, std::move(traffic_update_ins)));
+            auto traffic_daemon_handle  = dg_sock::network_exception_handler::throw_nolog(dg_sock::network_concurrency::daemon_saferegister(dg_sock::network_concurrency::MAILBOX_UNIT_DAEMON, std::move(traffic_update_ins)));
             daemon_vec.push_back(std::move(traffic_daemon_handle));
 
 
@@ -10120,6 +10128,8 @@ namespace dg_sock::network_kernel_mailbox_impl1{
 
             static auto make_outbound_border_controller(Config config) -> std::vector<std::unique_ptr<packet_controller::OutBoundBorderController>>{
 
+                std::cout << "make_outbound_border_controller" << std::endl;
+
                 if (config.num_outbound_worker == 0u){
                     dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
                 }
@@ -10142,20 +10152,28 @@ namespace dg_sock::network_kernel_mailbox_impl1{
 
             static auto make_outbound_transmission_controller(Config config) -> std::unique_ptr<packet_controller::KernelOutBoundTransmissionControllerInterface>{
 
+                std::cout << "make_outbound_transmission_controller" << std::endl;
+
                 return packet_controller::ComponentFactory::get_kernel_outbound_static_transmission_controller(config.outbound_transmit_frequency);
             }
 
             static auto make_ack_packet_generator(Config config) -> std::unique_ptr<packet_controller::AckPacketGeneratorInterface>{
+
+                std::cout << "make_ack_packet_generator" << std::endl;
 
                 return packet_controller::ComponentFactory::get_randomid_ack_packet_generator(utility::to_factory_id(model::Address{config.host_ip, config.host_port_inbound}), model::Address{config.host_ip, config.host_port_inbound});
             }
 
             static auto make_inbound_packet_integrity_validator(Config config) -> std::unique_ptr<packet_controller::PacketIntegrityValidatorInterface>{
 
+                std::cout << "make_inbound_packet_integrity_validator" << std::endl;
+
                 return packet_controller::ComponentFactory::get_inbound_packet_integrity_validator(model::Address{config.host_ip, config.host_port_inbound});
             }
 
             static auto make_inbound_socket(Config config) -> std::vector<std::unique_ptr<model::SocketHandle, socket_service::socket_close_t>>{
+
+                std::cout << "making inbound socket" << std::endl;
 
                 if (config.inbound_socket_concurrency_sz == 0u){
                     dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
@@ -10179,10 +10197,14 @@ namespace dg_sock::network_kernel_mailbox_impl1{
                     }
                 }
 
+                std::cout << "made inbound socket" << std::endl;
+
                 return socket_vec;
             }
 
             static auto make_outbound_socket(Config config) -> std::vector<std::unique_ptr<model::SocketHandle, socket_service::socket_close_t>>{
+
+                std::cout << "making outbound socket" << std::endl;
 
                 if (config.outbound_socket_concurrency_sz == 0u){
                     dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
@@ -10206,10 +10228,14 @@ namespace dg_sock::network_kernel_mailbox_impl1{
                     }
                 }
 
+                std::cout << "made outbound socket" << std::endl;
+
                 return socket_vec;
             }
 
             static auto make_request_packet_generator(Config config) -> std::unique_ptr<packet_controller::RequestPacketGeneratorInterface>{
+
+                std::cout << "making request packet generator" << std::endl;
 
                 return packet_controller::ComponentFactory::get_randomid_request_packet_generator(utility::to_factory_id(model::Address{config.host_ip, config.host_port_inbound}), model::Address{config.host_ip, config.host_port_inbound});
             }

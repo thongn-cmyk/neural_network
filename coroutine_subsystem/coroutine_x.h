@@ -444,6 +444,8 @@ namespace coroutine_x
                         this->delay_calculator->clear_delay(coroutine);
                     }
                 }
+
+                std::atomic_thread_fence(std::memory_order_seq_cst);
             }
 
             void poison() noexcept

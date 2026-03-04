@@ -200,6 +200,8 @@ namespace cron_subsystem
                     this->updatable->update();
                     this->sleeping_machine->sleep_for(this->periodic_dur);
                 }
+                
+                std::atomic_thread_fence(std::memory_order_seq_cst);
             }
 
             void poison() noexcept
@@ -528,6 +530,8 @@ namespace cron_subsystem
                                                                                        .get());
                     }
                 }
+
+                std::atomic_thread_fence(std::memory_order_seq_cst);
             }
 
             void poison() noexcept

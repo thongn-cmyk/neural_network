@@ -12,6 +12,7 @@
 #include "assert.h"
 #include "stdx.h"
 #include "unordered_node_map.h"
+#include <cstring>
 
 //our best bet to do allocator is actually two management trees with best-block allocation
 //this is concluded after 3 years of coding allocators, because I can't find a reasonable way to de-fragment the memory

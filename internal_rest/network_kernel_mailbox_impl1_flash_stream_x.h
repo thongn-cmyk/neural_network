@@ -4,7 +4,7 @@
 //define HEADER_CONTROL 10
 
 #include <memory>
-// #include "network_kernel_mailbox_impl1.h"
+#include "network_kernel_mailbox_impl1.h"
 #include "network_compact_trivial_serializer.h"
 #include "network_concurrency.h"
 #include "network_std_container.h"
@@ -26,137 +26,137 @@
 #include "network_concurrency.h"
 #include <cron_subsystem/cron_subsystem.h>
 
-namespace dg_sock::network_kernel_mailbox_impl1::model
-{
-    static inline constexpr int AF_INET     = 0;
-    static inline constexpr int AF_INET6    = 1;
+// namespace dg_sock::network_kernel_mailbox_impl1::model
+// {
+//     static inline constexpr int AF_INET     = 0;
+//     static inline constexpr int AF_INET6    = 1;
 
-    struct IPv4{
-        std::array<char, 4u> ip_buf;
+//     struct IPv4{
+//         std::array<char, 4u> ip_buf;
 
-        auto data() const noexcept -> const char *{
+//         auto data() const noexcept -> const char *{
 
-            return this->ip_buf.data();
-        }
+//             return this->ip_buf.data();
+//         }
 
-        template <class Reflector>
-        constexpr void dg_reflect(const Reflector& reflector) const{
-            reflector(ip_buf);
-        }
+//         template <class Reflector>
+//         constexpr void dg_reflect(const Reflector& reflector) const{
+//             reflector(ip_buf);
+//         }
 
-        template <class Reflector>
-        constexpr void dg_reflect(const Reflector& reflector){
-            reflector(ip_buf);
-        }
-    };
+//         template <class Reflector>
+//         constexpr void dg_reflect(const Reflector& reflector){
+//             reflector(ip_buf);
+//         }
+//     };
 
-    struct IPv6{
-        std::array<char, 16u> ip_buf;
+//     struct IPv6{
+//         std::array<char, 16u> ip_buf;
 
-        auto data() const noexcept -> const char *{
+//         auto data() const noexcept -> const char *{
 
-            return this->ip_buf.data();
-        }
+//             return this->ip_buf.data();
+//         }
 
-        template <class Reflector>
-        constexpr void dg_reflect(const Reflector& reflector) const{
-            reflector(ip_buf);
-        }
+//         template <class Reflector>
+//         constexpr void dg_reflect(const Reflector& reflector) const{
+//             reflector(ip_buf);
+//         }
 
-        template <class Reflector>
-        constexpr void dg_reflect(const Reflector& reflector){
-            reflector(ip_buf);
-        }
-    };
+//         template <class Reflector>
+//         constexpr void dg_reflect(const Reflector& reflector){
+//             reflector(ip_buf);
+//         }
+//     };
 
-    struct IP{
-        std::variant<IPv4, IPv6> ip;
+//     struct IP{
+//         std::variant<IPv4, IPv6> ip;
 
-        auto data() const noexcept -> const char *{
+//         auto data() const noexcept -> const char *{
 
-            if (std::holds_alternative<IPv4>(this->ip)){
-                return std::get<IPv4>(this->ip).data();
-            } else if (std::holds_alternative<IPv6>(this->ip)){
-                return std::get<IPv6>(this->ip).data();
-            } else{
-                if constexpr(DEBUG_MODE_FLAG){
-                    dg_sock::network_log_stackdump::critical(dg_sock::network_exception::verbose(dg_sock::network_exception::INTERNAL_CORRUPTION));
-                    std::abort();
-                } else{
-                    std::unreachable();
-                }
-            }
-        }
+//             if (std::holds_alternative<IPv4>(this->ip)){
+//                 return std::get<IPv4>(this->ip).data();
+//             } else if (std::holds_alternative<IPv6>(this->ip)){
+//                 return std::get<IPv6>(this->ip).data();
+//             } else{
+//                 if constexpr(DEBUG_MODE_FLAG){
+//                     dg_sock::network_log_stackdump::critical(dg_sock::network_exception::verbose(dg_sock::network_exception::INTERNAL_CORRUPTION));
+//                     std::abort();
+//                 } else{
+//                     std::unreachable();
+//                 }
+//             }
+//         }
 
-        auto sin_fam() const noexcept{
+//         auto sin_fam() const noexcept{
 
-            if (std::holds_alternative<IPv4>(this->ip)){
-                return AF_INET;
-            } else if (std::holds_alternative<IPv6>(this->ip)){
-                return AF_INET6;
-            } else{
-                if constexpr(DEBUG_MODE_FLAG){
-                    dg_sock::network_log_stackdump::critical(dg_sock::network_exception::verbose(dg_sock::network_exception::INTERNAL_CORRUPTION));
-                    std::abort();
-                } else{
-                    std::unreachable();
-                }
-            }
-        }
+//             if (std::holds_alternative<IPv4>(this->ip)){
+//                 return AF_INET;
+//             } else if (std::holds_alternative<IPv6>(this->ip)){
+//                 return AF_INET6;
+//             } else{
+//                 if constexpr(DEBUG_MODE_FLAG){
+//                     dg_sock::network_log_stackdump::critical(dg_sock::network_exception::verbose(dg_sock::network_exception::INTERNAL_CORRUPTION));
+//                     std::abort();
+//                 } else{
+//                     std::unreachable();
+//                 }
+//             }
+//         }
 
-        template <class Reflector>
-        constexpr void dg_reflect(const Reflector& reflector) const{
-            reflector(ip);
-        }
+//         template <class Reflector>
+//         constexpr void dg_reflect(const Reflector& reflector) const{
+//             reflector(ip);
+//         }
 
-        template <class Reflector>
-        constexpr void dg_reflect(const Reflector& reflector){
-            reflector(ip);
-        }
-    };
+//         template <class Reflector>
+//         constexpr void dg_reflect(const Reflector& reflector){
+//             reflector(ip);
+//         }
+//     };
 
-    struct Address{
-        IP ip;
-        uint16_t port;
+//     struct Address{
+//         IP ip;
+//         uint16_t port;
 
-        template <class Reflector>
-        constexpr void dg_reflect(const Reflector& reflector) const{
-            reflector(ip, port);
-        }
+//         template <class Reflector>
+//         constexpr void dg_reflect(const Reflector& reflector) const{
+//             reflector(ip, port);
+//         }
 
-        template <class Reflector>
-        constexpr void dg_reflect(const Reflector& reflector){
-            reflector(ip, port);
-        }
-    };
+//         template <class Reflector>
+//         constexpr void dg_reflect(const Reflector& reflector){
+//             reflector(ip, port);
+//         }
+//     };
 
-    struct MailBoxArgument{
-        Address to;
-        const void * content;
-        size_t content_sz;
-    };
-}
+//     struct MailBoxArgument{
+//         Address to;
+//         const void * content;
+//         size_t content_sz;
+//     };
+// }
 
-namespace dg_sock::network_kernel_mailbox_impl1::core
-{
-    using namespace dg_sock::network_kernel_mailbox_impl1::model;
+// namespace dg_sock::network_kernel_mailbox_impl1::core
+// {
+//     using namespace dg_sock::network_kernel_mailbox_impl1::model;
 
-    class MailboxInterface{
+//     class MailboxInterface{
 
-        public: 
+//         public: 
 
-            virtual ~MailboxInterface() noexcept = default;
-            virtual void send(MailBoxArgument * mailbox_arr, size_t mailbox_arr_sz, exception_t * exception_arr) noexcept = 0;
-            virtual void recv(std::add_pointer_t<void> * output_arr,
-                              size_t * output_elemental_capacity_arr,
-                              size_t * output_elemental_sz_arr,
-                              size_t& output_arr_sz,
-                              size_t output_arr_cap) noexcept = 0;
+//             virtual ~MailboxInterface() noexcept = default;
+//             virtual void send(MailBoxArgument * mailbox_arr, size_t mailbox_arr_sz, exception_t * exception_arr) noexcept = 0;
+//             virtual void recv(std::add_pointer_t<void> * output_arr,
+//                               size_t * output_elemental_capacity_arr,
+//                               size_t * output_elemental_sz_arr,
+//                               size_t& output_arr_sz,
+//                               size_t output_arr_cap) noexcept = 0;
 
-            virtual auto max_consume_size() noexcept -> size_t = 0;
-            virtual auto max_content_size() const noexcept -> size_t = 0;
-    };
-}
+//             virtual auto max_consume_size() noexcept -> size_t = 0;
+//             virtual auto max_content_size() const noexcept -> size_t = 0;
+//     };
+// }
 
 namespace dg_sock::network_kernel_mailbox_impl1_flash_stream_x
 {
@@ -983,9 +983,9 @@ namespace dg_sock::network_kernel_mailbox_impl1_flash_stream_x
                     bool try_lock_rs = stdxx::try_lock(this->mtx_mtx_queue, std::memory_order_relaxed); 
 
                     if (!try_lock_rs){
-                        // stdxx::lock_yield(FAILED_LOCK_SLEEP); //we proved that this just needs to yield the time of critical sections (so we could transfer the responsibility of waking up to whoever holding the lock then on)
-                        //                                      //so a lock acquisition is not mandatory here
-                        //                                      //the odd cases of anomaly, such as kernel intervention of round-robin + etc. is handled by the default wakers
+                        stdxx::critical_yield_for(FAILED_LOCK_SLEEP); //we proved that this just needs to yield the time of critical sections (so we could transfer the responsibility of waking up to whoever holding the lock then on)
+                                                                      //so a lock acquisition is not mandatory here
+                                                                      //the odd cases of anomaly, such as kernel intervention of round-robin + etc. is handled by the default wakers
                         continue;
                     }
 
@@ -4187,9 +4187,48 @@ namespace dg_sock::network_kernel_mailbox_impl1_flash_stream_x
                                              std::move(outbound_rule),
                                              transmission_vectorization_sz);
         }
+
+        static auto get_dynamic_flash_streamx_mailbox(std::vector<dg_sock::network_concurrency::daemon_raii_handle_t> daemon_vec,
+                                                      std::unique_ptr<PacketizerInterface> packetizer,
+                                                      std::shared_ptr<dg_sock::network_kernel_mailbox_impl1::core::MailboxInterface> base,
+                                                      std::shared_ptr<InBoundContainerInterface> inbound_container,
+                                                      std::shared_ptr<OutBoundRuleInterface> outbound_rule,
+                                                      size_t transmission_vectorization_sz) -> std::unique_ptr<DynamicMailboxInterface>{
+
+            const size_t MIN_TRANSMISSION_VECTORIZATION_SZ  = 1u;
+            const size_t MAX_TRANSMISSION_VECTORIZATION_SZ  = size_t{1} << 25; 
+
+            if (packetizer == nullptr){
+                dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
+            }
+
+            if (base == nullptr){
+                dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
+            }
+
+            if (inbound_container == nullptr){
+                dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
+            }
+
+            if (outbound_rule == nullptr){
+                dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
+            }
+
+            if (std::clamp(transmission_vectorization_sz, MIN_TRANSMISSION_VECTORIZATION_SZ, MAX_TRANSMISSION_VECTORIZATION_SZ) != transmission_vectorization_sz){
+                dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
+            }
+
+            return std::make_unique<DynamicMailBox>(to_dg_vector(std::move(daemon_vec)),
+                                                    std::move(packetizer),
+                                                    std::move(base),
+                                                    std::move(inbound_container),
+                                                    std::move(outbound_rule),
+                                                    transmission_vectorization_sz);
+        }
     };
 
-    struct Config{
+    struct Config
+    {
         Address factory_addr;
         uint32_t packetizer_segment_bsz;
         uint32_t packetizer_max_bsz;
@@ -4471,6 +4510,139 @@ namespace dg_sock::network_kernel_mailbox_impl1_flash_stream_x
                                        size_t inbound_redistributor_worker_busy_threshold,
                                        bool has_inbound_redistribution,
                                        size_t mailbox_transmission_vectorization_sz,
+                                       std::shared_ptr<dg_sock::network_concurrency_infretry_x::ExecutorInterface> infretry_device) -> std::unique_ptr<DynamicMailboxInterface>{
+
+                const size_t MIN_EXPIRY_WORKER_COUNT        = 1u;
+                const size_t MAX_EXPIRY_WORKER_COUNT        = 1024u; 
+                const size_t MIN_INBOUND_WORKER_COUNT       = 1u;
+                const size_t MAX_INBOUND_WORKER_COUNT       = 1024u;
+
+                if (base == nullptr){
+                    dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
+                }
+
+                if (packetizer == nullptr){
+                    dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
+                }
+
+                if (inbound_gate == nullptr){
+                    dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
+                }
+
+                if (blacklist_gate == nullptr){
+                    dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
+                }
+
+                if (packet_assembler == nullptr){
+                    dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
+                }
+
+                if (inbound_container == nullptr){
+                    dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
+                }
+
+                if (entrance_controller == nullptr){
+                    dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
+                }
+
+                if (std::clamp(expiry_worker_count, MIN_EXPIRY_WORKER_COUNT, MAX_EXPIRY_WORKER_COUNT) != expiry_worker_count){
+                    dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
+                }
+
+                if (std::clamp(inbound_worker_count, MIN_INBOUND_WORKER_COUNT, MAX_INBOUND_WORKER_COUNT) != inbound_worker_count){
+                    dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
+                }
+
+                if (infretry_device == nullptr){
+                    dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
+                }
+
+                std::shared_ptr<InBoundGateInterface> inbound_gate_sp                   = std::move(inbound_gate);
+                std::shared_ptr<BlackListGateInterface> blacklist_gate_sp               = std::move(blacklist_gate);
+                std::shared_ptr<PacketAssemblerInterface> packet_assembler_sp           = std::move(packet_assembler);
+                std::shared_ptr<InBoundContainerInterface> inbound_container_sp         = std::move(inbound_container);
+                std::shared_ptr<InBoundContainerInterface> fair_inbound_container_sp    = std::move(fair_inbound_container);
+                std::shared_ptr<InBoundContainerInterface> enduser_inbound_container_sp = {};
+                std::shared_ptr<EntranceControllerInterface> entrance_controller_sp     = std::move(entrance_controller);
+                std::vector<dg_sock::network_concurrency::daemon_raii_handle_t> daemon_vec   = {};
+
+                if (has_inbound_redistribution){
+                    enduser_inbound_container_sp = fair_inbound_container_sp;
+                } else{
+                    enduser_inbound_container_sp = inbound_container_sp;
+                }
+
+                if (has_inbound_redistribution){
+                    auto worker = ComponentFactory::get_inbound_redistributor_worker(inbound_container_sp,
+                                                                                     fair_inbound_container_sp,
+                                                                                     inbound_redistributor_worker_suck_cap,
+                                                                                     inbound_redistributor_worker_push_cap,
+                                                                                     inbound_redistributor_worker_busy_threshold);
+
+                    auto daemon_handle  = dg_sock::network_exception_handler::throw_nolog(dg_sock::network_concurrency::daemon_saferegister(dg_sock::network_concurrency::MAILBOX_STREAM_DAEMON, std::move(worker)));
+                    daemon_vec.emplace_back(std::move(daemon_handle));            
+                }
+
+                for (size_t i = 0u; i < inbound_worker_count; ++i){
+                    auto worker = ComponentFactory::get_inbound_worker(packet_assembler_sp, inbound_gate_sp, blacklist_gate_sp, 
+                                                                       inbound_container_sp, entrance_controller_sp, infretry_device,
+                                                                       base,
+                                                                       inbound_worker_packet_assembler_vectorization_sz,
+                                                                       inbound_worker_inbound_gate_vectorization_sz,
+                                                                       inbound_worker_blacklist_gate_vectorization_sz,
+                                                                       inbound_worker_entrance_controller_vectorization_sz,
+                                                                       inbound_worker_inbound_container_vectorization_sz,
+                                                                       inbound_worker_consume_sz,
+                                                                       inbound_worker_busy_consume_sz);
+
+                    auto daemon_handle  = dg_sock::network_exception_handler::throw_nolog(dg_sock::network_concurrency::daemon_saferegister(dg_sock::network_concurrency::MAILBOX_STREAM_DAEMON, std::move(worker)));
+                    daemon_vec.emplace_back(std::move(daemon_handle));
+                }
+
+                for (size_t i = 0u; i < expiry_worker_count; ++i){
+                    auto worker = ComponentFactory::get_expiry_worker(packet_assembler_sp, entrance_controller_sp, blacklist_gate_sp,
+                                                                      expiry_worker_packet_assembler_vectorization_sz,
+                                                                      expiry_worker_consume_sz,
+                                                                      expiry_worker_busy_consume_sz);
+
+                    auto daemon_handle  = dg_sock::network_exception_handler::throw_nolog(dg_sock::network_concurrency::daemon_saferegister(dg_sock::network_concurrency::MAILBOX_STREAM_DAEMON, std::move(worker)));
+                    daemon_vec.emplace_back(std::move(daemon_handle));
+                }
+
+                return ComponentFactory::get_dynamic_flash_streamx_mailbox(std::move(daemon_vec),
+                                                                           std::move(packetizer),
+                                                                           base,
+                                                                           enduser_inbound_container_sp,
+                                                                           outbound_rule,
+                                                                           mailbox_transmission_vectorization_sz);
+            }
+
+            static auto make_raw_mailbox_x(std::shared_ptr<dg_sock::network_kernel_mailbox_impl1::core::MailboxInterface> base,
+                                       std::shared_ptr<OutBoundRuleInterface> outbound_rule,
+                                       std::unique_ptr<PacketizerInterface> packetizer,
+                                       std::unique_ptr<InBoundGateInterface> inbound_gate,
+                                       std::unique_ptr<BlackListGateInterface> blacklist_gate,
+                                       std::unique_ptr<PacketAssemblerInterface> packet_assembler,
+                                       std::unique_ptr<InBoundContainerInterface> inbound_container,
+                                       std::unique_ptr<InBoundContainerInterface> fair_inbound_container,
+                                       std::unique_ptr<EntranceControllerInterface> entrance_controller,
+                                       size_t expiry_worker_count,
+                                       size_t expiry_worker_packet_assembler_vectorization_sz,
+                                       size_t expiry_worker_consume_sz,
+                                       size_t expiry_worker_busy_consume_sz,
+                                       size_t inbound_worker_count,
+                                       size_t inbound_worker_packet_assembler_vectorization_sz,
+                                       size_t inbound_worker_inbound_gate_vectorization_sz,
+                                       size_t inbound_worker_blacklist_gate_vectorization_sz,
+                                       size_t inbound_worker_entrance_controller_vectorization_sz,
+                                       size_t inbound_worker_inbound_container_vectorization_sz,
+                                       size_t inbound_worker_consume_sz,
+                                       size_t inbound_worker_busy_consume_sz,
+                                       size_t inbound_redistributor_worker_suck_cap,
+                                       size_t inbound_redistributor_worker_push_cap,
+                                       size_t inbound_redistributor_worker_busy_threshold,
+                                       bool has_inbound_redistribution,
+                                       size_t mailbox_transmission_vectorization_sz,
                                        std::shared_ptr<dg_sock::network_concurrency_infretry_x::ExecutorInterface> infretry_device) -> std::unique_ptr<dg_sock::network_kernel_mailbox_impl1::core::MailboxInterface>{
 
                 const size_t MIN_EXPIRY_WORKER_COUNT        = 1u;
@@ -4540,7 +4712,7 @@ namespace dg_sock::network_kernel_mailbox_impl1_flash_stream_x
                                                                                      inbound_redistributor_worker_push_cap,
                                                                                      inbound_redistributor_worker_busy_threshold);
 
-                    auto daemon_handle  = dg_sock::network_exception_handler::throw_nolog(dg_sock::network_concurrency::daemon_saferegister(dg_sock::network_concurrency::IO_DAEMON, std::move(worker)));
+                    auto daemon_handle  = dg_sock::network_exception_handler::throw_nolog(dg_sock::network_concurrency::daemon_saferegister(dg_sock::network_concurrency::MAILBOX_STREAM_DAEMON, std::move(worker)));
                     daemon_vec.emplace_back(std::move(daemon_handle));            
                 }
 
@@ -4556,7 +4728,7 @@ namespace dg_sock::network_kernel_mailbox_impl1_flash_stream_x
                                                                        inbound_worker_consume_sz,
                                                                        inbound_worker_busy_consume_sz);
 
-                    auto daemon_handle  = dg_sock::network_exception_handler::throw_nolog(dg_sock::network_concurrency::daemon_saferegister(dg_sock::network_concurrency::IO_DAEMON, std::move(worker)));
+                    auto daemon_handle  = dg_sock::network_exception_handler::throw_nolog(dg_sock::network_concurrency::daemon_saferegister(dg_sock::network_concurrency::MAILBOX_STREAM_DAEMON, std::move(worker)));
                     daemon_vec.emplace_back(std::move(daemon_handle));
                 }
 
@@ -4566,7 +4738,7 @@ namespace dg_sock::network_kernel_mailbox_impl1_flash_stream_x
                                                                       expiry_worker_consume_sz,
                                                                       expiry_worker_busy_consume_sz);
 
-                    auto daemon_handle  = dg_sock::network_exception_handler::throw_nolog(dg_sock::network_concurrency::daemon_saferegister(dg_sock::network_concurrency::IO_DAEMON, std::move(worker)));
+                    auto daemon_handle  = dg_sock::network_exception_handler::throw_nolog(dg_sock::network_concurrency::daemon_saferegister(dg_sock::network_concurrency::MAILBOX_STREAM_DAEMON, std::move(worker)));
                     daemon_vec.emplace_back(std::move(daemon_handle));
                 }
 
@@ -4580,9 +4752,40 @@ namespace dg_sock::network_kernel_mailbox_impl1_flash_stream_x
 
         public:
 
-            static auto make(Config config) -> std::unique_ptr<dg_sock::network_kernel_mailbox_impl1::core::MailboxInterface>{
+            static auto make(Config config) -> std::unique_ptr<DynamicMailboxInterface>{
 
                 return make_mailbox_x(config.base,
+                                      config.outbound_rule,
+                                      make_packetizer(config),
+                                      make_ato_gate_controller(config),
+                                      make_blklst_gate_controller(config),
+                                      make_packet_assembler(config),
+                                      make_inbound_container(config),
+                                      make_fair_inbound_container(config),
+                                      make_latency_controller(config),
+                                      config.expiry_worker_count,
+                                      config.expiry_worker_packet_assembler_vectorization_sz,
+                                      config.expiry_worker_consume_sz,
+                                      config.expiry_worker_busy_consume_sz,
+                                      config.inbound_worker_count,
+                                      config.inbound_worker_packet_assembler_vectorization_sz,
+                                      config.inbound_worker_inbound_gate_vectorization_sz,
+                                      config.inbound_worker_blacklist_gate_vectorization_sz,
+                                      config.inbound_worker_latency_controller_vectorization_sz,
+                                      config.inbound_worker_inbound_container_vectorization_sz,
+                                      config.inbound_worker_consume_sz,
+                                      config.inbound_worker_busy_consume_sz,
+                                      config.inbound_redistributor_worker_suck_cap,
+                                      config.inbound_redistributor_worker_push_cap,
+                                      config.inbound_redistributor_worker_busy_threshold,
+                                      config.inbound_container_has_redistributor,
+                                      config.mailbox_transmission_vectorization_sz,
+                                      config.infretry_device);
+            }
+
+            static auto make2(Config config) -> std::unique_ptr<dg_sock::network_kernel_mailbox_impl1::core::MailboxInterface>{
+
+                return make_raw_mailbox_x(config.base,
                                       config.outbound_rule,
                                       make_packetizer(config),
                                       make_ato_gate_controller(config),
@@ -4617,9 +4820,14 @@ namespace dg_sock::network_kernel_mailbox_impl1_flash_stream_x
         return ComponentFactory::get_empty_outbound_rule();
     } 
 
-    extern auto spawn(Config config) -> std::unique_ptr<dg_sock::network_kernel_mailbox_impl1::core::MailboxInterface>{
+    extern auto spawn(Config config) -> std::unique_ptr<DynamicMailboxInterface>{
 
         return ConfigMaker::make(config);
+    }
+
+    extern auto spawn2(Config config) -> std::unique_ptr<dg_sock::network_kernel_mailbox_impl1::core::MailboxInterface>{
+
+        return ConfigMaker::make2(config);
     }
 }
 

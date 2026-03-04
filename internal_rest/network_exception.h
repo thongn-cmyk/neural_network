@@ -193,6 +193,7 @@ namespace dg_sock::network_exception{
 
     inline void throw_exception(exception_t){
         
+        std::cout << std::stacktrace::current() << std::endl;
         throw base_exception("unspecified error");
     }
 

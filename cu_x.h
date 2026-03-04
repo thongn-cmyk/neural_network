@@ -391,6 +391,8 @@ namespace cu_x
 
                     std::this_thread::sleep_for(this->sleep_dur);
                 }
+
+                std::atomic_thread_fence(std::memory_order_seq_cst);
             }
 
             void stop() noexcept

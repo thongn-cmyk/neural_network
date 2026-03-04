@@ -321,6 +321,8 @@ namespace async_cuda_x
                         continue;
                     }                 
                 }
+
+                std::atomic_thread_fence(std::memory_order_seq_cst);
             }
 
             void stop() noexcept

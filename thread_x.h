@@ -86,6 +86,8 @@ namespace thread_x
 
                     workorder->run();
                 }
+
+                std::atomic_thread_fence(std::memory_order_seq_cst);
             }
 
             void poison() noexcept

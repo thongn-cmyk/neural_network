@@ -26,17 +26,7 @@ namespace dg_sock::network_randomizer{
                 std::mt19937_64 randomizer;
             };
 
-            static inline std::vector<RandomizationUnit> table = []{
-                std::vector<RandomizationUnit> rs{};
-
-                for (size_t i = 0u; i < dg_sock::network_concurrency::MAX_THREAD_COUNT; ++i){
-                    size_t seed = std::chrono::high_resolution_clock::now().time_since_epoch().count(); 
-                    std::mt19937_64 randomizer{seed};
-                    rs.push_back(RandomizationUnit{randomizer(), sizeof(uint64_t) * CHAR_BIT, randomizer});
-                }
-
-                return rs;
-            }();
+            static inline std::vector<RandomizationUnit> table{};
 
             static inline void re_randomize(RandomizationUnit& random_unit) noexcept{
 
@@ -45,6 +35,24 @@ namespace dg_sock::network_randomizer{
             }
 
         public: 
+
+            static void init()
+            {
+                std::vector<RandomizationUnit> rs{};
+
+                for (size_t i = 0u; i < dg_sock::network_concurrency::get_thread_count(); ++i){
+                    size_t seed = std::chrono::high_resolution_clock::now().time_since_epoch().count(); 
+                    std::mt19937_64 randomizer{seed};
+                    rs.push_back(RandomizationUnit{randomizer(), sizeof(uint64_t) * CHAR_BIT, randomizer});
+                }
+
+                table = rs;
+            }
+
+            static void deinit() noexcept
+            {
+                table = {};
+            }
 
             template <size_t BIT_SIZE>
             static inline auto randomize_bit(const std::integral_constant<size_t, BIT_SIZE>) noexcept -> uint64_t{
@@ -65,6 +73,16 @@ namespace dg_sock::network_randomizer{
                 return ret_value;
             }
     };
+
+    void init()
+    {
+        BitRandomizer::init();
+    }
+
+    void deinit() noexcept
+    {
+        BitRandomizer::deinit();
+    }
 
     template <size_t RANGE_SZ>
     auto randomize_xrange(const std::integral_constant<size_t, RANGE_SZ>) noexcept -> size_t{

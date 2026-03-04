@@ -384,7 +384,7 @@ namespace dg_sock::network_kernel_allocator
         {
             std::vector<std::unique_ptr<AllocatorInterface<AffinedAllocator>>> affined_map{};
 
-            for (size_t i = 0u; i < dg_sock::network_concurrency::MAX_THREAD_COUNT; ++i)
+            for (size_t i = 0u; i < dg_sock::network_concurrency::get_thread_count(); ++i)
             {
                 affined_map.push_back(make_affined_allocator(base_allocator,
                                                              affined_refill_sz,

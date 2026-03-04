@@ -136,7 +136,8 @@ namespace branch_optimizer
         public:
 
             BranchPredictor(size_t enumeration_range,
-                            size_t reevaluation_window)
+                            size_t reevaluation_window): randomizer(),
+                                                         uint_randomizer()
             {
                 if (std::clamp(enumeration_range, size_t{1}, MAX_ENUMERATION_RANGE) != enumeration_range)
                 {
@@ -148,9 +149,6 @@ namespace branch_optimizer
                 this->reevaluation_window   = std::clamp(reevaluation_window, size_t{1}, MAX_REEVALUATION_WINDOW);
                 this->good_statistic_table  = std::make_shared<std::vector<StatisticalBucket>>(std::vector<StatisticalBucket>(enumeration_range, StatisticalBucket{.total_score = static_cast<branch_float_t>(0), .total_count = 0u}));
                 this->distribution_table    = this->make_initial_distribution_table_for_size_of(enumeration_range);
-
-                this->randomizer            = UniformRandomizer();
-                this->uint_randomizer       = conventional_randomizer::RandomizerObject();
             }
 
             BranchPredictor(const BranchPredictor&) = delete;
@@ -471,7 +469,8 @@ namespace branch_optimizer
         public:
 
             StubbornBranchPredictor(size_t enumeration_range,
-                                    size_t reevaluation_window)
+                                    size_t reevaluation_window): randomizer(),
+                                                                 uint_randomizer()
             {
                 if (std::clamp(enumeration_range, size_t{1}, MAX_ENUMERATION_RANGE) != enumeration_range)
                 {
@@ -483,9 +482,6 @@ namespace branch_optimizer
                 this->reevaluation_window   = std::clamp(reevaluation_window, size_t{1}, MAX_REEVALUATION_WINDOW);
                 this->good_statistic_table  = std::make_shared<std::vector<StatisticalBucket>>(std::vector<StatisticalBucket>(enumeration_range, StatisticalBucket{.total_score = static_cast<branch_float_t>(0), .total_count = 0u}));
                 this->distribution_table    = this->make_initial_distribution_table_for_size_of(enumeration_range);
-
-                this->randomizer            = UniformRandomizer();
-                this->uint_randomizer       = conventional_randomizer::RandomizerObject();
             }
 
             StubbornBranchPredictor(const StubbornBranchPredictor&) = delete;
