@@ -588,33 +588,54 @@ namespace stdxx
     }
 
     template <class T, std::enable_if_t<std::is_unsigned_v<T>, bool> = true>
-    constexpr auto is_pow2(T value){
-
+    constexpr auto is_pow2(T value)
+    {
         return value != 0u && (value & static_cast<T>(value - 1)) == 0u;
     }
 
-    constexpr auto align_ptr(char * buf, uintptr_t alignment_sz) noexcept -> char *{
-
+    constexpr auto align_address(uintptr_t arithmetic_buf, uintptr_t alignment_sz) noexcept -> uintptr_t
+    {
         assert(is_pow2(alignment_sz));
 
-        uintptr_t arithmetic_buf        = reinterpret_cast<uintptr_t>(buf);
         uintptr_t FWD_SZ                = alignment_sz - 1u;
         uintptr_t MASK_VALUE            = ~FWD_SZ;
         uintptr_t fwd_arithmetic_buf    = (arithmetic_buf + FWD_SZ) & MASK_VALUE;
 
-        return reinterpret_cast<char *>(fwd_arithmetic_buf);
+        return fwd_arithmetic_buf;
     }
 
-    constexpr auto align_ptr(const char * buf, uintptr_t alignment_sz) noexcept -> const char *{
+    template <size_t ALIGNMENT_SZ>
+    constexpr auto align_address(uintptr_t arithmetic_buf, std::integral_constant<size_t, ALIGNMENT_SZ>) noexcept -> uintptr_t
+    {
+        static_assert(is_pow2(ALIGNMENT_SZ));
 
-        assert(is_pow2(alignment_sz));
+        constexpr uintptr_t FWD_SZ          = ALIGNMENT_SZ - 1u;
+        constexpr uintptr_t MASK_VALUE      = ~FWD_SZ;
+        const uintptr_t fwd_arithmetic_buf  = (arithmetic_buf + FWD_SZ) & MASK_VALUE;
 
-        uintptr_t arithmetic_buf        = reinterpret_cast<uintptr_t>(buf);
-        uintptr_t FWD_SZ                = alignment_sz - 1u;
-        uintptr_t MASK_VALUE            = ~FWD_SZ;
-        uintptr_t fwd_arithmetic_buf    = (arithmetic_buf + FWD_SZ) & MASK_VALUE;
+        return fwd_arithmetic_buf;
+    }
 
-        return reinterpret_cast<const char *>(fwd_arithmetic_buf);
+    constexpr auto align_ptr(char * buf, size_t alignment_sz) noexcept -> char *
+    {
+        return reinterpret_cast<char *>(align_address(reinterpret_cast<uintptr_t>(buf), alignment_sz));
+    }
+
+    constexpr auto align_ptr(const char * buf, size_t alignment_sz) noexcept -> const char *
+    {
+        return reinterpret_cast<const char *>(align_address(reinterpret_cast<uintptr_t>(buf), alignment_sz));
+    }
+
+    template <size_t ALIGNMENT_SZ>
+    constexpr auto align_ptr(char * buf, std::integral_constant<size_t, ALIGNMENT_SZ> alignment) noexcept -> char *
+    {
+        return reinterpret_cast<char *>(align_address(reinterpret_cast<uintptr_t>(buf), alignment));
+    }
+
+    template <size_t ALIGNMENT_SZ>
+    constexpr auto align_ptr(const char * buf, std::integral_constant<size_t, ALIGNMENT_SZ> alignment) noexcept -> const char *
+    {
+        return reinterpret_cast<const char *>(align_address(reinterpret_cast<uintptr_t>(buf), alignment));
     }
 
     template <class T>
@@ -1031,7 +1052,7 @@ namespace stdxx
 
     void high_resolution_sleep(std::chrono::nanoseconds dur) noexcept
     {
-        std::this_thread::sleep_for(dur);
+        // std::this_thread::sleep_for(dur);
     }
 
     template <class ...Args>

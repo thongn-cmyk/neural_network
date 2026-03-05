@@ -41,7 +41,7 @@ namespace dg_sock::network_concurrency{
 
     using SingletonObject = stdxx::singleton<Signature, ConcurrencyResource>;
 
-    extern void init(Config config)
+    extern void init(Config config, bool main_inclusion = true)
     {
         using namespace dg_sock::network_concurrency_impl1;
 
@@ -65,6 +65,11 @@ namespace dg_sock::network_concurrency{
 
             thrid_to_idx_map[runner->id()] = i;
             runner_kind_vec.push_back(std::make_pair(std::move(runner), config.worker_vec[i].daemon));
+        }
+
+        if (main_inclusion)
+        {
+            thrid_to_idx_map[std::this_thread::get_id()] = config.worker_vec.size();
         }
 
         SingletonObject::get() =
@@ -103,7 +108,7 @@ namespace dg_sock::network_concurrency{
 
     extern auto __attribute__((noipa)) daemon_register(daemon_kind_t daemon_kind, std::unique_ptr<WorkerInterface> worker) noexcept -> std::expected<size_t, exception_t>
     {
-        // auto ptr = SingletonObject::get().thrid_to_idx_map.find(std::this_thread::get_id());
+        auto ptr = SingletonObject::get().thrid_to_idx_map.find(std::this_thread::get_id());
 
         // if (ptr != SingletonObject::get().thrid_to_idx_map.end())
         // {

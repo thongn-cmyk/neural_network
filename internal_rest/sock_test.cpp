@@ -331,7 +331,7 @@ int main()
         dg_sock::network_randomizer::init();
 
         std::filesystem::path tmp_file = std::filesystem::temp_directory_path() / "sock_test.txt";
-        dg_sock::network_logging_subsystem::init(tmp_file);
+        dg_sock::network_log::init(tmp_file);
 
         {
             dg_sock::network_stack_allocation::init();

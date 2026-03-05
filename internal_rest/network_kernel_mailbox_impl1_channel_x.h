@@ -34,15 +34,41 @@ namespace dg_sock::network_kernel_mailbox_impl1_channel_x
         }
     };
 
-    class OutputContainableInterface
+    auto channel_message_serialize(ChannelMessage&& msg) noexcept -> std::expected<str_buffer, exception_t>
     {
-        public:
+        size_t old_sz           = msg.content.size();
+        size_t serialization_sz = old_sz + sizeof(uint32_t);
 
-            virtual ~OutputContainableInterface() noexcept = default;
+        try
+        {
+            msg.content.resize(serialization_sz);
+            dg_sock::network_trivial_serializer::serialize_into(std::next(msg.content.data(), old_sz), msg.channel);
+        }
+        catch (...)
+        {
+            return std::unexpected(dg_sock::network_exception::wrap_std_exception(std::current_exception()));
+        }
 
-            virtual void resize(size_t sz) = 0;
-            virtual auto data() noexcept -> std::add_pointer_t<char> = 0;
-    };
+        return std::move(msg.content);
+    }
+
+    auto channel_message_deserialize(str_buffer&& serialization_buffer) noexcept -> std::expected<ChannelMessage, exception_t>
+    {
+        if (serialization_buffer.size() < sizeof(uint32_t))
+        {
+            return std::unexpected(dg_sock::network_exception::INVALID_ARGUMENT);
+        }
+
+        uint32_t channel;
+        dg_sock::network_trivial_serializer::deserialize_into(channel, std::prev(std::next(serialization_buffer.data(), serialization_buffer.size()), sizeof(uint32_t)));
+        serialization_buffer.resize(serialization_buffer.size() - sizeof(uint32_t));
+
+        return ChannelMessage
+        {
+            .channel    = channel,
+            .content    = std::move(serialization_buffer)
+        };
+    }
 
     class ChannelContainerInterface
     {
@@ -71,9 +97,7 @@ namespace dg_sock::network_kernel_mailbox_impl1_channel_x
                               MailBoxArgument * data_arr, size_t sz, exception_t * exception_arr) noexcept = 0;
 
             virtual void recv(uint32_t channel,
-                              std::add_pointer_t<OutputContainableInterface> * output_container_arr,
-                              size_t& recv_sz, size_t recv_cap,
-                              exception_t * exception_arr) noexcept = 0;
+                              dg_sock::string * output_container_arr, size_t& recv_sz, size_t recv_cap) noexcept = 0;
 
             virtual auto max_consume_size() noexcept -> size_t = 0;
     };
@@ -175,7 +199,7 @@ namespace dg_sock::network_kernel_mailbox_impl1_channel_x
                             }
                         }
 
-                        front_consumer.recv_buffer_arr[*front_consumer.recv_buffer_arr_sz++] = std::move(base_str_arr[0]);
+                        front_consumer.recv_buffer_arr[(*front_consumer.recv_buffer_arr_sz)++] = std::move(base_str_arr[0]);
                         need_release_front = true;
 
                         if (*front_consumer.recv_buffer_arr_sz == front_consumer.recv_buffer_arr_cap)
@@ -220,6 +244,7 @@ namespace dg_sock::network_kernel_mailbox_impl1_channel_x
                         if (map_ptr->second.size() == map_ptr->second.capacity())
                         {
                             this->log_full_message_queue_on(channel);
+                            map_ptr->second.pop_front();
                         }
 
                         dg_sock::network_exception_handler::nothrow_log(map_ptr->second.push_back(std::move(base_str_arr[i])));
@@ -275,7 +300,8 @@ namespace dg_sock::network_kernel_mailbox_impl1_channel_x
                         {
                             .recv_buffer_arr        = recv_arr,
                             .recv_buffer_arr_sz     = &recv_arr_sz,
-                            .recv_buffer_arr_cap    = recv_arr_cap
+                            .recv_buffer_arr_cap    = recv_arr_cap,
+                            .smp                    = &smp
                         });
 
                         return true;
@@ -517,17 +543,10 @@ namespace dg_sock::network_kernel_mailbox_impl1_channel_x
 
             auto run_one_epoch() noexcept -> bool
             {
-                dg_sock::network_stack_allocation::NoExceptAllocation<OutputContainer[]> output_container_arr(this->pull_sz);
-                dg_sock::network_stack_allocation::NoExceptAllocation<std::add_pointer_t<dg_sock::network_kernel_mailbox_impl1_flash_stream_x::OutputContainableInterface>[]> virtual_output_container_arr(this->pull_sz);
-                dg_sock::network_stack_allocation::NoExceptAllocation<exception_t[]> exception_arr(this->pull_sz);
-
-                for (size_t i = 0u; i < this->pull_sz; ++i)
-                {
-                    virtual_output_container_arr[i] = &output_container_arr[i];
-                }
+                dg_sock::network_stack_allocation::NoExceptAllocation<dg_sock::string[]> recv_container_arr(this->pull_sz);
 
                 size_t recv_sz;
-                this->base_mailbox->recv(virtual_output_container_arr.get(), recv_sz, this->pull_sz, exception_arr.get());
+                this->base_mailbox->recv(recv_container_arr.get(), recv_sz, this->pull_sz);
 
                 auto resolutor  = ChannelFeedResolutor{};
                 resolutor.sink  = this->channel_container.get();
@@ -539,13 +558,7 @@ namespace dg_sock::network_kernel_mailbox_impl1_channel_x
 
                 for (size_t i = 0u; i < recv_sz; ++i)
                 {
-                    if (dg_sock::network_exception::is_failed(exception_arr[i]))
-                    {
-                        dg_sock::network_log_stackdump::error_fast(dg_sock::network_exception::verbose(exception_arr[i]));
-                        continue;
-                    }
-
-                    std::expected<ChannelMessage, exception_t> channel_msg = dg_sock::network_exception::to_cstyle_function(dg_sock::network_compact_serializer::dgstd_deserialize<ChannelMessage, str_buffer>)(output_container_arr[i].get(), SERIALIZATION_SECRET);
+                    std::expected<ChannelMessage, exception_t> channel_msg = channel_message_deserialize(std::move(recv_container_arr[i]));
 
                     if (!channel_msg.has_value())
                     {
@@ -579,30 +592,6 @@ namespace dg_sock::network_kernel_mailbox_impl1_channel_x
                         }
                     }
                 }
-            };
-
-            class OutputContainer: public virtual dg_sock::network_kernel_mailbox_impl1_flash_stream_x::OutputContainableInterface
-            {
-                private:
-
-                    str_buffer str_reference;
-
-                public:
-
-                    void resize(size_t sz)
-                    {
-                        this->str_reference.resize(sz);
-                    }
-
-                    auto data() noexcept -> char *
-                    {
-                        return this->str_reference.data();
-                    }
-
-                    auto get() noexcept -> str_buffer&
-                    {
-                        return this->str_reference;
-                    }
             };
     };
 
@@ -648,7 +637,7 @@ namespace dg_sock::network_kernel_mailbox_impl1_channel_x
                         .content    = std::move(cpy_msg.value())
                     };
 
-                    std::expected<str_buffer, exception_t> actual_msg = dg_sock::network_exception::to_cstyle_function(dg_sock::network_compact_serializer::dgstd_serialize<str_buffer, ChannelMessage>)(msg, SERIALIZATION_SECRET);
+                    std::expected<str_buffer, exception_t> actual_msg = channel_message_serialize(std::move(msg));
 
                     if (!actual_msg.has_value())
                     {
@@ -678,26 +667,14 @@ namespace dg_sock::network_kernel_mailbox_impl1_channel_x
             }
 
             void recv(uint32_t channel,
-                      std::add_pointer_t<OutputContainableInterface> * output_container_arr,
-                      size_t& recv_sz, size_t recv_cap,
-                      exception_t * exception_arr) noexcept
+                      dg_sock::string * output_container_arr, size_t& recv_sz, size_t recv_cap) noexcept
             {
                 dg_sock::network_stack_allocation::NoExceptAllocation<str_buffer[]> recv_arr(recv_cap);
                 this->channel_container->pop(channel, recv_arr.get(), recv_sz, recv_cap);
 
                 for (size_t i = 0u; i < recv_sz; ++i)
                 {
-                    try
-                    {
-                        output_container_arr[i]->resize(recv_arr[i].size());
-                        std::copy(recv_arr[i].begin(), recv_arr[i].end(), output_container_arr[i]->data());
-
-                        exception_arr[i] = dg_sock::network_exception::SUCCESS;
-                    }
-                    catch (...)
-                    {
-                        exception_arr[i] = dg_sock::network_exception::wrap_std_exception(std::current_exception());
-                    }
+                    output_container_arr[i] = std::move(recv_arr[i]);
                 }
             }
 

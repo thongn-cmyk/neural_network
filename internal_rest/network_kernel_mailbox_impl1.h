@@ -8289,12 +8289,12 @@ namespace dg_sock::network_kernel_mailbox_impl1::worker{
                 size_t arr_sz   = 0u;
                 size_t arr_cap  = str_arr_cap;
 
-                exception_t err = dg_sock::network_kernel_mailbox_impl1::socket_service::batchrecv_block_x(sock,
-                                                                                                      buf_arr.get(),
-                                                                                                      buf_sz_arr.get(),
-                                                                                                      buf_cap_arr.get(),
-                                                                                                      arr_sz,
-                                                                                                      arr_cap);
+                exception_t err = dg_sock::network_kernel_mailbox_impl1::socket_service::batchrecv_block(sock,
+                                                                                                         buf_arr.get(),
+                                                                                                         buf_sz_arr.get(),
+                                                                                                         buf_cap_arr.get(),
+                                                                                                         arr_sz,
+                                                                                                         arr_cap);
 
                 if (dg_sock::network_exception::is_failed(err))
                 {
@@ -10128,8 +10128,6 @@ namespace dg_sock::network_kernel_mailbox_impl1{
 
             static auto make_outbound_border_controller(Config config) -> std::vector<std::unique_ptr<packet_controller::OutBoundBorderController>>{
 
-                std::cout << "make_outbound_border_controller" << std::endl;
-
                 if (config.num_outbound_worker == 0u){
                     dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
                 }
@@ -10152,28 +10150,20 @@ namespace dg_sock::network_kernel_mailbox_impl1{
 
             static auto make_outbound_transmission_controller(Config config) -> std::unique_ptr<packet_controller::KernelOutBoundTransmissionControllerInterface>{
 
-                std::cout << "make_outbound_transmission_controller" << std::endl;
-
                 return packet_controller::ComponentFactory::get_kernel_outbound_static_transmission_controller(config.outbound_transmit_frequency);
             }
 
             static auto make_ack_packet_generator(Config config) -> std::unique_ptr<packet_controller::AckPacketGeneratorInterface>{
-
-                std::cout << "make_ack_packet_generator" << std::endl;
 
                 return packet_controller::ComponentFactory::get_randomid_ack_packet_generator(utility::to_factory_id(model::Address{config.host_ip, config.host_port_inbound}), model::Address{config.host_ip, config.host_port_inbound});
             }
 
             static auto make_inbound_packet_integrity_validator(Config config) -> std::unique_ptr<packet_controller::PacketIntegrityValidatorInterface>{
 
-                std::cout << "make_inbound_packet_integrity_validator" << std::endl;
-
                 return packet_controller::ComponentFactory::get_inbound_packet_integrity_validator(model::Address{config.host_ip, config.host_port_inbound});
             }
 
             static auto make_inbound_socket(Config config) -> std::vector<std::unique_ptr<model::SocketHandle, socket_service::socket_close_t>>{
-
-                std::cout << "making inbound socket" << std::endl;
 
                 if (config.inbound_socket_concurrency_sz == 0u){
                     dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
@@ -10197,14 +10187,10 @@ namespace dg_sock::network_kernel_mailbox_impl1{
                     }
                 }
 
-                std::cout << "made inbound socket" << std::endl;
-
                 return socket_vec;
             }
 
             static auto make_outbound_socket(Config config) -> std::vector<std::unique_ptr<model::SocketHandle, socket_service::socket_close_t>>{
-
-                std::cout << "making outbound socket" << std::endl;
 
                 if (config.outbound_socket_concurrency_sz == 0u){
                     dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
@@ -10228,14 +10214,10 @@ namespace dg_sock::network_kernel_mailbox_impl1{
                     }
                 }
 
-                std::cout << "made outbound socket" << std::endl;
-
                 return socket_vec;
             }
 
             static auto make_request_packet_generator(Config config) -> std::unique_ptr<packet_controller::RequestPacketGeneratorInterface>{
-
-                std::cout << "making request packet generator" << std::endl;
 
                 return packet_controller::ComponentFactory::get_randomid_request_packet_generator(utility::to_factory_id(model::Address{config.host_ip, config.host_port_inbound}), model::Address{config.host_ip, config.host_port_inbound});
             }

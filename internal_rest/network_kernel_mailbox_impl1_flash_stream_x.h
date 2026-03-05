@@ -25,6 +25,7 @@
 #include "network_ticket_timeout_manager.h"
 #include "network_concurrency.h"
 #include <cron_subsystem/cron_subsystem.h>
+#include <algorithm>
 
 // namespace dg_sock::network_kernel_mailbox_impl1::model
 // {
@@ -522,24 +523,12 @@ namespace dg_sock::network_kernel_mailbox_impl1_flash_stream_x
         virtual auto thru(const Address&) noexcept -> std::expected<bool, exception_t> = 0;
     };
 
-    struct OutputContainableInterface
-    {
-        public:
-
-            virtual ~OutputContainableInterface() noexcept = default;
-
-            virtual void resize(size_t sz) = 0; 
-            virtual auto data() noexcept -> std::add_pointer_t<char> = 0;
-    };
-
     struct DynamicMailboxInterface
     {
         virtual ~DynamicMailboxInterface() noexcept = default;
 
         virtual void send(MailBoxArgument * data_arr, size_t sz, exception_t * exception_arr) noexcept = 0;
-        virtual void recv(std::add_pointer_t<OutputContainableInterface> * output_container_arr,
-                          size_t& recv_sz, size_t recv_cap,
-                          exception_t * exception_arr) noexcept = 0;
+        virtual void recv(dg_sock::string * output_container_arr, size_t& recv_sz, size_t recv_cap) noexcept = 0;
 
         virtual auto max_consume_size() noexcept -> size_t = 0;
     };
@@ -3146,7 +3135,16 @@ namespace dg_sock::network_kernel_mailbox_impl1_flash_stream_x
                                                                     outbound_rule(std::move(outbound_rule)),
                                                                     transmission_vectorization_sz(transmission_vectorization_sz){}
 
-            void send(MailBoxArgument * data_arr, size_t sz, exception_t * exception_arr) noexcept{
+            void send(MailBoxArgument * data_arr, size_t sz, exception_t * exception_arr) noexcept
+            {
+                if constexpr(DEBUG_MODE_FLAG)
+                {
+                    if (sz > this->max_consume_size())
+                    {
+                        dg_sock::network_log_stackdump::critical(dg_sock::network_exception::verbose(dg_sock::network_exception::INTERNAL_CORRUPTION));
+                        std::abort();
+                    }
+                }
 
                 MailBoxArgument * base_data_arr = data_arr;
 
@@ -3174,7 +3172,7 @@ namespace dg_sock::network_kernel_mailbox_impl1_flash_stream_x
                     }
 
                     std::expected<internal_segment_kernel_buffer, exception_t> buf          = dg_sock::network_exception::cstyle_initialize<internal_segment_kernel_buffer>(std::string_view(static_cast<const char *>(base_data_arr[i].content),
-                                                                                                                                                                                        base_data_arr[i].content_sz)); //
+                                                                                                                                                                                             base_data_arr[i].content_sz));
                     
                     if (!buf.has_value()){
                         exception_arr[i] = buf.error();
@@ -3366,9 +3364,7 @@ namespace dg_sock::network_kernel_mailbox_impl1_flash_stream_x
                 }
             }
 
-            void recv(std::add_pointer_t<OutputContainableInterface> * output_container_arr,
-                      size_t& recv_sz, size_t recv_cap,
-                      exception_t * exception_arr) noexcept
+            void recv(dg_sock::string * output_container_arr, size_t& recv_sz, size_t recv_cap) noexcept
             {
                 size_t output_arr_sz;
                 size_t output_arr_cap   = recv_cap;
@@ -3380,17 +3376,7 @@ namespace dg_sock::network_kernel_mailbox_impl1_flash_stream_x
 
                 for (size_t i = 0u; i < output_arr_sz; ++i)
                 {
-                    try
-                    {
-                        output_container_arr[i]->resize(buffer_arr[i].size());
-                        std::copy(buffer_arr[i].begin(), buffer_arr[i].end(), output_container_arr[i]->data());
-
-                        exception_arr[i] = dg_sock::network_exception::SUCCESS;
-                    }
-                    catch (...)
-                    {
-                        exception_arr[i] = dg_sock::network_exception::wrap_std_exception(std::current_exception());
-                    }
+                    output_container_arr[i] = std::move(buffer_arr[i]);
                 }
             }
 
@@ -4402,7 +4388,11 @@ namespace dg_sock::network_kernel_mailbox_impl1_flash_stream_x
                                                                                                 ComponentFactory::get_no_exhaustion_controller());
                         } else{
                             auto inbound_container_vec = std::vector<std::unique_ptr<InBoundContainerInterface>>(config.inbound_container_component_sz);
-                            std::generate(inbound_container_vec.begin(), inbound_container_vec.end(), std::bind_front(ComponentFactory::get_buffer_fifo_container, config.inbound_container_cap, config.inbound_container_push_concurrent_sz, 4u)); //
+
+                            for (size_t i = 0u; i < inbound_container_vec.size(); ++i)
+                            {
+                                inbound_container_vec[i] = ComponentFactory::get_buffer_fifo_container(config.inbound_container_cap, config.inbound_container_push_concurrent_sz, 4u);
+                            }
 
                             return ComponentFactory::get_exhaustion_controlled_buffer_container(ComponentFactory::get_reacting_buffer_container(ComponentFactory::get_random_hash_distributed_buffer_container(std::move(inbound_container_vec)),
                                                                                                                                                 config.inbound_container_react_sz,
@@ -4419,7 +4409,11 @@ namespace dg_sock::network_kernel_mailbox_impl1_flash_stream_x
                                                                                                 ComponentFactory::get_no_exhaustion_controller());
                         } else{
                             auto inbound_container_vec = std::vector<std::unique_ptr<InBoundContainerInterface>>(config.inbound_container_component_sz);
-                            std::generate(inbound_container_vec.begin(), inbound_container_vec.end(), std::bind_front(ComponentFactory::get_buffer_fifo_container, config.inbound_container_cap, config.inbound_container_push_concurrent_sz, 4u)); //
+
+                            for (size_t i = 0u; i < inbound_container_vec.size(); ++i)
+                            {
+                                inbound_container_vec[i] = ComponentFactory::get_buffer_fifo_container(config.inbound_container_cap, config.inbound_container_push_concurrent_sz, 4u);
+                            }
 
                             return ComponentFactory::get_exhaustion_controlled_buffer_container(ComponentFactory::get_random_hash_distributed_buffer_container(std::move(inbound_container_vec)),
                                                                                                 config.infretry_device,
@@ -4435,7 +4429,11 @@ namespace dg_sock::network_kernel_mailbox_impl1_flash_stream_x
                                                                                    config.inbound_container_react_latency);
                         } else{
                             auto inbound_container_vec = std::vector<std::unique_ptr<InBoundContainerInterface>>(config.inbound_container_component_sz);
-                            std::generate(inbound_container_vec.begin(), inbound_container_vec.end(), std::bind_front(ComponentFactory::get_buffer_fifo_container, config.inbound_container_cap, config.inbound_container_push_concurrent_sz, 4u)); //
+
+                            for (size_t i = 0u; i < inbound_container_vec.size(); ++i)
+                            {
+                                inbound_container_vec[i] = ComponentFactory::get_buffer_fifo_container(config.inbound_container_cap, config.inbound_container_push_concurrent_sz, 4u);
+                            }
 
                             return ComponentFactory::get_reacting_buffer_container(ComponentFactory::get_random_hash_distributed_buffer_container(std::move(inbound_container_vec)),
                                                                                    config.inbound_container_react_sz,
@@ -4447,7 +4445,11 @@ namespace dg_sock::network_kernel_mailbox_impl1_flash_stream_x
                             return ComponentFactory::get_buffer_fifo_container(config.inbound_container_cap, config.inbound_container_push_concurrent_sz);
                         } else{
                             auto inbound_container_vec = std::vector<std::unique_ptr<InBoundContainerInterface>>(config.inbound_container_component_sz);
-                            std::generate(inbound_container_vec.begin(), inbound_container_vec.end(), std::bind_front(ComponentFactory::get_buffer_fifo_container, config.inbound_container_cap, config.inbound_container_push_concurrent_sz, 4u)); //
+
+                            for (size_t i = 0u; i < inbound_container_vec.size(); ++i)
+                            {
+                                inbound_container_vec[i] = ComponentFactory::get_buffer_fifo_container(config.inbound_container_cap, config.inbound_container_push_concurrent_sz, 4u);
+                            }
 
                             return ComponentFactory::get_random_hash_distributed_buffer_container(std::move(inbound_container_vec));
                         }

@@ -13,14 +13,34 @@
 #include "stdx.h"
 #include <type_traits>
 #include "network_type_traits_x.h"
+#include "network_hash.h"
 
 namespace dg_sock::network_randomizer{
+
+    struct RandomizationSeed
+    {
+        uint64_t thr_idx;
+        uint64_t time_seed;
+
+        template <class Reflector>
+        constexpr void dg_reflect(const Reflector& reflector) const noexcept
+        {
+            reflector(thr_idx, time_seed);
+        }
+
+        template <class Reflector>
+        constexpr void dg_reflect(const Reflector& reflector) noexcept
+        {
+            reflector(thr_idx, time_seed);
+        }
+    };
 
     struct BitRandomizer{
         
         private:
 
-            struct RandomizationUnit{
+            struct RandomizationUnit
+            {
                 uint64_t value;
                 size_t bit_precision;
                 std::mt19937_64 randomizer;
@@ -28,8 +48,8 @@ namespace dg_sock::network_randomizer{
 
             static inline std::vector<RandomizationUnit> table{};
 
-            static inline void re_randomize(RandomizationUnit& random_unit) noexcept{
-
+            static inline void re_randomize(RandomizationUnit& random_unit) noexcept
+            {
                 random_unit.value           = static_cast<std::mt19937_64&>(random_unit.randomizer)();
                 random_unit.bit_precision   = sizeof(uint64_t) * CHAR_BIT;
             }
@@ -40,8 +60,14 @@ namespace dg_sock::network_randomizer{
             {
                 std::vector<RandomizationUnit> rs{};
 
-                for (size_t i = 0u; i < dg_sock::network_concurrency::get_thread_count(); ++i){
-                    size_t seed = std::chrono::high_resolution_clock::now().time_since_epoch().count(); 
+                for (size_t i = 0u; i < dg_sock::network_concurrency::get_thread_count(); ++i)
+                {
+                    size_t seed = dg_sock::network_hash::hash_reflectible(RandomizationSeed
+                    {
+                        .thr_idx    = i,
+                        .time_seed  = static_cast<uint64_t>(std::chrono::high_resolution_clock::now().time_since_epoch().count())
+                    });
+
                     std::mt19937_64 randomizer{seed};
                     rs.push_back(RandomizationUnit{randomizer(), sizeof(uint64_t) * CHAR_BIT, randomizer});
                 }
@@ -55,14 +81,23 @@ namespace dg_sock::network_randomizer{
             }
 
             template <size_t BIT_SIZE>
-            static inline auto randomize_bit(const std::integral_constant<size_t, BIT_SIZE>) noexcept -> uint64_t{
-
+            static inline auto randomize_bit(const std::integral_constant<size_t, BIT_SIZE>) noexcept -> uint64_t
+            {
                 static_assert(BIT_SIZE != 0);
                 static_assert(BIT_SIZE <= sizeof(uint64_t) * CHAR_BIT);
 
+                if constexpr(DEBUG_MODE_FLAG)
+                {
+                    if (dg_sock::network_concurrency::this_thread_idx() >= table.size())
+                    {
+                        std::abort();
+                    }
+                }
+
                 RandomizationUnit& unit = table[dg_sock::network_concurrency::this_thread_idx()];
 
-                if (unit.bit_precision < BIT_SIZE){
+                if (unit.bit_precision < BIT_SIZE)
+                {
                     re_randomize(unit);
                 }
 
@@ -85,44 +120,41 @@ namespace dg_sock::network_randomizer{
     }
 
     template <size_t RANGE_SZ>
-    auto randomize_xrange(const std::integral_constant<size_t, RANGE_SZ>) noexcept -> size_t{
-
+    auto randomize_xrange(const std::integral_constant<size_t, RANGE_SZ>) noexcept -> size_t
+    {
         static_assert(RANGE_SZ != 0u);
 
-        constexpr size_t BIT_SIZE = stdxx::ulog2(RANGE_SZ) + 1u;
-        uint64_t rs = BitRandomizer::randomize_bit(std::integral_constant<size_t, BIT_SIZE>{});
+        constexpr size_t BIT_SIZE   = (sizeof(size_t) * CHAR_BIT) - std::countl_zero(RANGE_SZ);
+        uint64_t rs                 = BitRandomizer::randomize_bit(std::integral_constant<size_t, BIT_SIZE>{});
 
-        if constexpr(stdxx::is_pow2(RANGE_SZ)){
-            return rs;
-        } else{
-            return rs % RANGE_SZ;
-        }
+        return rs % RANGE_SZ;
     }
 
     template <size_t FIRST, size_t LAST>
-    auto randomize_range(const std::integral_constant<size_t, FIRST>, const std::integral_constant<size_t, LAST>) -> size_t{
-
+    auto randomize_range(const std::integral_constant<size_t, FIRST>, const std::integral_constant<size_t, LAST>) -> size_t
+    {
         static_assert(LAST > FIRST);
         return FIRST + randomize_xrange(std::integral_constant<size_t, LAST - FIRST>{});
     }
 
-    auto randomize_bool() noexcept -> bool{
-
+    auto randomize_bool() noexcept -> bool
+    {
         uint64_t rs = BitRandomizer::randomize_bit(std::integral_constant<size_t, 1u>{}); 
         return static_cast<bool>(rs);
     }
 
     template <class T, std::enable_if_t<std::numeric_limits<T>::is_integer, bool> = true>
-    auto randomize_int() noexcept -> T{
-
+    auto randomize_int() noexcept -> T
+    {
         using unsigned_ver_t = network_type_traits_x::unsigned_of_byte_t<sizeof(T)>;
         unsigned_ver_t rs = BitRandomizer::randomize_bit(std::integral_constant<size_t, sizeof(unsigned_ver_t) * CHAR_BIT>{});
+
         return std::bit_cast<T>(rs);
     }
 
     template <class T = std::string, std::enable_if_t<network_type_traits_x::is_basic_string_v<T>, bool> = true>
-    auto randomize_string(size_t sz) -> T{
-
+    auto randomize_string(size_t sz) -> T
+    {
         T rs{};
         rs.resize(sz);
         std::generate(rs.begin(), rs.end(), []{return randomize_int<char>();});
