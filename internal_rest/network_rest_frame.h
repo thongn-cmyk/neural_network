@@ -3916,7 +3916,7 @@ namespace dg_sock::network_rest_frame::client_impl1{
                     {
                         if (!observer_arr[i].has_value())
                         {
-                            dg_sock::network_log_stackdump::error_fast_optional(dg_sock::network_exception::verbose(dg_sock::network_exception::REST_BAD_RESPONSE));
+                            dg_sock::network_log_stackdump::error_fast_optional(dg_sock::network_exception::verbose(dg_sock::network_exception::REST_LOST_RESPONSE));
                             continue;
                         }
 
@@ -4137,7 +4137,7 @@ namespace dg_sock::network_rest_frame::client_impl1{
             {
                 if (sz > this->max_consume_size())
                 {
-                    return std::unexpected(dg_sock::network_exception::MAX_CONSUME_SIZE_EXCEEDED);
+                    return std::unexpected(dg_sock::network_exception::REST_MAX_CONSUME_SIZE_EXCEEDED);
                 }
 
                 if (sz == 0u)
@@ -4240,7 +4240,7 @@ namespace dg_sock::network_rest_frame::client_impl1{
             {
                 if (request_id_sz > this->max_consume_size())
                 {
-                    return dg_sock::network_exception::MAX_CONSUME_SIZE_EXCEEDED;
+                    return dg_sock::network_exception::REST_MAX_CONSUME_SIZE_EXCEEDED;
                 }
 
                 return this->request_id_generator->get(request_id_sz, out_request_id_arr);
@@ -4464,7 +4464,7 @@ namespace dg_sock::network_rest_frame::client_impl1{
             {
                 if (request_arr_sz > this->max_consume_size())
                 {
-                    return std::unexpected(dg_sock::network_exception::MAX_CONSUME_SIZE_EXCEEDED);
+                    return std::unexpected(dg_sock::network_exception::REST_MAX_CONSUME_SIZE_EXCEEDED);
                 }
 
                 size_t random_clue  = dg_sock::network_randomizer::randomize_int<size_t>();
@@ -4480,7 +4480,7 @@ namespace dg_sock::network_rest_frame::client_impl1{
             {
                 if (request_id_sz > this->max_consume_size())
                 {
-                    return dg_sock::network_exception::MAX_CONSUME_SIZE_EXCEEDED;
+                    return dg_sock::network_exception::REST_MAX_CONSUME_SIZE_EXCEEDED;
                 }
 
                 size_t random_clue  = dg_sock::network_randomizer::randomize_int<size_t>();

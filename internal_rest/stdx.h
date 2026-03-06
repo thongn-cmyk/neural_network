@@ -1052,7 +1052,7 @@ namespace stdxx
 
     void high_resolution_sleep(std::chrono::nanoseconds dur) noexcept
     {
-        // std::this_thread::sleep_for(dur);
+        std::this_thread::sleep_for(dur);
     }
 
     template <class ...Args>

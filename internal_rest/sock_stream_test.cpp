@@ -33,7 +33,7 @@ class TestWorker: public virtual dg_sock::network_concurrency::WorkerInterface
             const size_t TEST_SZ = size_t{1} << 20u;
 
             size_t packet_sz    = 8u;
-            size_t packet_count = size_t{1} << 8;
+            size_t packet_count = size_t{1} << 16;
 
             std::vector<std::shared_ptr<void>> resource_vec = {};
             std::vector<std::string> recv_vec{};
@@ -131,6 +131,9 @@ class TestWorker: public virtual dg_sock::network_concurrency::WorkerInterface
                     if (dg_sock::network_exception::is_failed(exception_vec[i]))
                     {
                         std::swap(tmp_vec[i], tmp_vec[nxt_sz++]);
+
+                        std::cout << dg_sock::network_exception::verbose(exception_vec[i]) << "<exception>" << std::endl;
+                        std::this_thread::sleep_for(std::chrono::milliseconds(1));
                     }
                     else
                     {
@@ -304,7 +307,7 @@ void init_concurrency()
 {
     using namespace dg_sock::network_concurrency;
 
-    const size_t WORKER_SZ = 16u;
+    const size_t WORKER_SZ = 32u;
     std::vector<WorkerInformation> worker_info_vec{};
 
     for (size_t i = 0u; i < WORKER_SZ; ++i)
@@ -312,7 +315,7 @@ void init_concurrency()
         worker_info_vec.push_back(WorkerInformation{.cpu_id = std::nullopt, .daemon = MAILBOX_UNIT_DAEMON});
     }
 
-    for (size_t i = 0u; i < WORKER_SZ; ++i)
+    for (size_t i = 0u; i < 8u; ++i)
     {
         worker_info_vec.push_back(WorkerInformation{.cpu_id = std::nullopt, .daemon = MAILBOX_STREAM_DAEMON});
     }
@@ -326,6 +329,20 @@ int main()
     //it just seems to me that we cannot generalize for other operating systems or other use cases
 
     //we'd test 1GB/s bandwidth today and move on to other tasks
+
+    //what I have tried to explain is that lifetime + allocation + shared memory pool is important
+    //a complete stream packet must be hand-transfer from one worker to another worker for its worst case size cannot fit in as a unit in a normal container
+
+    //and a ticket_timeout_manager (retransmission queue) at the base is important, more than that at the rest_controller
+    //the base retransmission makes sure that we are (the server) not sabotaging the network, by keeping the pipe finite (the number of concurrent packets here is the saturation of 1-1 from src to dst)
+    //for the case of server, we are responding to a requesting address, so we don't have problems of retrying a valid address
+
+    //for the case of client, we dont care as much, though we should have some kind of handshake but again, that's recursive definittion, and we only do 1 request at a time, so ...
+
+    //the channel is to deliver heartbeat + priority message in extreme scenrio, remember that we never encounter the case where we are too busy to receive packets (for the max flow is preconfigurated)
+    //the rest controller ticket_timeout_manager should limit to the rate of 1 request/ ack, for scaling purposes, such is that we are making sure that we are civil in the network of max flow
+
+    //we have provided an implementation to call kernel send and recv interface, and appropriate configurations for multithreading and friends, that should be external configurations
 
     {
         init_concurrency();
@@ -369,14 +386,14 @@ int main()
             std::cout << "initializing base sock" << std::endl;
             auto sock = dg_sock::network_kernel_mailbox_impl1::spawn(dg_sock::network_kernel_mailbox_impl1::Config
             {
-                .num_kernel_inbound_worker = 1,
-                .num_process_inbound_worker = 1,
-                .num_outbound_worker = 1,
+                .num_kernel_inbound_worker = 16,
+                .num_process_inbound_worker = 8,
+                .num_outbound_worker = 4,
                 .num_kernel_rescue_worker = 0,
                 .num_retry_worker = 1,
 
-                .inbound_socket_concurrency_sz = 1,
-                .outbound_socket_concurrency_sz = 1,
+                .inbound_socket_concurrency_sz = 16,
+                .outbound_socket_concurrency_sz = 4,
                 .sin_fam = AF_INET,
                 .comm = SOCK_DGRAM,
                 .protocol = 0,
@@ -385,11 +402,11 @@ int main()
                 .host_port_outbound = 5001,
 
                 .is_void_retransmission_controller = false,
-                .retransmission_delay = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(1)),
+                .retransmission_delay = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(2)),
                 .retransmission_concurrency_sz = 2,
-                .retransmission_queue_cap = 1 << 12,
-                .retransmission_user_queue_cap = 1 << 10,
-                .retransmission_packet_cap = 10,
+                .retransmission_queue_cap = 1 << 16,
+                .retransmission_user_queue_cap = 1 << 14,
+                .retransmission_packet_cap = 20,
                 .retransmission_idhashset_cap = 1 << 24,
                 .retransmission_ticking_clock_resolution = 1 << 10,
                 .retransmission_has_react_pattern = false,
@@ -540,7 +557,7 @@ int main()
                 .expiry_worker_consume_sz = size_t{1} << 10,
                 .expiry_worker_busy_consume_sz = 1,
 
-                .inbound_worker_count = 1,
+                .inbound_worker_count = 2,
                 .inbound_worker_packet_assembler_vectorization_sz = size_t{1} << 10,
                 .inbound_worker_inbound_gate_vectorization_sz = size_t{1} << 10,
                 .inbound_worker_blacklist_gate_vectorization_sz = size_t{1} << 10,

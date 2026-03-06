@@ -52,7 +52,7 @@ namespace dg_sock::network_datastructure::expiry_queue
             {   
                 if (this->id_heap_map.contains(this->get_id(item)))
                 {
-                    return dg_sock::network_exception::DUPLICATE_ENTRY;
+                    return dg_sock::network_exception::DUPLICATED_ENTRY;
                 }
 
                 std::expected<HeapNode *, exception_t> reference_node = this->add_heap_node(std::forward<TypeLike>(item), expiry_time);

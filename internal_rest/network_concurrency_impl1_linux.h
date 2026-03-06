@@ -327,7 +327,7 @@ namespace dg_sock::network_concurrency_impl1
 
             if (!legacy_cpusetup)
             {
-                dg_sock::network_exception::throw_exception(dg_sock::network_exception::OUT_OF_MEMORY);
+                dg_sock::network_exception::throw_exception(dg_sock::network_exception::RESOURCE_EXHAUSTION);
             }
             
             size_t alloc_sz = CPU_ALLOC_SIZE(cpu_sz);
@@ -366,7 +366,7 @@ namespace dg_sock::network_concurrency_impl1
                     dg_sock::network_exception::throw_exception(dg_sock::network_exception::PTHREAD_ESRCH);
                 }
 
-                dg_sock::network_exception::throw_exception(dg_sock::network_exception::UNIDENTIFIED_EXCEPTION);
+                dg_sock::network_exception::throw_exception(dg_sock::network_exception::UNIDENTIFIED_ERROR);
             }
         }
 

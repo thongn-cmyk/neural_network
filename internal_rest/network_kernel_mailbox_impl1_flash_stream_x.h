@@ -1297,7 +1297,7 @@ namespace dg_sock::network_kernel_mailbox_impl1_flash_stream_x
                     if (this->blacklist_set.not_contains(global_id_arr[i])){
                         exception_arr[i] = dg_sock::network_exception::SUCCESS;
                     } else{
-                        exception_arr[i] = dg_sock::network_exception::SOCKET_STREAM_MIGHT_BE_BLACKLISTED;
+                        exception_arr[i] = dg_sock::network_exception::SOCKET_STREAM_BLACKLISTED;
                     }
                 }
             }
@@ -1350,7 +1350,7 @@ namespace dg_sock::network_kernel_mailbox_impl1_flash_stream_x
                     if (this->blacklist_set.not_contains(global_id_arr[i])){
                         exception_arr[i] = dg_sock::network_exception::SUCCESS;
                     } else{
-                        exception_arr[i] = dg_sock::network_exception::SOCKET_STREAM_MIGHT_BE_BLACKLISTED;
+                        exception_arr[i] = dg_sock::network_exception::SOCKET_STREAM_BLACKLISTED;
                     }
                 }
             }
@@ -1868,7 +1868,7 @@ namespace dg_sock::network_kernel_mailbox_impl1_flash_stream_x
                 }
 
                 if (pkt.data[pkt_segment.segment_idx].has_value()){
-                    return dg_sock::network_exception::SOCKET_STREAM_DUPLICATE_SEGMENT;
+                    return dg_sock::network_exception::SOCKET_STREAM_DUPLICATED_SEGMENT;
                 }
 
                 pkt.data[pkt_segment.segment_idx]   = std::move(pkt_segment.buf);

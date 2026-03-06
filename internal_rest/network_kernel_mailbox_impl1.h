@@ -450,7 +450,7 @@ namespace dg_sock::network_kernel_mailbox_impl1::constants{
     static inline constexpr size_t MAX_REQUEST_PACKET_CONTENT_SIZE      = size_t{1} << 9;
     static inline constexpr size_t MAX_ACK_PER_PACKET                   = size_t{1} << 2;
     static inline constexpr size_t DEFAULT_ACCUMULATION_SIZE            = size_t{1} << 8;
-    static inline constexpr size_t KERNEL_BATCH_POPCOUNT                = size_t{1} << 8;
+    static inline constexpr size_t KERNEL_BATCH_POPCOUNT                = size_t{1} << 10;
     static inline constexpr size_t DEFAULT_KEYVALUE_ACCUMULATION_SIZE   = size_t{1} << 8;
 
     static inline constexpr int KERNEL_NOBLOCK_TRANSMISSION_FLAG        = MSG_DONTROUTE | MSG_DONTWAIT;
@@ -1966,12 +1966,13 @@ namespace dg_sock::network_kernel_mailbox_impl1::socket_service{
         return dg_sock::network_exception::SUCCESS;
     }
 
-    static auto batchrecv_block(const SocketHandle& sock,
-                                void ** dst,
-                                size_t * dst_sz_arr,
-                                size_t * dst_cap_arr,
-                                size_t& arr_sz,
-                                size_t arr_cap) noexcept -> exception_t 
+    static auto batchrecv(const SocketHandle& sock,
+                          void ** dst,
+                          size_t * dst_sz_arr,
+                          size_t * dst_cap_arr,
+                          size_t& arr_sz,
+                          size_t arr_cap,
+                          int flag) noexcept -> exception_t 
     {
         if (sock.comm != SOCK_DGRAM)
         {
@@ -2005,7 +2006,7 @@ namespace dg_sock::network_kernel_mailbox_impl1::socket_service{
         auto retval = recvmmsg(sock.kernel_sock_fd,
                                mmsghdr_vec->base_arr,
                                mmsghdr_vec->arr_sz,
-                               MSG_WAITFORONE,
+                               flag,
                                nullptr);
 
         if (retval == -1)
@@ -2023,16 +2024,18 @@ namespace dg_sock::network_kernel_mailbox_impl1::socket_service{
         return dg_sock::network_exception::SUCCESS;
     }
 
-    static auto batchrecv_block_x(const SocketHandle& sock,
-                                  void ** dst,
-                                  size_t * dst_sz_arr,
-                                  size_t * dst_cap_arr,
-                                  size_t& arr_sz,
-                                  size_t arr_cap) noexcept -> exception_t
+    static auto batchrecv_block(const SocketHandle& sock,
+                                void ** dst,
+                                size_t * dst_sz_arr,
+                                size_t * dst_cap_arr,
+                                size_t& arr_sz,
+                                size_t arr_cap) noexcept -> exception_t
     {
-        arr_sz = 0u; 
+        arr_sz                      = 0u; 
+        int flag                    = MSG_WAITFORONE;
+        const size_t TRYHARD_SZ     = size_t{1} << 4;
 
-        while (true)
+        for (size_t i = 0u; i < TRYHARD_SZ; ++i)
         {
             if (arr_sz == arr_cap)
             {
@@ -2045,7 +2048,8 @@ namespace dg_sock::network_kernel_mailbox_impl1::socket_service{
             size_t tmp_sz               = {};
             size_t tmp_arr_cap          = arr_cap - arr_sz;
 
-            exception_t tmp_err         = batchrecv_block(sock, tmp_dst, tmp_dst_sz_arr, tmp_dst_cap_arr, tmp_sz, tmp_arr_cap);
+            exception_t tmp_err         = batchrecv(sock, tmp_dst, tmp_dst_sz_arr, tmp_dst_cap_arr, tmp_sz, tmp_arr_cap, flag);
+            flag                        = MSG_DONTWAIT;
 
             if (dg_sock::network_exception::is_failed(tmp_err))
             {
@@ -2061,6 +2065,8 @@ namespace dg_sock::network_kernel_mailbox_impl1::socket_service{
 
             arr_sz += tmp_sz;
         }
+
+        return dg_sock::network_exception::SUCCESS;
     }
 }
 
@@ -3451,7 +3457,7 @@ namespace dg_sock::network_kernel_mailbox_impl1::packet_controller{
                         }
 
                         if (this->acked_id_hashset.contains(base_pkt_arr[i].id)){
-                            exception_arr[i] = dg_sock::network_exception::SOCKET_ADD_ACKED_PACKET;
+                            exception_arr[i] = dg_sock::network_exception::SOCKET_ACKED_ENQUEUE;
                             continue;
                         }
 
@@ -7939,7 +7945,7 @@ namespace dg_sock::network_kernel_mailbox_impl1::worker{
                         dg_sock::network_log_stackdump::error_fast_optional(dg_sock::network_exception::verbose(err));
                     }
 
-                    stdxx::high_resolution_sleep(transmit_period);
+                    // stdxx::high_resolution_sleep(transmit_period);
                 }
             };
     };
