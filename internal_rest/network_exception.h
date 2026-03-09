@@ -11,6 +11,8 @@
 #include <stacktrace>
 #include <iostream>
 #include <string>
+#include <unordered_map>
+#include <memory>
 
 using exception_t = uint16_t; 
 
@@ -630,87 +632,85 @@ namespace dg_sock::network_exception
             }
     };
 
+    template <class T>
+    using fancy_polymorphic_exception = polymorphic_exception<T>;
+
     static inline const std::unordered_map<exception_t, std::unique_ptr<polymorphic_exception_interface>> polymorphic_cpp_exception_table = []
     {
         std::unordered_map<exception_t, std::unique_ptr<polymorphic_exception_interface>> result{};
 
-        result.insert(std::make_pair(SEGFAULT, std::make_unique<stack_embedded_polymorphic_exception<segfault>>()));
-        result.insert(std::make_pair(INTERNAL_CORRUPTION, std::make_unique<stack_embedded_polymorphic_exception<internal_corruption>>()));
-        result.insert(std::make_pair(OUT_OF_MEMORY, std::make_unique<stack_embedded_polymorphic_exception<out_of_memory>>()));
-        result.insert(std::make_pair(INVALID_SERIALIZATION_FORMAT, std::make_unique<stack_embedded_polymorphic_exception<invalid_serialization_format>>()));
-        result.insert(std::make_pair(INVALID_DICTIONARY_KEY, std::make_unique<stack_embedded_polymorphic_exception<invalid_dictionary_key>>()));
-        result.insert(std::make_pair(BAD_ACCESS, std::make_unique<stack_embedded_polymorphic_exception<bad_access>>()));
-        result.insert(std::make_pair(BAD_ALIGNMENT, std::make_unique<stack_embedded_polymorphic_exception<bad_alignment>>()));
-        result.insert(std::make_pair(RUNTIME_SOCKETIO_ERROR, std::make_unique<stack_embedded_polymorphic_exception<runtime_socketio_error>>()));
-        result.insert(std::make_pair(BUFFER_OVERFLOW, std::make_unique<stack_embedded_polymorphic_exception<buffer_overflow>>()));
-        result.insert(std::make_pair(LOST_RETRANSMISSION, std::make_unique<stack_embedded_polymorphic_exception<lost_retransmission>>()));
-        result.insert(std::make_pair(UNSUPPORTED_DAEMON_KIND, std::make_unique<stack_embedded_polymorphic_exception<unsupported_daemon_kind>>()));
-        result.insert(std::make_pair(NO_DAEMON_RUNNER_AVAILABLE, std::make_unique<stack_embedded_polymorphic_exception<no_daemon_runner_available>>()));
-        result.insert(std::make_pair(INVALID_ARGUMENT, std::make_unique<stack_embedded_polymorphic_exception<dg_invalid_argument>>()));
-        result.insert(std::make_pair(UNIDENTIFIED_ERROR, std::make_unique<stack_embedded_polymorphic_exception<unidentified_error>>()));
-        result.insert(std::make_pair(PTHREAD_EFAULT, std::make_unique<stack_embedded_polymorphic_exception<pthread_efault>>()));
-        result.insert(std::make_pair(PTHREAD_EINVAL, std::make_unique<stack_embedded_polymorphic_exception<pthread_einval>>()));
-        result.insert(std::make_pair(PTHREAD_ESRCH, std::make_unique<stack_embedded_polymorphic_exception<pthread_esrch>>()));
-        result.insert(std::make_pair(PTHREAD_CAUSA_SUI, std::make_unique<stack_embedded_polymorphic_exception<pthread_causa_sui>>()));
-        result.insert(std::make_pair(RESOURCE_EXHAUSTION, std::make_unique<stack_embedded_polymorphic_exception<resource_exhaustion>>()));
-        result.insert(std::make_pair(TIMEOUT, std::make_unique<stack_embedded_polymorphic_exception<timeout>>()));
-        result.insert(std::make_pair(INVALID_FORMAT, std::make_unique<stack_embedded_polymorphic_exception<invalid_format>>()));
-        result.insert(std::make_pair(BAD_POLYMORPHIC_ACCESS, std::make_unique<stack_embedded_polymorphic_exception<bad_polymorphic_access>>()));
-        result.insert(std::make_pair(SOCKET_BAD_IP, std::make_unique<stack_embedded_polymorphic_exception<socket_bad_ip>>()));
-        result.insert(std::make_pair(SOCKET_CORRUPTED_PACKET, std::make_unique<stack_embedded_polymorphic_exception<socket_corrupted_packet>>()));
-        result.insert(std::make_pair(SOCKET_MALFORMED_PACKET, std::make_unique<stack_embedded_polymorphic_exception<socket_malformed_packet>>()));
-        result.insert(std::make_pair(SOCKET_ACKED_ENQUEUE, std::make_unique<stack_embedded_polymorphic_exception<socket_acked_enqueue>>()));
-        result.insert(std::make_pair(SOCKET_BAD_RECEIPIENT, std::make_unique<stack_embedded_polymorphic_exception<socket_bad_receipient>>()));
-        result.insert(std::make_pair(SOCKET_BAD_TRAFFIC, std::make_unique<stack_embedded_polymorphic_exception<socket_bad_traffic>>()));
-        result.insert(std::make_pair(SOCKET_BAD_IP_RULE, std::make_unique<stack_embedded_polymorphic_exception<socket_bad_ip_rule>>()));
-        result.insert(std::make_pair(SOCKET_BAD_BUFFER_LENGTH, std::make_unique<stack_embedded_polymorphic_exception<socket_bad_buffer_length>>()));
-        result.insert(std::make_pair(SOCKET_MAX_RETRANSMISSION_REACHED, std::make_unique<stack_embedded_polymorphic_exception<socket_max_retransmission_reached>>()));
-        result.insert(std::make_pair(SOCKET_QUEUE_FULL, std::make_unique<stack_embedded_polymorphic_exception<socket_queue_full>>()));
-        result.insert(std::make_pair(SOCKET_STREAM_BAD_SEGMENT, std::make_unique<stack_embedded_polymorphic_exception<socket_stream_bad_segment>>()));
-        result.insert(std::make_pair(SOCKET_STREAM_DUPLICATED_SEGMENT, std::make_unique<stack_embedded_polymorphic_exception<socket_stream_duplicated_segment>>()));
-        result.insert(std::make_pair(SOCKET_STREAM_TIMEOUT, std::make_unique<stack_embedded_polymorphic_exception<socket_stream_timeout>>()));
-        result.insert(std::make_pair(SOCKET_STREAM_BLACKLISTED, std::make_unique<stack_embedded_polymorphic_exception<socket_stream_blacklisted>>()));
-        result.insert(std::make_pair(SOCKET_STREAM_BAD_BUFFER_LENGTH, std::make_unique<stack_embedded_polymorphic_exception<socket_stream_bad_buffer_length>>()));
-        result.insert(std::make_pair(SOCKET_STREAM_BAD_SEGMENT_SIZE, std::make_unique<stack_embedded_polymorphic_exception<socket_stream_bad_segment_size>>()));
-        result.insert(std::make_pair(SOCKET_STREAM_SEGMENT_FILLING, std::make_unique<stack_embedded_polymorphic_exception<socket_stream_segment_filling>>()));
-        result.insert(std::make_pair(SOCKET_STREAM_LEAK, std::make_unique<stack_embedded_polymorphic_exception<socket_stream_leak>>()));
-        result.insert(std::make_pair(SOCKET_STREAM_BAD_OUTBOUND_RULE, std::make_unique<stack_embedded_polymorphic_exception<socket_stream_bad_outbound_rule>>()));
-        result.insert(std::make_pair(SOCKET_STREAM_CORRUPTED_PACKET, std::make_unique<stack_embedded_polymorphic_exception<socket_stream_corrupted_packet>>()));
-        result.insert(std::make_pair(SOCKET_CHANNEL_MAX_MSG_SIZE_REACHED, std::make_unique<stack_embedded_polymorphic_exception<socket_channel_max_msg_size_reached>>()));
-        result.insert(std::make_pair(DUPLICATED_ENTRY, std::make_unique<stack_embedded_polymorphic_exception<duplicated_entry>>()));
-        result.insert(std::make_pair(EXPECTED_NOT_INITIALIZED, std::make_unique<stack_embedded_polymorphic_exception<expected_not_initialized>>()));
-        result.insert(std::make_pair(VARIANT_VBE, std::make_unique<stack_embedded_polymorphic_exception<variant_vbe>>()));
-        result.insert(std::make_pair(QUEUE_FULL, std::make_unique<stack_embedded_polymorphic_exception<queue_full>>()));
-        result.insert(std::make_pair(BAD_OPERATION, std::make_unique<stack_embedded_polymorphic_exception<bad_operation>>()));
-        result.insert(std::make_pair(INDEX_OUT_OF_RANGE, std::make_unique<stack_embedded_polymorphic_exception<index_out_of_range>>()));
-        result.insert(std::make_pair(OUT_OF_BOUND_ACCESS, std::make_unique<stack_embedded_polymorphic_exception<out_of_bound_access>>()));
-        result.insert(std::make_pair(BAD_STATE, std::make_unique<stack_embedded_polymorphic_exception<bad_state>>()));
-        result.insert(std::make_pair(REST_CACHE_MAX_RESPONSE_SIZE_REACHED, std::make_unique<stack_embedded_polymorphic_exception<rest_cache_max_response_size_reached>>()));
-        result.insert(std::make_pair(REST_CACHE_POPULATION_LIMIT_REACHED, std::make_unique<stack_embedded_polymorphic_exception<rest_cache_population_limit_reached>>()));
-        result.insert(std::make_pair(REST_CLIENTSIDE_TIMEOUT, std::make_unique<stack_embedded_polymorphic_exception<rest_clientside_timeout>>()));
-        result.insert(std::make_pair(REST_SERVERSIDE_ABSTIMEOUT_TIMEOUT, std::make_unique<stack_embedded_polymorphic_exception<rest_serverside_abstimeout_timeout>>()));
-        result.insert(std::make_pair(REST_INVALID_URL, std::make_unique<stack_embedded_polymorphic_exception<rest_invalid_url>>()));
-        result.insert(std::make_pair(REST_INVALID_ARGUMENT, std::make_unique<stack_embedded_polymorphic_exception<rest_invalid_argument>>()));
-        result.insert(std::make_pair(REST_BAD_CACHE_UNIQUE_WRITE, std::make_unique<stack_embedded_polymorphic_exception<rest_bad_cache_unique_write>>()));
-        result.insert(std::make_pair(REST_INTERNAL_SERVER_ERROR, std::make_unique<stack_embedded_polymorphic_exception<rest_internal_server_error>>()));
-        result.insert(std::make_pair(REST_RESPONSE_DOUBLE_INVOKE, std::make_unique<stack_embedded_polymorphic_exception<rest_response_double_invoke>>()));
-        result.insert(std::make_pair(REST_OTHER_ERROR, std::make_unique<stack_embedded_polymorphic_exception<rest_other_error>>()));
-        result.insert(std::make_pair(REST_TICKET_NOT_FOUND, std::make_unique<stack_embedded_polymorphic_exception<rest_ticket_not_found>>()));
-        result.insert(std::make_pair(REST_TICKET_OBSERVER_NOT_FOUND, std::make_unique<stack_embedded_polymorphic_exception<rest_ticket_observer_not_found>>()));
-        result.insert(std::make_pair(REST_LOST_RESPONSE, std::make_unique<stack_embedded_polymorphic_exception<rest_lost_response>>()));
-        result.insert(std::make_pair(REST_INVALID_TIMEOUT, std::make_unique<stack_embedded_polymorphic_exception<rest_invalid_timeout>>()));
-        result.insert(std::make_pair(REST_MAX_CONSUME_SIZE_EXCEEDED, std::make_unique<stack_embedded_polymorphic_exception<rest_max_consume_size_exceeded>>()));
+        result.insert(std::make_pair(SEGFAULT, std::make_unique<fancy_polymorphic_exception<segfault>>()));
+        result.insert(std::make_pair(INTERNAL_CORRUPTION, std::make_unique<fancy_polymorphic_exception<internal_corruption>>()));
+        result.insert(std::make_pair(OUT_OF_MEMORY, std::make_unique<fancy_polymorphic_exception<out_of_memory>>()));
+        result.insert(std::make_pair(INVALID_SERIALIZATION_FORMAT, std::make_unique<fancy_polymorphic_exception<invalid_serialization_format>>()));
+        result.insert(std::make_pair(INVALID_DICTIONARY_KEY, std::make_unique<fancy_polymorphic_exception<invalid_dictionary_key>>()));
+        result.insert(std::make_pair(BAD_ACCESS, std::make_unique<fancy_polymorphic_exception<bad_access>>()));
+        result.insert(std::make_pair(BAD_ALIGNMENT, std::make_unique<fancy_polymorphic_exception<bad_alignment>>()));
+        result.insert(std::make_pair(RUNTIME_SOCKETIO_ERROR, std::make_unique<fancy_polymorphic_exception<runtime_socketio_error>>()));
+        result.insert(std::make_pair(BUFFER_OVERFLOW, std::make_unique<fancy_polymorphic_exception<buffer_overflow>>()));
+        result.insert(std::make_pair(LOST_RETRANSMISSION, std::make_unique<fancy_polymorphic_exception<lost_retransmission>>()));
+        result.insert(std::make_pair(UNSUPPORTED_DAEMON_KIND, std::make_unique<fancy_polymorphic_exception<unsupported_daemon_kind>>()));
+        result.insert(std::make_pair(NO_DAEMON_RUNNER_AVAILABLE, std::make_unique<fancy_polymorphic_exception<no_daemon_runner_available>>()));
+        result.insert(std::make_pair(INVALID_ARGUMENT, std::make_unique<fancy_polymorphic_exception<dg_invalid_argument>>()));
+        result.insert(std::make_pair(UNIDENTIFIED_ERROR, std::make_unique<fancy_polymorphic_exception<unidentified_error>>()));
+        result.insert(std::make_pair(PTHREAD_EFAULT, std::make_unique<fancy_polymorphic_exception<pthread_efault>>()));
+        result.insert(std::make_pair(PTHREAD_EINVAL, std::make_unique<fancy_polymorphic_exception<pthread_einval>>()));
+        result.insert(std::make_pair(PTHREAD_ESRCH, std::make_unique<fancy_polymorphic_exception<pthread_esrch>>()));
+        result.insert(std::make_pair(PTHREAD_CAUSA_SUI, std::make_unique<fancy_polymorphic_exception<pthread_causa_sui>>()));
+        result.insert(std::make_pair(RESOURCE_EXHAUSTION, std::make_unique<fancy_polymorphic_exception<resource_exhaustion>>()));
+        result.insert(std::make_pair(TIMEOUT, std::make_unique<fancy_polymorphic_exception<timeout>>()));
+        result.insert(std::make_pair(INVALID_FORMAT, std::make_unique<fancy_polymorphic_exception<invalid_format>>()));
+        result.insert(std::make_pair(BAD_POLYMORPHIC_ACCESS, std::make_unique<fancy_polymorphic_exception<bad_polymorphic_access>>()));
+        result.insert(std::make_pair(SOCKET_BAD_IP, std::make_unique<fancy_polymorphic_exception<socket_bad_ip>>()));
+        result.insert(std::make_pair(SOCKET_CORRUPTED_PACKET, std::make_unique<fancy_polymorphic_exception<socket_corrupted_packet>>()));
+        result.insert(std::make_pair(SOCKET_MALFORMED_PACKET, std::make_unique<fancy_polymorphic_exception<socket_malformed_packet>>()));
+        result.insert(std::make_pair(SOCKET_ACKED_ENQUEUE, std::make_unique<fancy_polymorphic_exception<socket_acked_enqueue>>()));
+        result.insert(std::make_pair(SOCKET_BAD_RECEIPIENT, std::make_unique<fancy_polymorphic_exception<socket_bad_receipient>>()));
+        result.insert(std::make_pair(SOCKET_BAD_TRAFFIC, std::make_unique<fancy_polymorphic_exception<socket_bad_traffic>>()));
+        result.insert(std::make_pair(SOCKET_BAD_IP_RULE, std::make_unique<fancy_polymorphic_exception<socket_bad_ip_rule>>()));
+        result.insert(std::make_pair(SOCKET_BAD_BUFFER_LENGTH, std::make_unique<fancy_polymorphic_exception<socket_bad_buffer_length>>()));
+        result.insert(std::make_pair(SOCKET_MAX_RETRANSMISSION_REACHED, std::make_unique<fancy_polymorphic_exception<socket_max_retransmission_reached>>()));
+        result.insert(std::make_pair(SOCKET_QUEUE_FULL, std::make_unique<fancy_polymorphic_exception<socket_queue_full>>()));
+        result.insert(std::make_pair(SOCKET_STREAM_BAD_SEGMENT, std::make_unique<fancy_polymorphic_exception<socket_stream_bad_segment>>()));
+        result.insert(std::make_pair(SOCKET_STREAM_DUPLICATED_SEGMENT, std::make_unique<fancy_polymorphic_exception<socket_stream_duplicated_segment>>()));
+        result.insert(std::make_pair(SOCKET_STREAM_TIMEOUT, std::make_unique<fancy_polymorphic_exception<socket_stream_timeout>>()));
+        result.insert(std::make_pair(SOCKET_STREAM_BLACKLISTED, std::make_unique<fancy_polymorphic_exception<socket_stream_blacklisted>>()));
+        result.insert(std::make_pair(SOCKET_STREAM_BAD_BUFFER_LENGTH, std::make_unique<fancy_polymorphic_exception<socket_stream_bad_buffer_length>>()));
+        result.insert(std::make_pair(SOCKET_STREAM_BAD_SEGMENT_SIZE, std::make_unique<fancy_polymorphic_exception<socket_stream_bad_segment_size>>()));
+        result.insert(std::make_pair(SOCKET_STREAM_SEGMENT_FILLING, std::make_unique<fancy_polymorphic_exception<socket_stream_segment_filling>>()));
+        result.insert(std::make_pair(SOCKET_STREAM_LEAK, std::make_unique<fancy_polymorphic_exception<socket_stream_leak>>()));
+        result.insert(std::make_pair(SOCKET_STREAM_BAD_OUTBOUND_RULE, std::make_unique<fancy_polymorphic_exception<socket_stream_bad_outbound_rule>>()));
+        result.insert(std::make_pair(SOCKET_STREAM_CORRUPTED_PACKET, std::make_unique<fancy_polymorphic_exception<socket_stream_corrupted_packet>>()));
+        result.insert(std::make_pair(SOCKET_CHANNEL_MAX_MSG_SIZE_REACHED, std::make_unique<fancy_polymorphic_exception<socket_channel_max_msg_size_reached>>()));
+        result.insert(std::make_pair(DUPLICATED_ENTRY, std::make_unique<fancy_polymorphic_exception<duplicated_entry>>()));
+        result.insert(std::make_pair(EXPECTED_NOT_INITIALIZED, std::make_unique<fancy_polymorphic_exception<expected_not_initialized>>()));
+        result.insert(std::make_pair(VARIANT_VBE, std::make_unique<fancy_polymorphic_exception<variant_vbe>>()));
+        result.insert(std::make_pair(QUEUE_FULL, std::make_unique<fancy_polymorphic_exception<queue_full>>()));
+        result.insert(std::make_pair(BAD_OPERATION, std::make_unique<fancy_polymorphic_exception<bad_operation>>()));
+        result.insert(std::make_pair(INDEX_OUT_OF_RANGE, std::make_unique<fancy_polymorphic_exception<index_out_of_range>>()));
+        result.insert(std::make_pair(OUT_OF_BOUND_ACCESS, std::make_unique<fancy_polymorphic_exception<out_of_bound_access>>()));
+        result.insert(std::make_pair(BAD_STATE, std::make_unique<fancy_polymorphic_exception<bad_state>>()));
+        result.insert(std::make_pair(REST_CACHE_MAX_RESPONSE_SIZE_REACHED, std::make_unique<fancy_polymorphic_exception<rest_cache_max_response_size_reached>>()));
+        result.insert(std::make_pair(REST_CACHE_POPULATION_LIMIT_REACHED, std::make_unique<fancy_polymorphic_exception<rest_cache_population_limit_reached>>()));
+        result.insert(std::make_pair(REST_CLIENTSIDE_TIMEOUT, std::make_unique<fancy_polymorphic_exception<rest_clientside_timeout>>()));
+        result.insert(std::make_pair(REST_SERVERSIDE_ABSTIMEOUT_TIMEOUT, std::make_unique<fancy_polymorphic_exception<rest_serverside_abstimeout_timeout>>()));
+        result.insert(std::make_pair(REST_INVALID_URL, std::make_unique<fancy_polymorphic_exception<rest_invalid_url>>()));
+        result.insert(std::make_pair(REST_INVALID_ARGUMENT, std::make_unique<fancy_polymorphic_exception<rest_invalid_argument>>()));
+        result.insert(std::make_pair(REST_BAD_CACHE_UNIQUE_WRITE, std::make_unique<fancy_polymorphic_exception<rest_bad_cache_unique_write>>()));
+        result.insert(std::make_pair(REST_INTERNAL_SERVER_ERROR, std::make_unique<fancy_polymorphic_exception<rest_internal_server_error>>()));
+        result.insert(std::make_pair(REST_RESPONSE_DOUBLE_INVOKE, std::make_unique<fancy_polymorphic_exception<rest_response_double_invoke>>()));
+        result.insert(std::make_pair(REST_OTHER_ERROR, std::make_unique<fancy_polymorphic_exception<rest_other_error>>()));
+        result.insert(std::make_pair(REST_TICKET_NOT_FOUND, std::make_unique<fancy_polymorphic_exception<rest_ticket_not_found>>()));
+        result.insert(std::make_pair(REST_TICKET_OBSERVER_NOT_FOUND, std::make_unique<fancy_polymorphic_exception<rest_ticket_observer_not_found>>()));
+        result.insert(std::make_pair(REST_LOST_RESPONSE, std::make_unique<fancy_polymorphic_exception<rest_lost_response>>()));
+        result.insert(std::make_pair(REST_INVALID_TIMEOUT, std::make_unique<fancy_polymorphic_exception<rest_invalid_timeout>>()));
+        result.insert(std::make_pair(REST_MAX_CONSUME_SIZE_EXCEEDED, std::make_unique<fancy_polymorphic_exception<rest_max_consume_size_exceeded>>()));
 
         return result;
     }();
 
     inline auto wrap_kernel_error(kernel_exception_t) noexcept -> exception_t
     {
-        return UNIDENTIFIED_ERROR;
-    }
-
-    inline auto wrap_std_errcode(...) -> exception_t
-    { 
         return UNIDENTIFIED_ERROR;
     }
 
@@ -762,7 +762,7 @@ namespace dg_sock::network_exception
 
     inline void throw_exception(exception_t err)
     {    
-        if (is_success(err));
+        if (is_success(err))
         {
             return;
         }

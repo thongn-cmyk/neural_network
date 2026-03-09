@@ -1,7 +1,4 @@
 
-#ifndef __SOCK_STREAM_TEST_PROGRAM__
-#define __SOCK_STREAM_TEST_PROGRAM__
-
 #define DEBUG_MODE_FLAG true
 #define STRONG_MEMORY_ORDERING_FLAG true
 
@@ -348,11 +345,11 @@ int main()
         init_concurrency();
         cron_subsystem::init();
 
-        std::cout << "initializing network_allocation" << std::endl;
-        dg_sock::network_allocation::init();
-
         std::cout << "initializing network_randomizer" << std::endl;
         dg_sock::network_randomizer::init();
+
+        std::cout << "initializing network_allocation" << std::endl;
+        dg_sock::network_allocation::init();
 
         std::filesystem::path tmp_file = std::filesystem::temp_directory_path() / "sock_stream_test.txt";
 
@@ -425,7 +422,8 @@ int main()
                 .inbound_buffer_react_queue_cap = 1 << 12,
                 .inbound_buffer_push_concurrency_sz = 1024,
                 .inbound_buffer_react_time = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::milliseconds(10)),
-                .inbound_buffer_has_fair_redistribution = true,
+                .inbound_buffer_has_fair_distribution = true,
+                .inbound_buffer_has_fair_redistribution = false,
                 .inbound_buffer_fair_distribution_queue_cap = 1 << 14,
                 .inbound_buffer_fair_waiting_queue_cap = 1 << 10,
                 .inbound_buffer_fair_leftover_queue_cap = 1 << 10,
@@ -440,7 +438,8 @@ int main()
                 .inbound_packet_react_queue_cap = 1 << 12,
                 .inbound_packet_push_concurrency_sz = 1024,
                 .inbound_packet_react_time = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::milliseconds(10)),
-                .inbound_packet_has_fair_redistribution = true,
+                .inbound_packet_has_fair_distribution = true,
+                .inbound_packet_has_fair_redistribution = false,
                 .inbound_packet_fair_packet_queue_cap = 1 << 14,
                 .inbound_packet_fair_waiting_queue_cap = 1 << 10,
                 .inbound_packet_fair_leftover_queue_cap = 1 << 10,
@@ -490,6 +489,7 @@ int main()
                 .inbound_tc_global_cap = uint32_t{1} << 20,
                 .inbound_tc_addrmap_cap = uint32_t{1} << 20,
                 .inbound_tc_side_cap = uint32_t{1} << 20,
+                .inbound_tc_is_voided = true,
 
                 .outbound_tc_has_borderline_per_outbound_worker = true,
                 .outbound_tc_border_line_sz = uint32_t{1} << 20,
@@ -497,6 +497,8 @@ int main()
                 .outbound_tc_global_cap = uint32_t{1} << 20,
                 .outbound_tc_addrmap_cap = uint32_t{1} << 20,
                 .outbound_tc_side_cap = uint32_t{1} << 20,
+                .outbound_tc_is_voided = true,
+
                 .natip_controller = dg_sock::network_kernel_mailbox_impl1::get_default_natip_controller(std::make_unique<IPSiever>(), std::make_unique<IPSiever>(), 1024, 1024),
                 .retry_device = retry_device
             });
@@ -545,10 +547,11 @@ int main()
                 .inbound_container_react_sz = size_t{1} << 10,
                 .inbound_container_subscriber_cap = size_t{1} << 10,
                 .inbound_container_react_latency = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::milliseconds(100)),
+                .inbound_container_has_only_redistributor = false,
                 .inbound_container_has_redistributor = true,
                 .inbound_container_redistributor_distribution_queue_sz = size_t{1} << 20,
-                .inbound_container_redistributor_waiting_queue_sz = size_t{1} << 20,
-                .inbound_container_redistributor_concurrent_sz = size_t{1} << 20,
+                .inbound_container_redistributor_waiting_queue_sz = size_t{1} << 10,
+                .inbound_container_redistributor_concurrent_sz = size_t{1} << 10,
                 .inbound_container_redistributor_push_concurrent_sz = size_t{1} << 10,
                 .inbound_container_redistributor_unit_sz = size_t{1} << 6,
 
@@ -593,5 +596,3 @@ int main()
         }
     }
 }
-
-#endif

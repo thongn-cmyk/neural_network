@@ -2516,16 +2516,16 @@ namespace dg_sock::network_kernel_mailbox_impl1_flash_stream_x
                 bool is_acquire_required = [&, this]() noexcept{
                     stdxx::xlock_guard<stdxx::fair_atomic_flag> lck_grd(*this->mtx);
 
+                    if (!this->leftover_queue.empty()){
+                        str_vec = std::move(this->leftover_queue.front());
+                        this->leftover_queue.pop_front();
+                        return false;
+                    }
+
                     if (!this->push_waiting_item_vec.empty()){
                         str_vec = std::move(this->push_waiting_item_vec.front().buffer_vec);
                         this->push_waiting_item_vec.front().smp->release();
                         this->push_waiting_item_vec.pop_front();
-                        return false;
-                    }
-
-                    if (!this->leftover_queue.empty()){
-                        str_vec = std::move(this->leftover_queue.front());
-                        this->leftover_queue.pop_front();
                         return false;
                     }
 
@@ -4255,6 +4255,7 @@ namespace dg_sock::network_kernel_mailbox_impl1_flash_stream_x
         uint32_t inbound_container_react_sz;
         uint32_t inbound_container_subscriber_cap;
         std::chrono::nanoseconds inbound_container_react_latency;
+        bool inbound_container_has_only_redistributor;
         bool inbound_container_has_redistributor;
         size_t inbound_container_redistributor_distribution_queue_sz;
         size_t inbound_container_redistributor_waiting_queue_sz;
@@ -4371,6 +4372,16 @@ namespace dg_sock::network_kernel_mailbox_impl1_flash_stream_x
             }
 
             static auto make_inbound_container(Config config) -> std::unique_ptr<InBoundContainerInterface>{
+
+                if (config.inbound_container_has_only_redistributor)
+                {
+                    return ComponentFactory::get_fair_inbound_buffer_container(config.inbound_container_redistributor_distribution_queue_sz,
+                                                                               config.inbound_container_redistributor_waiting_queue_sz,
+                                                                               config.inbound_container_redistributor_concurrent_sz,
+                                                                               config.inbound_container_redistributor_push_concurrent_sz,
+                                                                               config.inbound_container_redistributor_unit_sz);
+
+                }
 
                 if (config.inbound_container_component_sz == 0u){
                     dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);

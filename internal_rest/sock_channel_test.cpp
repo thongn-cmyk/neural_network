@@ -1,7 +1,3 @@
-
-#ifndef __SOCK_STREAM_TEST_PROGRAM__
-#define __SOCK_STREAM_TEST_PROGRAM__
-
 #define DEBUG_MODE_FLAG true
 #define STRONG_MEMORY_ORDERING_FLAG true
 
@@ -579,5 +575,3 @@ int main()
         }
     }
 }
-
-#endif

@@ -18,9 +18,6 @@
 #include "network_trivial_serializer.h"
 #include "network_datastructure.h"
 #include "network_hash.h"
-#include "network_stack_allocation.h"
-#include "network_producer_consumer.h"
-#include "network_randomizer.h"
 #include <bit>
 
 namespace dg_sock::network_allocation
@@ -197,47 +194,7 @@ namespace dg_sock::network_allocation
             }
     };
 
-    class BatchBinaryUnitAllocator: private BinaryUnitAllocator
-    {
-        public:
-
-            static inline constexpr size_t DEFAULT_ALIGNMENT_SZ = BinaryUnitAllocator::DEFAULT_ALIGNMENT_SZ;
-
-            BatchBinaryUnitAllocator(): BinaryUnitAllocator(){}
-
-            inline void malloc(size_t * sz_arr, size_t sz, std::add_pointer_t<void> * result_arr)
-            {
-                size_t fulfill_sz = 0u;
-
-                try
-                {
-                    for (size_t i = 0u; i < sz; ++i)
-                    {
-                        result_arr[i]   = BinaryUnitAllocator::malloc(sz_arr[i]);
-                        fulfill_sz      += 1u;
-                    }
-                }
-                catch (...)
-                {
-                    for (size_t i = 0u; i < fulfill_sz; ++i)
-                    {
-                        BinaryUnitAllocator::free(result_arr[i]);
-                    }
-
-                    throw;
-                }
-            }
-
-            inline void free(std::add_pointer_t<void> * buf_arr, size_t buf_arr_sz) noexcept
-            {
-                for (size_t i = 0u; i < buf_arr_sz; ++i)
-                {
-                    BinaryUnitAllocator::free(buf_arr[i]);
-                }
-            }
-    };
-
-    class ThreadSafeBatchBinaryUnitAllocator: private BatchBinaryUnitAllocator
+    class ThreadSafeBinaryUnitAllocator: private BinaryUnitAllocator
     {
         private:
 
@@ -245,34 +202,34 @@ namespace dg_sock::network_allocation
 
         public:
 
-            static inline constexpr size_t DEFAULT_ALIGNMENT_SZ = BatchBinaryUnitAllocator::DEFAULT_ALIGNMENT_SZ;
+            static inline constexpr size_t DEFAULT_ALIGNMENT_SZ = BinaryUnitAllocator::DEFAULT_ALIGNMENT_SZ;
 
-            ThreadSafeBatchBinaryUnitAllocator(): BatchBinaryUnitAllocator()
+            ThreadSafeBinaryUnitAllocator(): BinaryUnitAllocator()
             {
                 stdxx::inplace_make_fair_atomic_flag(this->mtx);
             }
 
-            inline void malloc(size_t * sz_arr, size_t sz, std::add_pointer_t<void> * result_arr)
+            inline auto malloc(size_t sz) -> void *
             {
                 stdxx::xlock_guard<stdxx::fair_atomic_flag> lck_grd(this->mtx);
 
-                return BatchBinaryUnitAllocator::malloc(sz_arr, sz, result_arr);
+                return BinaryUnitAllocator::malloc(sz);
             }
 
-            inline void free(std::add_pointer_t<void> * buf_arr, size_t buf_arr_sz) noexcept
+            inline void free(void * buf) noexcept
             {
                 stdxx::xlock_guard<stdxx::fair_atomic_flag> lck_grd(this->mtx);
 
-                BatchBinaryUnitAllocator::free(buf_arr, buf_arr_sz);
+                BinaryUnitAllocator::free(buf);
             }
     };
 
     template <size_t CONCURRENCY_SZ_ARG>
-    class DistributedThreadSafeBatchBinaryUnitAllocator
+    class DistributedThreadSafeBinaryUnitAllocator
     {
         private:
 
-            std::vector<std::unique_ptr<ThreadSafeBatchBinaryUnitAllocator>> allocator_vec;
+            std::vector<std::unique_ptr<ThreadSafeBinaryUnitAllocator>> allocator_vec;
 
         public:
 
@@ -282,140 +239,59 @@ namespace dg_sock::network_allocation
             static_assert(stdxx::is_pow2(CONCURRENCY_SZ));
 
             static inline constexpr size_t DEFAULT_ALIGNMENT_SZ = 1u;
-            static inline constexpr size_t FEED_SZ              = size_t{1} << 8;
 
-            DistributedThreadSafeBatchBinaryUnitAllocator(): allocator_vec()
+            DistributedThreadSafeBinaryUnitAllocator(): allocator_vec()
             {
                 for (size_t i = 0u; i < CONCURRENCY_SZ; ++i)
                 {
-                    this->allocator_vec.push_back(std::make_unique<ThreadSafeBatchBinaryUnitAllocator>());
+                    this->allocator_vec.push_back(std::make_unique<ThreadSafeBinaryUnitAllocator>());
                 }
             }
 
-            inline void malloc(size_t * sz_arr, size_t sz, std::add_pointer_t<void> * result_arr)
+            inline auto malloc(size_t sz) -> void *
             {
-                auto feed_resolutor             = MallocFeedResolutor{};
-                feed_resolutor.allocator_vec    = &this->allocator_vec;
-
-                size_t trimmed_feed_sz          = std::min(sz, FEED_SZ);
-                size_t mem_sz                   = dg_sock::network_producer_consumer::delvrsrv_kv_allocation_cost(&feed_resolutor, trimmed_feed_sz);
-                dg_sock::network_stack_allocation::NoExceptRawAllocation<char[]> mem(mem_sz);
-                auto feeder                     = dg_sock::network_exception_handler::nothrow_log(dg_sock::network_producer_consumer::delvrsrv_kv_open_preallocated_raiihandle(&feed_resolutor, trimmed_feed_sz, mem.get()));
-
-                for (size_t i = 0u; i < sz; ++i)
+                if (sz == 0u) [[unlikely]]
                 {
-                    if (sz_arr[i] == 0u) [[unlikely]]
-                    {
-                        result_arr[i] = nullptr;
-                    }
-                    else [[likely]]
-                    {
-                        uint8_t idx         = dg_sock::network_randomizer::randomize_int<uint8_t>() & (CONCURRENCY_SZ - 1u);
-                        MallocArgument arg  =
-                        {
-                            .sz     = sz_arr[i],
-                            .result = std::next(result_arr, i)
-                        };
-
-                        dg_sock::network_producer_consumer::delvrsrv_kv_deliver(feeder.get(), idx, arg);
-                    }
+                    return nullptr;
                 }
+
+                uint8_t idx     = dg_sock::network_hash::hash_reflectible(std::bit_cast<size_t>(std::this_thread::get_id())) & (CONCURRENCY_SZ - 1u);
+                size_t new_sz   = sz + sizeof(uint8_t);
+                void * rs       = this->allocator_vec[idx]->malloc(new_sz);
+
+                std::memcpy(rs, &idx, sizeof(uint8_t));
+
+                return std::next(static_cast<char *>(rs), sizeof(uint8_t));
             }
 
-            inline void free(std::add_pointer_t<void> * buf_arr, size_t sz) noexcept
+            inline void free(void * buf) noexcept
             {
-                auto feed_resolutor             = FreeFeedResolutor{};
-                feed_resolutor.allocator_vec    = &this->allocator_vec;
-
-                size_t trimmed_feed_sz          = std::min(sz, FEED_SZ);
-                size_t mem_sz                   = dg_sock::network_producer_consumer::delvrsrv_kv_allocation_cost(&feed_resolutor, trimmed_feed_sz);
-                dg_sock::network_stack_allocation::NoExceptRawAllocation<char[]> mem(mem_sz);
-                auto feeder                     = dg_sock::network_exception_handler::nothrow_log(dg_sock::network_producer_consumer::delvrsrv_kv_open_preallocated_raiihandle(&feed_resolutor, trimmed_feed_sz, mem.get()));
-
-                for (size_t i = 0u; i < sz; ++i)
+                if (buf == nullptr) [[unlikely]]
                 {
-                    std::add_pointer_t<void> buf = buf_arr[i];
-
-                    if (buf == nullptr) [[unlikely]]
-                    {
-                        continue;
-                    }
-                    else [[likely]]
-                    {
-                        uint8_t idx;
-                        char * buf_head = std::prev(static_cast<char *>(buf), sizeof(uint8_t));
-                        std::memcpy(&idx, buf_head, sizeof(uint8_t));
-
-                        if constexpr(DEBUG_MODE_FLAG)
-                        {
-                            if (idx >= this->allocator_vec.size())
-                            {
-                                std::abort();
-                            }
-                        }
-
-                        dg_sock::network_producer_consumer::delvrsrv_kv_deliver(feeder.get(), idx, static_cast<void *>(buf_head));
-                    }
+                    return;
                 }
-            }
 
-        private:
+                uint8_t idx;
+                char * buf_head = std::prev(static_cast<char *>(buf), sizeof(uint8_t));
+                std::memcpy(&idx, buf_head, sizeof(uint8_t));
 
-            struct MallocArgument
-            {
-                size_t sz;
-                std::add_pointer_t<void> * result;
-            };
-
-            struct MallocFeedResolutor: dg_sock::network_producer_consumer::KVConsumerInterface<uint8_t, MallocArgument>
-            {
-                std::vector<std::unique_ptr<ThreadSafeBatchBinaryUnitAllocator>> * allocator_vec;
-
-                void push(const uint8_t& idx, std::move_iterator<MallocArgument *> malloc_argument_arr, size_t sz) noexcept
+                if constexpr(DEBUG_MODE_FLAG)
                 {
-                    dg_sock::network_stack_allocation::NoExceptAllocation<std::add_pointer_t<void>[]> mem_vec(sz);
-                    dg_sock::network_stack_allocation::NoExceptAllocation<size_t[]> mem_sz_vec(sz);
-
-                    MallocArgument * base_malloc_argument_arr = malloc_argument_arr.base();
-
-                    for (size_t i = 0u; i < sz; ++i)
-                    {
-                        mem_sz_vec[i] = base_malloc_argument_arr[i].sz + sizeof(uint8_t);
-                    }
-
-                    try
-                    {
-                        (*this->allocator_vec)[idx]->malloc(mem_sz_vec.get(), sz, mem_vec.get());
-                    }
-                    catch (...)
+                    if (idx >= this->allocator_vec.size())
                     {
                         std::abort();
                     }
-
-                    for (size_t i = 0u; i < sz; ++i)
-                    {
-                        std::memcpy(mem_vec[i], &idx, sizeof(uint8_t));
-                        *base_malloc_argument_arr[i].result = std::next(static_cast<char *>(mem_vec[i]), sizeof(uint8_t));
-                    }
                 }
-            };
 
-            struct FreeFeedResolutor: dg_sock::network_producer_consumer::KVConsumerInterface<uint8_t, std::add_pointer_t<void>>
-            {
-                std::vector<std::unique_ptr<ThreadSafeBatchBinaryUnitAllocator>> * allocator_vec;
-
-                void push(const uint8_t& idx, std::move_iterator<std::add_pointer_t<void> *> free_arr, size_t sz) noexcept
-                {
-                    (*this->allocator_vec)[idx]->free(free_arr.base(), sz);
-                }
-            };
+                this->allocator_vec[idx]->free(buf_head);
+            }
     };
 
     static inline constexpr size_t BINARY_UNIT_ALLOCATOR_CONCURRENCY_SZ = 4u;
 
     using BestBinaryUnitAllocator = std::conditional_t<(BINARY_UNIT_ALLOCATOR_CONCURRENCY_SZ == 1u),
-                                                       ThreadSafeBatchBinaryUnitAllocator,
-                                                       DistributedThreadSafeBatchBinaryUnitAllocator<BINARY_UNIT_ALLOCATOR_CONCURRENCY_SZ>>;
+                                                       ThreadSafeBinaryUnitAllocator,
+                                                       DistributedThreadSafeBinaryUnitAllocator<BINARY_UNIT_ALLOCATOR_CONCURRENCY_SZ>>;
 
     class AffinedAllocator
     {
@@ -429,7 +305,6 @@ namespace dg_sock::network_allocation
             std::vector<MemoryPool> pool_vec;
             std::shared_ptr<BestBinaryUnitAllocator> base_allocator;
             unordered_map<size_t, pow2_cyclic_queue<void *>> cache_map;
-            std::vector<std::add_pointer_t<void>> free_vec;
 
         public:
 
@@ -437,8 +312,6 @@ namespace dg_sock::network_allocation
             static inline constexpr size_t STACK_CAPTURE_POOL_SZ            = size_t{1} << 6;
             static inline constexpr size_t STACK_CAPTURE_POOL_POPULATION    = size_t{1} << 6;
             static inline constexpr size_t DEFAULT_ALIGNMENT_SZ             = std::min(BestBinaryUnitAllocator::DEFAULT_ALIGNMENT_SZ, static_cast<size_t>(sizeof(uint32_t)));
-            static inline constexpr size_t FREE_VEC_CAPACITY                = size_t{1} << 4;
-            static inline constexpr size_t REFILL_SZ                        = size_t{1} << 2;
 
             AffinedAllocator(std::shared_ptr<BestBinaryUnitAllocator> base_allocator)
             {
@@ -450,9 +323,6 @@ namespace dg_sock::network_allocation
                 this->pool_vec          = {};
                 this->base_allocator    = std::move(base_allocator);
                 this->cache_map         = {};
-                this->free_vec          = {};
-
-                this->free_vec.reserve(FREE_VEC_CAPACITY);
 
                 for (size_t i = 0u; i < STACK_CAPTURE_POOL_SZ; ++i)
                 {
@@ -467,8 +337,7 @@ namespace dg_sock::network_allocation
 
             ~AffinedAllocator() noexcept
             {
-                this->flush_cache_map();
-                this->flush_free_vec();
+                this->flush();
             }
 
             inline auto malloc(size_t sz) -> void *
@@ -562,54 +431,13 @@ namespace dg_sock::network_allocation
                     std::abort();
                 }
 
-                if (this->pool_vec.empty())
-                {
-                    this->flush_cache_map();
-                }
-
-                try
-                {
-                    auto [new_map_ptr, status] = this->cache_map.insert(std::make_pair(sz, std::move(this->pool_vec.back().pool)));
-                    this->pool_vec.pop_back();
-                    assert(status);
-                    map_ptr = new_map_ptr;
-                }
-                catch (...)
-                {
-                    std::abort();
-                }
-
                 size_t actual_sz    = sz + sizeof(uint32_t);
-                dg_sock::network_stack_allocation::NoExceptAllocation<size_t[]> sz_arr(REFILL_SZ);
-                dg_sock::network_stack_allocation::NoExceptAllocation<std::add_pointer_t<void>[]> result_arr(REFILL_SZ);
-
-                std::fill(sz_arr.get(), std::next(sz_arr.get(), REFILL_SZ), actual_sz);
-
-                this->base_allocator->malloc(sz_arr.get(), REFILL_SZ, result_arr.get());
+                void * rs           = this->base_allocator->malloc(actual_sz);
                 uint32_t u32_sz     = sz;
 
-                for (size_t i = 0u; i < REFILL_SZ; ++i)
-                {
-                    std::memcpy(result_arr[i], &u32_sz, sizeof(uint32_t));
+                std::memcpy(rs, &u32_sz, sizeof(uint32_t));
 
-                    void * usr_ptr      = std::next(static_cast<char *>(result_arr[i]), sizeof(uint32_t));
-                    exception_t err     = map_ptr->second.push_back(usr_ptr);
-
-                    if constexpr(DEBUG_MODE_FLAG)
-                    {
-                        if (dg_sock::network_exception::is_failed(err))
-                        {
-                            std::abort();
-                        }
-                    }
-                }
-
-                static_assert(REFILL_SZ > 1);
-
-                void * rs = map_ptr->second.back();
-                map_ptr->second.pop_back();
-
-                return rs;
+                return std::next(static_cast<char *>(rs), sizeof(uint32_t));
             }
 
             __attribute__((noinline)) void slow_free(void * buf) noexcept
@@ -630,7 +458,7 @@ namespace dg_sock::network_allocation
                 {
                     if (this->pool_vec.empty())
                     {
-                        this->flush_cache_map();
+                        this->flush();
                     }
 
                     try
@@ -663,23 +491,12 @@ namespace dg_sock::network_allocation
                 }
             }
 
-            inline void flush_free_vec() noexcept
-            {
-                this->base_allocator->free(this->free_vec.data(), this->free_vec.size());   
-                this->free_vec.clear();
-            }
-
             inline void free_user_ptr(void * ptr) noexcept
             {
-                if (this->free_vec.size() == this->free_vec.capacity())
-                {
-                    this->flush_free_vec();
-                }
-
-                this->free_vec.push_back(std::prev(static_cast<char *>(ptr), sizeof(uint32_t)));
+                this->base_allocator->free(std::prev(static_cast<char *>(ptr), sizeof(uint32_t)));
             }
 
-            void flush_cache_map() noexcept
+            void flush() noexcept
             {
                 for (auto& map_pair: this->cache_map)
                 {
@@ -711,7 +528,7 @@ namespace dg_sock::network_allocation
         public:
 
             static inline constexpr size_t DEFAULT_ALIGNMENT_SZ         = 1u;
-            static inline constexpr size_t LARGE_BUFFER_SIZE            = size_t{1} << 14;
+            static inline constexpr size_t LARGE_BUFFER_SIZE            = size_t{1} << 18;
 
             LargeSmallAffinedAllocator(std::shared_ptr<BestBinaryUnitAllocator> allocator): AffinedAllocator(allocator)
             {
@@ -730,18 +547,14 @@ namespace dg_sock::network_allocation
                     return nullptr;
                 }
 
-                void * rs;
-
                 if (sz < LARGE_BUFFER_SIZE) [[likely]]
                 {
-                    rs = this->small_malloc(sz);
+                    return this->small_malloc(sz);
                 }
                 else [[unlikely]]
                 {
-                    rs = this->large_malloc(sz);
+                    return this->large_malloc(sz);
                 }
-
-                return rs;
             }
 
             inline void free(void * buf) noexcept
@@ -798,8 +611,7 @@ namespace dg_sock::network_allocation
             __attribute__((noinline)) auto large_malloc(size_t sz) -> void *
             {
                 size_t new_sz   = sz + sizeof(uint8_t);
-                void * rs;
-                this->_allocator->malloc(&new_sz, 1u, &rs);
+                void * rs       = this->_allocator->malloc(new_sz);
 
                 std::memcpy(rs, &LARGE_ALLOCATION_FLAG, sizeof(uint8_t));
 
@@ -808,9 +620,7 @@ namespace dg_sock::network_allocation
 
             __attribute__((noinline)) void large_free(void * usr_ptr) noexcept
             {
-                void * internal_ptr = this->to_internal_ptr(usr_ptr);
-
-                this->_allocator->free(&internal_ptr, 1u);
+                this->_allocator->free(this->to_internal_ptr(usr_ptr));
             }
 
     };
