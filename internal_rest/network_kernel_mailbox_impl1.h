@@ -56,7 +56,8 @@
 #include "network_kernel_allocator_singleton.h"
 #include "network_kernel_buffer.h"
 #include "network_ack_expiry_queue.h"
-#include <cron_subsystem/cron_subsystem.h>
+// #include <cron_subsystem/cron_subsystem.h>
+#include "network_cron.h"
 
 namespace dg_sock::network_kernel_mailbox_impl1::types{
 
@@ -2315,7 +2316,7 @@ namespace dg_sock::network_kernel_mailbox_impl1::data_structure{
             }
     };
 
-    using temporal_ordered_packet_map = dg_sock::network_datastructure::expiry_queue::temporal_ordered_item_map<Packet, PacketIdExtractor, std::chrono::utc_clock>;
+    using temporal_ordered_packet_map = dg_sock::network_datastructure::expiry_queue::temporal_ordered_item_map_2<Packet, PacketIdExtractor, std::chrono::utc_clock>;
 }
 
 namespace dg_sock::network_kernel_mailbox_impl1::packet_service{
@@ -6117,7 +6118,7 @@ namespace dg_sock::network_kernel_mailbox_impl1::packet_controller{
     };
 
     //OK
-    class UpdateConverter: public virtual cron_subsystem::UpdatableInterface      
+    class UpdateConverter: public virtual dg_sock::network_cron::UpdatableInterface      
     {
         private:
 
@@ -6159,7 +6160,7 @@ namespace dg_sock::network_kernel_mailbox_impl1::packet_controller{
                     dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
                 }
 
-                this->daemon = cron_subsystem::register_periodic_cronjob(std::make_shared<UpdateConverter>(this->base), dur);
+                this->daemon = dg_sock::network_cron::register_periodic_cronjob(std::make_shared<UpdateConverter>(this->base), dur);
             }
 
             void thru(Address * addr_arr, size_t sz, exception_t * response_exception_arr) noexcept

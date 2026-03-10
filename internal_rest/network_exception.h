@@ -127,7 +127,8 @@ namespace dg_sock::network_exception
     static inline constexpr exception_t REST_LOST_RESPONSE                      = 64u;
     static inline constexpr exception_t REST_INVALID_TIMEOUT                    = 65u;
     static inline constexpr exception_t REST_MAX_CONSUME_SIZE_EXCEEDED          = 66u;
-    
+    static inline constexpr exception_t POISONED_CONTAINER                      = 67u;
+
     struct segfault: std::runtime_error,
                      codex_base
     {
@@ -594,6 +595,13 @@ namespace dg_sock::network_exception
                                           codex_base(REST_MAX_CONSUME_SIZE_EXCEEDED){}
     };
 
+    struct poisoned_container: std::runtime_error,
+                               codex_base
+    {
+        poisoned_container(): std::runtime_error("poisoned container"),
+                              codex_base(POISONED_CONTAINER){}
+    };
+
     template <class T>
     class stack_embedded_polymorphic_exception: public virtual polymorphic_exception_interface
     {
@@ -705,6 +713,7 @@ namespace dg_sock::network_exception
         result.insert(std::make_pair(REST_LOST_RESPONSE, std::make_unique<fancy_polymorphic_exception<rest_lost_response>>()));
         result.insert(std::make_pair(REST_INVALID_TIMEOUT, std::make_unique<fancy_polymorphic_exception<rest_invalid_timeout>>()));
         result.insert(std::make_pair(REST_MAX_CONSUME_SIZE_EXCEEDED, std::make_unique<fancy_polymorphic_exception<rest_max_consume_size_exceeded>>()));
+        result.insert(std::make_pair(POISONED_CONTAINER, std::make_unique<fancy_polymorphic_exception<poisoned_container>>()));
 
         return result;
     }();
@@ -714,7 +723,7 @@ namespace dg_sock::network_exception
         return UNIDENTIFIED_ERROR;
     }
 
-    inline auto wrap_std_exception(std::exception_ptr exception_ptr) -> exception_t
+    __attribute__((noinline)) auto wrap_std_exception(std::exception_ptr exception_ptr) -> exception_t
     {
         if (exception_ptr == nullptr)
         {
@@ -743,7 +752,7 @@ namespace dg_sock::network_exception
         return err != SUCCESS;
     }
 
-    inline auto verbose(exception_t err) noexcept -> const char *
+    __attribute__((noinline)) auto verbose(exception_t err) noexcept -> const char *
     {
         if (is_success(err))
         {
@@ -760,7 +769,7 @@ namespace dg_sock::network_exception
         return map_ptr->second->what();
     }
 
-    inline void throw_exception(exception_t err)
+    __attribute__((noinline)) void throw_exception(exception_t err)
     {    
         if (is_success(err))
         {

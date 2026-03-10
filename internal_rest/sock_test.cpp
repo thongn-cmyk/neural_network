@@ -11,6 +11,7 @@
 #include <mutex>
 #include "network_kernel_mailbox_impl1.h"
 #include <random>
+#include "network_cron.h"
 
 class TestWorker: public virtual dg_sock::network_concurrency::WorkerInterface
 {
@@ -320,6 +321,8 @@ void init_concurrency()
         worker_info_vec.push_back(WorkerInformation{.cpu_id = std::nullopt, .daemon = MAILBOX_UNIT_DAEMON});
     }
 
+    worker_info_vec.push_back(WorkerInformation{.cpu_id = std::nullopt, .daemon = UPDATE_DAEMON});
+
     dg_sock::network_concurrency::init({worker_info_vec});
 }
 
@@ -327,15 +330,19 @@ int main()
 {
     {
         init_concurrency();
-        cron_subsystem::init();
+
+        dg_sock::network_stack_allocation::init();
+
         dg_sock::network_allocation::init();
         dg_sock::network_randomizer::init();
+
+        cron_subsystem::init();
+        dg_sock::network_cron::init();
 
         std::filesystem::path tmp_file = std::filesystem::temp_directory_path() / "sock_test.txt";
         dg_sock::network_log::init(tmp_file);
 
         {
-            dg_sock::network_stack_allocation::init();
 
             auto [retry_device_up, destructor] = dg_sock::network_concurrency_infretry_x::get_infretry_machine(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::milliseconds(1000))); 
             std::shared_ptr<dg_sock::network_concurrency_infretry_x::ExecutorInterface> retry_device = std::move(retry_device_up);

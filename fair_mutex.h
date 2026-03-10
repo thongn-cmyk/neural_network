@@ -142,7 +142,7 @@ namespace fair_mutex
             }
         }
 
-        mtx->yield_thr_id.exchange(NULL_THREAD_ID, std::memory_order_relaxed);
+        mtx->yield_thr_id.exchange(NULL_THREAD_ID, std::memory_order_relaxed); //
     }
 
     inline __attribute__((always_inline)) void fair_atomic_flag_memsafe_lock(fair_atomic_flag * mtx)

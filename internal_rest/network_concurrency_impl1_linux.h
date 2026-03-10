@@ -24,7 +24,8 @@ namespace dg_sock::network_concurrency_impl1::daemon_option_ns{
         MAILBOX_STREAM_DAEMON   = 1u,
         MAILBOX_CHANNEL_DAEMON  = 2u,
         REST_SERVER_DAEMON      = 3u,
-        REST_CLIENT_DAEMON      = 4u
+        REST_CLIENT_DAEMON      = 4u,
+        UPDATE_DAEMON           = 5u
     };
 } 
 

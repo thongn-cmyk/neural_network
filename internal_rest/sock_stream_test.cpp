@@ -317,6 +317,8 @@ void init_concurrency()
         worker_info_vec.push_back(WorkerInformation{.cpu_id = std::nullopt, .daemon = MAILBOX_STREAM_DAEMON});
     }
 
+    worker_info_vec.push_back(WorkerInformation{.cpu_id = std::nullopt, .daemon = UPDATE_DAEMON});
+
     dg_sock::network_concurrency::init({worker_info_vec});
 }
 
@@ -343,13 +345,19 @@ int main()
 
     {
         init_concurrency();
-        cron_subsystem::init();
 
         std::cout << "initializing network_randomizer" << std::endl;
         dg_sock::network_randomizer::init();
 
+        std::cout << "initializing stack allocation" << std::endl;
+        dg_sock::network_stack_allocation::init();
+
         std::cout << "initializing network_allocation" << std::endl;
         dg_sock::network_allocation::init();
+
+        cron_subsystem::init();
+        dg_sock::network_cron::init();
+
 
         std::filesystem::path tmp_file = std::filesystem::temp_directory_path() / "sock_stream_test.txt";
 
@@ -357,8 +365,6 @@ int main()
         dg_sock::network_log::init(tmp_file);
 
         {
-            std::cout << "initializing stack allocation" << std::endl;
-            dg_sock::network_stack_allocation::init();
 
             auto [retry_device_up, destructor] = dg_sock::network_concurrency_infretry_x::get_infretry_machine(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::milliseconds(1000))); 
             std::shared_ptr<dg_sock::network_concurrency_infretry_x::ExecutorInterface> retry_device = std::move(retry_device_up);
@@ -383,14 +389,14 @@ int main()
             std::cout << "initializing base sock" << std::endl;
             auto sock = dg_sock::network_kernel_mailbox_impl1::spawn(dg_sock::network_kernel_mailbox_impl1::Config
             {
-                .num_kernel_inbound_worker = 16,
+                .num_kernel_inbound_worker = 8,
                 .num_process_inbound_worker = 8,
-                .num_outbound_worker = 4,
+                .num_outbound_worker = 8,
                 .num_kernel_rescue_worker = 0,
                 .num_retry_worker = 1,
 
-                .inbound_socket_concurrency_sz = 16,
-                .outbound_socket_concurrency_sz = 4,
+                .inbound_socket_concurrency_sz = 8,
+                .outbound_socket_concurrency_sz = 8,
                 .sin_fam = AF_INET,
                 .comm = SOCK_DGRAM,
                 .protocol = 0,

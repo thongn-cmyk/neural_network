@@ -322,7 +322,12 @@ int main()
 
     {
         init_concurrency();
+
         cron_subsystem::init();
+        dg_sock::network_cron::init();
+
+        std::cout << "initializing stack allocation" << std::endl;
+        dg_sock::network_stack_allocation::init();
 
         std::cout << "initializing network_allocation" << std::endl;
         dg_sock::network_allocation::init();
@@ -336,9 +341,6 @@ int main()
         dg_sock::network_log::init(tmp_file);
 
         {
-            std::cout << "initializing stack allocation" << std::endl;
-            dg_sock::network_stack_allocation::init();
-
             auto [retry_device_up, destructor] = dg_sock::network_concurrency_infretry_x::get_infretry_machine(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::milliseconds(1000))); 
             std::shared_ptr<dg_sock::network_concurrency_infretry_x::ExecutorInterface> retry_device = std::move(retry_device_up);
 

@@ -24,7 +24,7 @@
 #include <expected>
 #include "network_ticket_timeout_manager.h"
 #include "network_concurrency.h"
-#include <cron_subsystem/cron_subsystem.h>
+#include "network_cron.h"
 #include <algorithm>
 
 // namespace dg_sock::network_kernel_mailbox_impl1::model
@@ -2663,12 +2663,12 @@ namespace dg_sock::network_kernel_mailbox_impl1_flash_stream_x
                     dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
                 }
 
-                this->daemon = cron_subsystem::register_periodic_cronjob(std::make_shared<InternalUpdater>(netstat_retriever, busy_observer), break_time);
+                this->daemon = dg_sock::network_cron::register_periodic_cronjob(std::make_shared<InternalUpdater>(netstat_retriever, busy_observer), break_time);
             }
-            
+
         private:
-            
-            class InternalUpdater: public virtual cron_subsystem::UpdatableInterface
+
+            class InternalUpdater: public virtual dg_sock::network_cron::UpdatableInterface
             {
                 private:
 

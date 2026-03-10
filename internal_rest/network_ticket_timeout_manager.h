@@ -1,8 +1,6 @@
 #ifndef __NETWORK_TICKET_TIMEOUT_MANAGER_H__
 #define __NETWORK_TICKET_TIMEOUT_MANAGER_H__
 
-#include <cron_subsystem/cron_subsystem.h>
-
 #include <stdint.h>
 #include <stdlib.h>
 #include "network_allocation.h"
@@ -12,11 +10,12 @@
 #include "stdx.h"
 #include "network_log.h"
 #include "network_ack_expiry_queue.h"
+#include "network_cron.h"
 
 namespace dg_sock::ticket_system
 {
     template <class T, class StatelessIdExtractor, class ClockType = std::chrono::steady_clock>
-    using temporal_ordered_item_map = dg_sock::network_datastructure::expiry_queue::temporal_ordered_item_map<T, StatelessIdExtractor, ClockType>;
+    using temporal_ordered_item_map = dg_sock::network_datastructure::expiry_queue::temporal_ordered_item_map_2<T, StatelessIdExtractor, ClockType>;
 
     template <class ticket_id_t>
     struct ClockInArgument
@@ -392,8 +391,8 @@ namespace dg_sock::ticket_system
                 }
 
                 this->base      = std::move(base_arg);
-                std::shared_ptr<cron_subsystem::UpdatableInterface> updatable = dg_sock::make_shared<InternalUpdater>(this->base);
-                this->daemon    = cron_subsystem::register_periodic_cronjob(updatable, UPDATE_DURATION);
+                std::shared_ptr<dg_sock::network_cron::UpdatableInterface> updatable = dg_sock::make_shared<InternalUpdater>(this->base);
+                this->daemon    = dg_sock::network_cron::register_periodic_cronjob(updatable, UPDATE_DURATION);
             }
 
             void clock_in(ClockInArgument<ticket_id_t> * clockin_arr, size_t sz, exception_t * exception_arr) noexcept
@@ -422,8 +421,8 @@ namespace dg_sock::ticket_system
             }
 
         private:
-            
-            class InternalUpdater: public virtual cron_subsystem::UpdatableInterface
+
+            class InternalUpdater: public virtual dg_sock::network_cron::UpdatableInterface
             {
                 private:
 

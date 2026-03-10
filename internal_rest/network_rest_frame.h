@@ -4,7 +4,7 @@
 //define HEADER_CONTROL 12
 
 #include <coroutine_subsystem/coroutine_x.h>
-#include <cron_subsystem/cron_subsystem.h>
+// #include <cron_subsystem/cron_subsystem.h>
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -20,6 +20,7 @@
 #include "network_producer_consumer.h"
 #include "network_stack_allocation.h"
 #include "network_ticket_timeout_manager.h"
+#include "network_cron.h"
 
 namespace dg_sock::network_rest_frame::model
 {
@@ -1395,8 +1396,8 @@ namespace dg_sock::network_rest_frame::server_impl1
                 }
 
                 this->base      = std::move(base);
-                this->daemon    = cron_subsystem::register_periodic_cronjob(dg_sock::make_shared<InternalUpdater>(this->base),
-                                                                            update_dur);
+                this->daemon    = dg_sock::network_cron::register_periodic_cronjob(dg_sock::make_shared<InternalUpdater>(this->base),
+                                                                                   update_dur);
             }
 
             auto thru(size_t incoming_sz) noexcept -> std::expected<bool, exception_t>
@@ -1416,7 +1417,7 @@ namespace dg_sock::network_rest_frame::server_impl1
 
         private:
 
-            class InternalUpdater: public virtual cron_subsystem::UpdatableInterface
+            class InternalUpdater: public virtual dg_sock::network_cron::UpdatableInterface
             {
                 private:
 

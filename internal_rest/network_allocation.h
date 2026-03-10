@@ -437,8 +437,9 @@ namespace dg_sock::network_allocation
             static inline constexpr size_t STACK_CAPTURE_POOL_SZ            = size_t{1} << 6;
             static inline constexpr size_t STACK_CAPTURE_POOL_POPULATION    = size_t{1} << 6;
             static inline constexpr size_t DEFAULT_ALIGNMENT_SZ             = std::min(BestBinaryUnitAllocator::DEFAULT_ALIGNMENT_SZ, static_cast<size_t>(sizeof(uint32_t)));
-            static inline constexpr size_t FREE_VEC_CAPACITY                = size_t{1} << 4;
-            static inline constexpr size_t REFILL_SZ                        = size_t{1} << 2;
+            static inline constexpr size_t FREE_VEC_CAPACITY                = size_t{1} << 6;
+            static inline constexpr size_t REFILL_SZ                        = size_t{1} << 4;
+            static inline constexpr size_t FREE_SZ                          = size_t{1} << 4;
 
             AffinedAllocator(std::shared_ptr<BestBinaryUnitAllocator> base_allocator)
             {
@@ -648,8 +649,13 @@ namespace dg_sock::network_allocation
 
                 if (map_ptr->second.size() == map_ptr->second.capacity())
                 {
-                    this->free_user_ptr(map_ptr->second.front());
-                    map_ptr->second.pop_front();
+                    size_t freeable_sz = std::min(map_ptr->second.size(), FREE_SZ);
+
+                    for (size_t i = 0u; i < freeable_sz; ++i)
+                    {
+                        this->free_user_ptr(map_ptr->second.front());
+                        map_ptr->second.pop_front();
+                    }
                 }
 
                 exception_t err = map_ptr->second.push_back(buf);
