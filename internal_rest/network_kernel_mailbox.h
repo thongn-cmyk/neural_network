@@ -15,7 +15,7 @@
 #include "network_log.h"
 #include "network_kernel_mailbox_impl1_channel_x.h"
 #include "network_kernel_mailbox_impl1.h"
-#include "network_kernel_mailbox_impl1_x.h"
+#include "network_kernel_mailbox_impl1_flash_stream_x.h"
 
 namespace dg_sock::network_kernel_mailbox
 {

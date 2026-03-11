@@ -15,7 +15,7 @@
 namespace dg_sock::ticket_system
 {
     template <class T, class StatelessIdExtractor, class ClockType = std::chrono::steady_clock>
-    using temporal_ordered_item_map = dg_sock::network_datastructure::expiry_queue::temporal_ordered_item_map_2<T, StatelessIdExtractor, ClockType>;
+    using temporal_ordered_item_map = dg_sock::network_datastructure::expiry_queue::temporal_ordered_item_map<T, StatelessIdExtractor, ClockType>;
 
     template <class ticket_id_t>
     struct ClockInArgument
@@ -377,7 +377,7 @@ namespace dg_sock::ticket_system
             std::shared_ptr<void> daemon;
             std::shared_ptr<TicketTimeoutManager<ticket_id_t>> base;
 
-            static inline const std::chrono::nanoseconds UPDATE_DURATION = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::milliseconds(1));
+            static inline const std::chrono::nanoseconds UPDATE_DURATION = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::milliseconds(10));
 
         public:
 

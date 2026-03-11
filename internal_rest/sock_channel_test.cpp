@@ -310,6 +310,8 @@ void init_concurrency()
         worker_info_vec.push_back(WorkerInformation{.cpu_id = std::nullopt, .daemon = MAILBOX_CHANNEL_DAEMON});
     }
 
+    worker_info_vec.push_back(WorkerInformation{.cpu_id = std::nullopt, .daemon = UPDATE_DAEMON});
+
     dg_sock::network_concurrency::init({worker_info_vec});
 }
 
@@ -323,8 +325,8 @@ int main()
     {
         init_concurrency();
 
-        cron_subsystem::init();
-        dg_sock::network_cron::init();
+        std::cout << "initializing network_randomizer" << std::endl;
+        dg_sock::network_randomizer::init();
 
         std::cout << "initializing stack allocation" << std::endl;
         dg_sock::network_stack_allocation::init();
@@ -332,8 +334,8 @@ int main()
         std::cout << "initializing network_allocation" << std::endl;
         dg_sock::network_allocation::init();
 
-        std::cout << "initializing network_randomizer" << std::endl;
-        dg_sock::network_randomizer::init();
+        cron_subsystem::init();
+        dg_sock::network_cron::init();
 
         std::filesystem::path tmp_file = std::filesystem::temp_directory_path() / "sock_stream_test.txt";
 

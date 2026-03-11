@@ -2316,7 +2316,7 @@ namespace dg_sock::network_kernel_mailbox_impl1::data_structure{
             }
     };
 
-    using temporal_ordered_packet_map = dg_sock::network_datastructure::expiry_queue::temporal_ordered_item_map_2<Packet, PacketIdExtractor, std::chrono::utc_clock>;
+    using temporal_ordered_packet_map = dg_sock::network_datastructure::expiry_queue::temporal_ordered_item_map<Packet, PacketIdExtractor, std::chrono::utc_clock>;
 }
 
 namespace dg_sock::network_kernel_mailbox_impl1::packet_service{

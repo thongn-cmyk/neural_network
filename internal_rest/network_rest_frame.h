@@ -88,13 +88,13 @@ namespace dg_sock::network_rest_frame::model
         template <class Reflector>
         void dg_reflect(const Reflector& reflector) const
         {
-            reflector(remote_addr, dg_sock::network_compact_serializer::wrap_container<uint16_t>(resource_addr));
+            reflector(remote_addr, resource_addr);
         }
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector)
         {
-            reflector(remote_addr, dg_sock::network_compact_serializer::wrap_container<uint16_t>(resource_addr));
+            reflector(remote_addr, resource_addr);
         }
     };
 
@@ -151,7 +151,7 @@ namespace dg_sock::network_rest_frame::model
         template <class Reflector>
         void dg_reflect(const Reflector& reflector)
         {
-            reflector(requestor, requestor,
+            reflector(requestee_url, requestor,
                       payload, payload_serialization_format);
         }
     };
@@ -1273,7 +1273,7 @@ namespace dg_sock::network_rest_frame::server_impl1
                         return true;
                     }
 
-                    AtomicBlock now_semantic_block      = AtomicBlock{.thru_counter = then_semantic_block.thru_counter + incoming_sz,
+                    AtomicBlock now_semantic_block      = AtomicBlock{.thru_counter = static_cast<uint32_t>(then_semantic_block.thru_counter + incoming_sz),
                                                                       .ver_ctrl     = then_semantic_block.ver_ctrl + 1u};
 
                     atomic_block_pragma_0_t now_block   = self::make_pragma_0_block(now_semantic_block);
@@ -1848,10 +1848,10 @@ namespace dg_sock::network_rest_frame::server_impl1
 
                 for (size_t i = 0u; i < recv_buf_sz; ++i)
                 {
-                    std::expected<model::InternalRequest, exception_t> request = dg_sock::network_exception::to_cstyle_function(dg_sock::network_compact_serializer::integrity_deserialize<model::InternalRequest, dg_sock::string>)(recv_buf_arr[i], model::INTERNAL_REQUEST_SERIALIZATION_SECRET); 
+                    std::expected<model::InternalRequest, exception_t> request = dg_sock::network_exception::to_cstyle_function(dg_sock::network_compact_serializer::dgstd_deserialize<model::InternalRequest, dg_sock::string>)(recv_buf_arr[i], model::INTERNAL_REQUEST_SERIALIZATION_SECRET); 
 
                     if (!request.has_value())
-                    {
+                    {                    
                         dg_sock::network_log_stackdump::error_fast(dg_sock::network_exception::verbose(request.error()));
                         continue;
                     }
@@ -2149,11 +2149,14 @@ namespace dg_sock::network_rest_frame::server_impl1
                     {
                         try
                         {
-                            exception_t err = resource_filterer->thru(base_request_arr[i]);
-
-                            if (dg_sock::network_exception::is_failed(err))
+                            if (resource_filterer != nullptr)
                             {
-                                dg_sock::network_exception::throw_exception(err);
+                                exception_t err = resource_filterer->thru(base_request_arr[i]);
+
+                                if (dg_sock::network_exception::is_failed(err))
+                                {
+                                    dg_sock::network_exception::throw_exception(err);
+                                }
                             }
                         }
                         catch (...)
@@ -4784,7 +4787,7 @@ namespace dg_sock::network_rest_frame::client_instance
                                outbound_worker_sz(DEFAULT_OUTBOUND_WORKER_SZ),
                                inbound_worker_sz(DEFAULT_INBOUND_WORKER_SZ),
                                expiry_worker_sz(DEFAULT_EXPIRY_WORKER_SZ),
-                               is_wait_request(false){}
+                               is_wait_request(true){}
 
             auto set_wait_request() -> SolutionBuilder&
             {
@@ -5677,8 +5680,8 @@ namespace dg_sock::network_rest_frame::client
 
             using self              = RequestDispatcher;
 
-            static inline const std::chrono::nanoseconds DEFAULT_REQUEST_CLIENT_TIMEOUT_DURATION    = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(10));
-            static inline const std::chrono::nanoseconds DEFAULT_REQUEST_SERVER_TIMEOUT_DURATION    = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(10));
+            static inline const std::chrono::nanoseconds DEFAULT_REQUEST_CLIENT_TIMEOUT_DURATION    = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(20));
+            static inline const std::chrono::nanoseconds DEFAULT_REQUEST_SERVER_TIMEOUT_DURATION    = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(20));
 
         public:
 

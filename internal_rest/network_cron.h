@@ -98,13 +98,13 @@ namespace dg_sock::network_cron
 
             auto pop() -> std::shared_ptr<UpdatableInterface>
             {
-                stdxx::xlock_guard<stdxx::fair_atomic_flag> lck_grd(*this->mtx);
-
-                std::shared_ptr<UpdatableInterface> rs{};
                 std::binary_semaphore smp(0);
+                std::shared_ptr<UpdatableInterface> rs{};
 
                 bool need_wait = [&]
                 {
+                    stdxx::xlock_guard<stdxx::fair_atomic_flag> lck_grd(*this->mtx);
+
                     if (this->is_poisoned)
                     {
                         dg_sock::network_exception::throw_exception(dg_sock::network_exception::POISONED_CONTAINER);

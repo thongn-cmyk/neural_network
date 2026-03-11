@@ -1,3 +1,6 @@
+#define DEBUG_MODE_FLAG true
+#define STRONG_MEMORY_ORDERING_FLAG true
+
 #include <iostream>
 #include "network_concurrency.h"
 #include <string>
@@ -7,7 +10,26 @@
 #include "network_kernel_mailbox_impl1_flash_stream_x.h"
 #include "network_kernel_mailbox_impl1_channel_x.h"
 #include <random>
+#include "network_rest_frame.h"
+#include "logging_subsystem.h"
 
+class IPSiever: public virtual dg_sock::network_kernel_mailbox_impl1::external_interface::IPSieverInterface{
+
+    public:
+
+        auto thru(dg_sock::network_kernel_mailbox_impl1::model::Address) noexcept -> std::expected<bool, exception_t>{
+
+            return true;
+        }
+};
+
+namespace dg_sock::network_compact_serializer
+{
+    consteval auto get_dgstd_serialization_identifier() -> const char *
+    {
+        return "dgstd_1";
+    }
+}
 //alright, we'd test requests today
 //basically we've done everything we could to achieve low latency, we'd need jumbo frames or friends to achieve higher bandwidth
 
@@ -15,15 +37,53 @@ static inline constexpr size_t SERVER_IN_CHANNEL    = 1234;
 static inline constexpr size_t CLIENT_IN_CHANNEL    = 12345;
 static inline constexpr size_t RECV_CHANNEL_MSG_CAP = size_t{1} << 16;
 
+void init_concurrency()
+{
+    using namespace dg_sock::network_concurrency;
+
+    std::cout << "initializing concurrency\n";
+
+    std::vector<WorkerInformation> worker_info_vec{};
+
+    for (size_t i = 0u; i < 4u; ++i)
+    {
+        worker_info_vec.push_back(WorkerInformation{.cpu_id = std::nullopt, .daemon = MAILBOX_UNIT_DAEMON});
+    }
+
+    for (size_t i = 0u; i < 4u; ++i)
+    {
+        worker_info_vec.push_back(WorkerInformation{.cpu_id = std::nullopt, .daemon = MAILBOX_STREAM_DAEMON});
+    }
+
+    for (size_t i = 0u; i < 1u; ++i)
+    {
+        worker_info_vec.push_back(WorkerInformation{.cpu_id = std::nullopt, .daemon = MAILBOX_CHANNEL_DAEMON});
+    }
+
+    for (size_t i = 0u; i < 1u; ++i)
+    {
+        worker_info_vec.push_back(WorkerInformation{.cpu_id = std::nullopt, .daemon = REST_SERVER_DAEMON});
+    }
+
+    for (size_t i = 0u; i < 4u; ++i)
+    {
+        worker_info_vec.push_back(WorkerInformation{.cpu_id = std::nullopt, .daemon = REST_CLIENT_DAEMON});   
+    }
+
+    for (size_t i = 0u; i < 1u; ++i)
+    {
+        worker_info_vec.push_back(WorkerInformation{.cpu_id = std::nullopt, .daemon = UPDATE_DAEMON});
+    }
+
+    dg_sock::network_concurrency::init({worker_info_vec});
+}
+
 void init_basic()
 {
     init_concurrency();
 
-    std::cout << "initializing cron subsystem\n"; 
-    cron_subsystem::init();
-
-    std::cout << "initializing network_cron\n";
-    dg_sock::network_cron::init();
+    std::cout << "initializing network randomizer\n";
+    dg_sock::network_randomizer::init();
 
     std::cout << "initializing stack allocation\n";
     dg_sock::network_stack_allocation::init();
@@ -31,18 +91,25 @@ void init_basic()
     std::cout << "initializing network allocation\n";
     dg_sock::network_allocation::init();
 
-    std::cout << "initializing network randomizer\n";
-    dg_sock::network_randomizer::init();
+    std::cout << "initializing cron subsystem\n"; 
+    cron_subsystem::init();
+
+    std::cout << "initializing network_cron\n";
+    dg_sock::network_cron::init();
 
     std::filesystem::path tmp_file = std::filesystem::temp_directory_path() / "request_test.txt";
 
     std::cout << "initializing logging subsystem\n";
     dg_sock::network_log::init(tmp_file);
+
+    std::filesystem::path tmp_file2 = std::filesystem::temp_directory_path() / "request_test_2.txt";
+    logging_subsystem::init(tmp_file2);
 }
 
 void init_mailbox()
 {
-    auto [retry_device_up, destructor] = dg_sock::network_concurrency_infretry_x::get_infretry_machine(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::milliseconds(1000))); 
+    static auto [retry_device_up, destructor] = dg_sock::network_concurrency_infretry_x::get_infretry_machine(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::milliseconds(1000))); 
+
     std::shared_ptr<dg_sock::network_concurrency_infretry_x::ExecutorInterface> retry_device = std::move(retry_device_up);
 
     std::cout << "initializing base socket memory\n";
@@ -52,6 +119,12 @@ void init_mailbox()
                                                              .affined_refill_sz = 1 << 8,
                                                              .affined_mem_vec_capacity = 1 << 8,
                                                              .affined_free_vec_capacity = 1 << 8});
+
+    dg_sock::network_kernel_mailbox_impl1_flash_stream_x::init_memory({.total_mempiece_count = 1 << 20,
+                                                                       .mempiece_sz = 1 << 10,
+                                                                       .affined_refill_sz = 1 << 8,
+                                                                       .affined_mem_vec_capacity = 1 << 8,
+                                                                       .affined_free_vec_capacity = 1 << 8});
 
     std::cout << "initializing base socket configuration\n";
 
@@ -73,11 +146,11 @@ void init_mailbox()
         .host_port_outbound = 5001,
 
         .is_void_retransmission_controller = false,
-        .retransmission_delay = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(2)),
+        .retransmission_delay = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(1)),
         .retransmission_concurrency_sz = 2,
         .retransmission_queue_cap = 1 << 16,
         .retransmission_user_queue_cap = 1 << 14,
-        .retransmission_packet_cap = 20,
+        .retransmission_packet_cap = 30,
         .retransmission_idhashset_cap = 1 << 24,
         .retransmission_ticking_clock_resolution = 1 << 10,
         .retransmission_has_react_pattern = false,
@@ -183,7 +256,7 @@ void init_mailbox()
                          .port = 5001},
         .packetizer_segment_bsz = size_t{1} << 0,
         .packetizer_max_bsz = size_t{1} << 20,
-        .packetizer_has_integrity_transmit = true,
+        .packetizer_has_integrity_transmit = false,
 
         .gate_controller_ato_component_sz = 1,
         .gate_controller_ato_map_capacity = size_t{1} << 16,
@@ -220,13 +293,13 @@ void init_mailbox()
         .inbound_container_react_sz = size_t{1} << 10,
         .inbound_container_subscriber_cap = size_t{1} << 10,
         .inbound_container_react_latency = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::milliseconds(100)),
-        .inbound_container_has_only_redistributor = false,
-        .inbound_container_has_redistributor = true,
-        .inbound_container_redistributor_distribution_queue_sz = size_t{1} << 20,
-        .inbound_container_redistributor_waiting_queue_sz = size_t{1} << 20,
-        .inbound_container_redistributor_concurrent_sz = size_t{1} << 20,
+        .inbound_container_has_only_redistributor = true,
+        .inbound_container_has_redistributor = false,
+        .inbound_container_redistributor_distribution_queue_sz = size_t{1} << 1,
+        .inbound_container_redistributor_waiting_queue_sz = size_t{1} << 10,
+        .inbound_container_redistributor_concurrent_sz = size_t{1} << 10,
         .inbound_container_redistributor_push_concurrent_sz = size_t{1} << 10,
-        .inbound_container_redistributor_unit_sz = size_t{1} << 6,
+        .inbound_container_redistributor_unit_sz = size_t{1} << 0,
 
         .expiry_worker_count = 1,
         .expiry_worker_packet_assembler_vectorization_sz = size_t{1} << 10,
@@ -252,7 +325,7 @@ void init_mailbox()
         .base = nullptr
     };
 
-    auto channel_socket_config = dg_sock::network_kernel_mailbox_impl1::channel_x::Config
+    auto channel_socket_config = dg_sock::network_kernel_mailbox_impl1_channel_x::Config //
     {
         .channel_kind_map       = {{SERVER_IN_CHANNEL, dg_sock::network_kernel_mailbox_impl1_channel_x::PreconfiguratedStickyChannelContainer::THOUSAND_CHANNEL_CODEX},
                                    {CLIENT_IN_CHANNEL, dg_sock::network_kernel_mailbox_impl1_channel_x::PreconfiguratedStickyChannelContainer::THOUSAND_CHANNEL_CODEX}}, // <uint32_t, channel_t>
@@ -273,17 +346,177 @@ void init_mailbox()
     });
 }
 
+struct HelloMessage
+{
+    std::string hello_msg;
+    std::chrono::time_point<std::chrono::utc_clock> when;
+
+    template <class Reflector>
+    void dg_reflect(const Reflector& reflector) const
+    {
+        reflector(hello_msg, when);
+    }
+
+    template <class Reflector>
+    void dg_reflect(const Reflector& reflector)
+    {
+        reflector(hello_msg, when);
+    }
+};
+
+class HelloResolver: public virtual dg_sock::network_rest_frame::server::OneRequestHandlerInterface
+{
+    public:
+
+        auto handle(const dg_sock::network_rest_frame::model::Request& request) -> dg_sock::network_rest_frame::model::Response
+        {
+            if (std::string_view(request.payload_serialization_format) != dg_sock::network_compact_serializer::get_dgstd_serialization_identifier())
+            {
+                return 
+                {
+                    .response                       = {},
+                    .response_serialization_format  = {},
+                    .err_code                       = dg_sock::network_exception::INVALID_ARGUMENT
+                };
+            }
+
+            HelloMessage hello_msg  = dg_sock::network_compact_serializer::dgstd_deserialize<HelloMessage>(request.payload);
+
+            hello_msg.hello_msg     = hello_msg.hello_msg + "<> acked";
+            hello_msg.when          = std::chrono::utc_clock::now();
+
+            return
+            {
+                .response                       = dg_sock::network_compact_serializer::dgstd_serialize<dg_sock::string>(hello_msg),
+                .response_serialization_format  = dg_sock::string(dg_sock::network_compact_serializer::get_dgstd_serialization_identifier()),
+                .err_code                       = dg_sock::network_exception::SUCCESS
+            };
+        }
+};
+
+static inline const std::string_view HELLO_WORLD_PATH = "hello_world_path";
+
 void init_rest_server()
 {
+    using namespace dg_sock::network_rest_frame::model;
 
+    dg_sock::network_rest_frame::server_instance::BuilderConfig config
+    {
+        .cache_each_capacity                                        = size_t{1} << 10,
+        .cache_response_capacity                                    = size_t{1} << 16,
+        .cache_concurrency_sz                                       = size_t{1} << 4,
+        
+        .cache_unique_write_set_each_capacity                       = size_t{1} << 10,
+        .cache_unique_write_set_concurrency_sz                      = size_t{1} << 4,
+
+        .recv_channel                                               = SERVER_IN_CHANNEL,
+        .send_channel                                               = CLIENT_IN_CHANNEL,
+        
+        .cache_unique_write_traffic_controller_elemental_thru_cap   = size_t{1} << 20,
+        .cache_unique_write_traffic_controller_concurrency_sz       = size_t{1} << 4,
+        .cache_unique_write_traffic_controller_reset_duration       = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(1)),
+
+        .request_resolver_worker_sz                                 = 1
+    };
+
+    std::cout << "initializing REST server\n";
+    dg_sock::network_rest_frame::server_instance::init(config);
+
+    std::cout << "hooking REST resolver\n"; 
+    dg_sock::network_rest_frame::server_instance::hook(ResourceAddress
+    {
+        .remote_addr    = {},
+        .resource_addr  = dg_sock::string(HELLO_WORLD_PATH)
+    }, std::make_shared<HelloResolver>());
 }
 
 void init_rest_client()
 {
+    std::cout << "initializing REST client\n";
 
+    std::unique_ptr<dg_sock::network_rest_frame::client::RestControllerInterface> controller = dg_sock::network_rest_frame::client_instance::SolutionBuilder{}.set_recv_channel(CLIENT_IN_CHANNEL)
+                                                                                                                                                              .set_send_channel(SERVER_IN_CHANNEL)
+                                                                                                                                                              .get();
+
+
+    using Address = dg_sock::network_kernel_mailbox_impl1::model::Address;
+
+    Address addr = 
+    {
+        .ip     = dg_sock::network_kernel_mailbox_impl1::utility::ipv4_std_formatted_str_to_compact("127.0.0.1").value(),
+        .port   = 5000
+    };
+
+    dg_sock::network_rest_frame::client_instance::init(std::move(controller), addr);
 }
 
-void test_rest_client()
+void test_rest_client_one() noexcept
+{
+    std::cout << "testing REST client\n";
+
+    using namespace dg_sock::network_rest_frame::model;
+
+    ResourceAddress dst
+    {
+        .remote_addr    =
+        {
+            .ip     = dg_sock::network_kernel_mailbox_impl1::utility::ipv4_std_formatted_str_to_compact("127.0.0.1").value(),
+            .port   = 5000
+        },
+        .resource_addr  = dg_sock::string(HELLO_WORLD_PATH)
+    };
+
+    Address requestor = 
+    {
+        .ip     = dg_sock::network_kernel_mailbox_impl1::utility::ipv4_std_formatted_str_to_compact("127.0.0.1").value(),
+        .port   = 5000
+    };
+
+    HelloMessage hello_msg
+    {
+        .hello_msg  = std::string("ping 123"),
+        .when       = std::chrono::utc_clock::now()
+    };
+
+    ClientRequest request
+    {
+        .requestee_url                  = dst,
+        .requestor                      = requestor,
+        .payload                        = dg_sock::network_compact_serializer::dgstd_serialize<dg_sock::string>(hello_msg),
+        .payload_serialization_format   = dg_sock::network_compact_serializer::get_dgstd_serialization_identifier()
+    };
+
+    auto resolutor  = [](const Response& response)
+    {
+        if (response.response_serialization_format != dg_sock::network_compact_serializer::get_dgstd_serialization_identifier())
+        {
+            std::cout << "mayday, bad response serialization format\n";
+            std::abort();
+        }
+
+        if (dg_sock::network_exception::is_failed(response.err_code))
+        {
+            std::cout << "mayday, bad response error code\n";
+            std::abort();
+        }
+
+        return dg_sock::network_compact_serializer::dgstd_deserialize<HelloMessage>(response.response);
+    };
+    
+    for (size_t i = 0u; i < size_t{1} << 20; ++i)
+    {
+        std::chrono::time_point<std::chrono::steady_clock> then = std::chrono::steady_clock::now();
+        std::cout << "requesting >\n"; 
+        HelloMessage rs = dg_sock::network_rest_frame::client_instance::RequestClient{}.request(request).set_resolutor(resolutor).get();
+
+        std::chrono::time_point<std::chrono::steady_clock> now  = std::chrono::steady_clock::now();
+        std::chrono::milliseconds dur                           = std::chrono::duration_cast<std::chrono::milliseconds>(now - then);
+
+        std::cout << "recv >" << rs.hello_msg << "<>" << dur.count() << "<ms>" << i << "<iteration>" << "\n";
+    }
+}
+
+void test_rest_client_many()
 {
 
 }
@@ -294,5 +527,6 @@ int main()
     init_mailbox();
     init_rest_server();
     init_rest_client();
-    test_rest_client();
+    test_rest_client_one();
+    test_rest_client_many();
 }

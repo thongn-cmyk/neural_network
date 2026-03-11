@@ -2468,7 +2468,6 @@ namespace dg_sock::network_kernel_mailbox_impl1_flash_stream_x
                           std::next(std::make_move_iterator(base_buffer_arr), sz),
                           buffer_vec.begin());
 
-                dg_binary_semaphore * releasing_smp = nullptr;
                 std::binary_semaphore wait_smp(0);
 
                 bool need_wait = [&, this]() noexcept{
@@ -2478,7 +2477,7 @@ namespace dg_sock::network_kernel_mailbox_impl1_flash_stream_x
                         auto [dst, smp] = this->waiting_queue.front();
                         this->waiting_queue.pop_front();
                         *dst = std::move(buffer_vec);
-                        releasing_smp = smp;
+                        smp->release();
 
                         return false;
                     }
@@ -2496,10 +2495,6 @@ namespace dg_sock::network_kernel_mailbox_impl1_flash_stream_x
                     
                     return true;
                 }();
-
-                if (releasing_smp != nullptr){
-                    releasing_smp->release();
-                }
 
                 if (need_wait){
                     wait_smp.acquire();
@@ -2876,15 +2871,6 @@ namespace dg_sock::network_kernel_mailbox_impl1_flash_stream_x
 
                 this->recv(buf_arr.get(), consuming_sz, consuming_cap);
 
-                auto oc_feed_resolutor                      = InternalOnCompleteResolutor{};
-                oc_feed_resolutor.entrance_controller       = this->entrance_controller.get();
-                oc_feed_resolutor.packet_assembler          = this->packet_assembler.get();
-
-                size_t trimmed_oc_feed_cap                  = std::min(std::min(std::min(std::min(this->entrance_controller_vectorization_sz, consuming_sz), this->entrance_controller->max_consume_size()), this->packet_assembler->max_consume_size()), this->packet_assembler_vectorization_sz);
-                size_t oc_feeder_allocation_cost            = dg_sock::network_producer_consumer::delvrsrv_allocation_cost(&oc_feed_resolutor, trimmed_oc_feed_cap);
-                dg_sock::network_stack_allocation::NoExceptRawAllocation<char[]> oc_feeder_mem(oc_feeder_allocation_cost);
-                auto oc_feeder                              = dg_sock::network_exception_handler::nothrow_log(dg_sock::network_producer_consumer::delvrsrv_open_preallocated_raiihandle(&oc_feed_resolutor, trimmed_oc_feed_cap, oc_feeder_mem.get()));
-
                 auto et_feed_resolutor                      = InternalEntranceFeedResolutor{};
                 et_feed_resolutor.entrance_controller       = this->entrance_controller.get();
 
@@ -2892,6 +2878,16 @@ namespace dg_sock::network_kernel_mailbox_impl1_flash_stream_x
                 size_t et_feeder_allocation_cost            = dg_sock::network_producer_consumer::delvrsrv_allocation_cost(&et_feed_resolutor, trimmed_et_feed_cap);
                 dg_sock::network_stack_allocation::NoExceptRawAllocation<char[]> et_feeder_mem(et_feeder_allocation_cost);
                 auto et_feeder                              = dg_sock::network_exception_handler::nothrow_log(dg_sock::network_producer_consumer::delvrsrv_open_preallocated_raiihandle(&et_feed_resolutor, trimmed_et_feed_cap, et_feeder_mem.get()));
+
+                auto oc_feed_resolutor                      = InternalOnCompleteResolutor{};
+                oc_feed_resolutor.entrance_controller       = this->entrance_controller.get();
+                oc_feed_resolutor.packet_assembler          = this->packet_assembler.get();
+                oc_feed_resolutor.tick_feeder               = et_feeder.get();
+
+                size_t trimmed_oc_feed_cap                  = std::min(std::min(std::min(std::min(this->entrance_controller_vectorization_sz, consuming_sz), this->entrance_controller->max_consume_size()), this->packet_assembler->max_consume_size()), this->packet_assembler_vectorization_sz);
+                size_t oc_feeder_allocation_cost            = dg_sock::network_producer_consumer::delvrsrv_allocation_cost(&oc_feed_resolutor, trimmed_oc_feed_cap);
+                dg_sock::network_stack_allocation::NoExceptRawAllocation<char[]> oc_feeder_mem(oc_feeder_allocation_cost);
+                auto oc_feeder                              = dg_sock::network_exception_handler::nothrow_log(dg_sock::network_producer_consumer::delvrsrv_open_preallocated_raiihandle(&oc_feed_resolutor, trimmed_oc_feed_cap, oc_feeder_mem.get()));
 
                 auto ib_feed_resolutor                      = InternalInBoundFeedResolutor{};
                 ib_feed_resolutor.inbound_container         = this->inbound_container.get();
@@ -2970,9 +2966,12 @@ namespace dg_sock::network_kernel_mailbox_impl1_flash_stream_x
             {
                 EntranceControllerInterface * entrance_controller;
                 PacketAssemblerInterface * packet_assembler;
+                dg_sock::network_producer_consumer::DeliveryHandle<GlobalIdentifier> * tick_feeder;
 
                 void push(std::move_iterator<GlobalIdentifier *> id_arr, size_t sz) noexcept
                 {
+                    dg_sock::network_producer_consumer::delvrsrv_clear(tick_feeder);
+
                     this->entrance_controller->void_id(id_arr.base(), sz);
                     std::atomic_signal_fence(std::memory_order_seq_cst);
                     this->packet_assembler->destroy(id_arr.base(), sz);
@@ -3037,33 +3036,14 @@ namespace dg_sock::network_kernel_mailbox_impl1_flash_stream_x
                     std::atomic_signal_fence(std::memory_order_seq_cst);
 
                     for (size_t i = 0u; i < sz; ++i){
-                        dg_sock::network_producer_consumer::delvrsrv_deliver(this->entrance_feeder, global_id_arr[i]);
+                        dg_sock::network_producer_consumer::delvrsrv_deliver(this->entrance_feeder, global_id_arr[i]); //bug1
                     }
 
                     for (size_t i = 0u; i < sz; ++i){
                         if (assembled_arr[i].has_value()){
-                            dg_sock::network_producer_consumer::delvrsrv_deliver(this->oc_feeder, global_id_arr[i]);
+                            dg_sock::network_producer_consumer::delvrsrv_deliver(this->oc_feeder, global_id_arr[i]); //bug0
 
-                            std::expected<internal_huge_kernel_buffer, exception_t> buf = std::unexpected(dg_sock::network_exception::EXPECTED_NOT_INITIALIZED);
-
-                            auto resolutor = [&]() noexcept{
-                                buf = internal_integrity_assembled_packet_to_buffer(static_cast<AssembledPacket&&>(assembled_arr[i].value())); 
-
-                                if (buf.has_value())
-                                {
-                                    return true;
-                                }
-
-                                if (buf.error() != dg_sock::network_exception::RESOURCE_EXHAUSTION)
-                                {
-                                    return true;
-                                }
-
-                                return false;
-                            };
-
-                            dg_sock::network_concurrency_infretry_x::ExecutableWrapper virtual_resolutor(resolutor);
-                            this->infretry_device->exec(virtual_resolutor);
+                            std::expected<internal_huge_kernel_buffer, exception_t> buf = internal_integrity_assembled_packet_to_buffer(static_cast<AssembledPacket&&>(assembled_arr[i].value()));
 
                             if (!buf.has_value()){
                                 dg_sock::network_log_stackdump::error_fast_optional(dg_sock::network_exception::verbose(buf.error()));
@@ -4470,7 +4450,7 @@ namespace dg_sock::network_kernel_mailbox_impl1_flash_stream_x
 
             static auto make_fair_inbound_container(Config config) -> std::unique_ptr<InBoundContainerInterface>{
 
-                if (!config.inbound_container_has_redistributor){
+                if (!config.inbound_container_has_redistributor || config.inbound_container_has_only_redistributor){
                     return nullptr;
                 }
                 

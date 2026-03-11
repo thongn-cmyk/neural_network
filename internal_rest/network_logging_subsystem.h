@@ -46,7 +46,7 @@ namespace dg_sock::network_logging_subsystem
 
     void init(const std::filesystem::path& file_path, bool is_debug_mode = false, bool flush_on_error = true)
     {
-        SingletonContainer::get() = spdlog::rotating_logger_mt("basic_logger", file_path.native(), LOG_BYTE_SIZE_PER_FILE, LOG_FILE_COUNT);
+        SingletonContainer::get() = spdlog::rotating_logger_mt("basic_logger_2", file_path.native(), LOG_BYTE_SIZE_PER_FILE, LOG_FILE_COUNT);
         SingletonContainer::get()->set_pattern("%v");
 
         if (flush_on_error)

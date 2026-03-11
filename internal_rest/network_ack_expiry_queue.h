@@ -26,7 +26,7 @@ namespace dg_sock::network_datastructure::expiry_queue
 
             struct HeapNode
             {
-                std::optional<T> item;
+                T item;
                 std::chrono::time_point<ClockType> sched_time;
                 size_t heap_idx;
             };
@@ -294,7 +294,7 @@ namespace dg_sock::network_datastructure::expiry_queue
                 }
                 catch (...)
                 {
-                    return dg_sock::network_exception::wrap_std_exception(std::current_exception());
+                    return std::unexpected(dg_sock::network_exception::wrap_std_exception(std::current_exception()));
                 }
 
                 operating_node->sched_time  = sched_time;

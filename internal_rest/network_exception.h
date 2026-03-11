@@ -41,22 +41,22 @@ namespace dg_sock::network_exception
         private:
 
             decltype(std::stacktrace::current()) trace;
-            std::optional<std::string> what_inquiry;
+            std::unique_ptr<std::string> what_inquiry;
 
         public:
 
             stack_embedded_error(): trace(std::stacktrace::current()),
-                                    what_inquiry(std::nullopt),
+                                    what_inquiry(std::make_unique<std::string>()),
                                     BaseException(){}
 
             virtual const char * what() const noexcept(noexcept(std::declval<const BaseException&>().what()))
             {
-                // if (!this->what_inquiry.has_value())
-                // {
-                    // this->what_inquiry = std::string(BaseException::what()) + "<trace>" + std::to_string(this->trace);
-                // }
+                if (this->what_inquiry == nullptr)
+                {
+                    *this->what_inquiry = std::string(BaseException::what()) + "<trace>" + std::to_string(this->trace);
+                }
 
-                return BaseException::what();
+                return this->what_inquiry->data();
             }
     };
 
@@ -732,11 +732,18 @@ namespace dg_sock::network_exception
 
         try
         {
-            std::rethrow_exception(exception_ptr);
+            try
+            {
+                std::rethrow_exception(exception_ptr);
+            }
+            catch (codex_base& e)
+            {
+                return e.codex;
+            }
         }
-        catch (codex_base& e)
+        catch (...)
         {
-            return e.codex;
+            return UNIDENTIFIED_ERROR;
         }
 
         return UNIDENTIFIED_ERROR;
