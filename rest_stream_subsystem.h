@@ -1,4 +1,0 @@
-#ifndef __REST_STREAM_SUBSYSTEM_H__
-#define __REST_STREAM_SUBSYSTEM_H__
-
-#endif

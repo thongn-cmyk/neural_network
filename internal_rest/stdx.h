@@ -22,118 +22,14 @@
 #include <thread>
 #include "assert.h"
 #include <sys/syscall.h>
+#include <mutex_extension/fair_mutex.h>
 
 namespace stdxx
 {
     static inline constexpr bool IS_SAFE_INTEGER_CONVERSION_ENABLED                             = true;
     static inline constexpr bool IS_ATOMIC_FLAG_AS_SPINLOCK                                     = true;
 
-    static inline constexpr size_t SPINLOCK_SIZE_MAGIC_VALUE                                    = 16u;
-    static inline constexpr size_t EXPBACKOFF_MUTEX_SPINLOCK_SIZE                               = 16u; 
-    static inline constexpr size_t EXPBACKOFF_FAIR_AF_YIELD_SPINLOCK_SIZE                       = 128u;
-    static inline constexpr std::chrono::nanoseconds EXPBACKOFF_DEFAULT_SPIN_PERIOD             = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::microseconds(10));
-    static inline constexpr std::chrono::nanoseconds EXPBACKOFF_MUTEX_SPIN_PERIOD               = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::microseconds(10));
-    static inline constexpr std::chrono::nanoseconds EXPBACKOFF_FAIR_AF_YIELD_SPIN_PERIOD       = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::microseconds(10));
-    static inline const std::thread::id NULL_THREAD_ID                                          = std::bit_cast<std::thread::id>(14422289045101533236ULL);
-
-    using spin_lock_t = std::conditional_t<IS_ATOMIC_FLAG_AS_SPINLOCK,
-                                           std::atomic_flag,
-                                           std::mutex>; 
-
-    struct fair_atomic_flag
-    {
-        std::atomic_flag atomic_flag;
-        std::atomic<std::thread::id> yield_thr_id;
-        std::atomic<size_t> busy_waiter_sz;
-        bool is_relaxed_lock;
-    };
-
-    auto make_fair_atomic_flag(bool value = false,
-                               bool is_relaxed_lock = false) noexcept -> fair_atomic_flag{
-
-        return fair_atomic_flag{
-            .atomic_flag        = std::atomic_flag(value),
-            .yield_thr_id       = std::atomic<std::thread::id>(NULL_THREAD_ID),
-            .busy_waiter_sz     = std::atomic<size_t>(0u),
-            .is_relaxed_lock    = is_relaxed_lock
-        };
-    }
-
-    auto inplace_make_fair_atomic_flag(fair_atomic_flag& atomic_flag,
-                                       bool value = false,
-                                       bool is_relaxed_lock = false) noexcept{
-
-        if (value){
-            atomic_flag.atomic_flag.test_and_set();
-        } else{
-            atomic_flag.atomic_flag.clear();
-        }
-
-        atomic_flag.yield_thr_id.exchange(NULL_THREAD_ID);
-        atomic_flag.busy_waiter_sz.exchange(0u);
-        atomic_flag.is_relaxed_lock = is_relaxed_lock;
-    }
-
-    auto make_unique_fair_atomic_flag(bool value = false, bool is_relaxed_lock = false) -> std::unique_ptr<fair_atomic_flag>{
-
-        auto rs = std::make_unique<fair_atomic_flag>();
-        inplace_make_fair_atomic_flag(*rs, value, is_relaxed_lock);
-
-        return rs;
-    }
-
-    template <class Lambda>
-    inline bool eventloop_expbackoff_spin(Lambda&& lambda, 
-                                          size_t spin_sz,
-                                          std::chrono::nanoseconds period) noexcept(noexcept(lambda())){
-
-        const size_t BASE                   = 2u;
-        const size_t MAX_SEQUENTIAL_PAUSE   = 64u;
-        size_t current_sequential_pause     = 1u;
-
-        for (size_t i = 0u; i < spin_sz; ++i){
-            if (lambda()){
-                return true;
-            }
-
-            for (size_t i = 0u; i < current_sequential_pause; ++i){
-                _mm_pause();
-            }
-
-            current_sequential_pause = std::min(MAX_SEQUENTIAL_PAUSE, current_sequential_pause * BASE);
-        }
-
-        return false;
-    }
-
-    template <class Lambda>
-    inline void eventloop_competitive_spin(Lambda&& lambda) noexcept(noexcept(lambda())){
-
-        lambda();
-    }
-
-    template <class Lambda>
-    inline bool eventloop_competitive_spin(Lambda&& lambda, size_t sz) noexcept(noexcept(lambda())){
-
-        return true;
-    } 
-
-    template <class Lambda>
-    inline void eventloop_cyclic_expbackoff_spin(Lambda&& lambda,
-                                                 size_t spin_sz,
-                                                 std::chrono::nanoseconds period) noexcept(noexcept(lambda())){
-
-        lambda();
-    } 
-
-    template <class Lambda>
-    inline bool eventloop_cyclic_expbackoff_spin(Lambda&& lambda, 
-                                                 size_t spin_sz,
-                                                 std::chrono::nanoseconds period,
-                                                 size_t revolution) noexcept(noexcept(lambda())){
-
-        return true;
-    }
+    using namespace fair_mutex;
 
     template <class Lambda>
     inline void busy_wait(Lambda&& lambda)
@@ -141,422 +37,39 @@ namespace stdxx
         (void) lambda;
     }
 
-    inline void critical_yield_for(std::chrono::nanoseconds dur)
+    class seq_cst_guard
     {
-        (void) dur;
-    }
-
-    inline __attribute__((always_inline)) bool fair_atomic_flag_memsafe_try_lock(fair_atomic_flag * volatile mtx, std::memory_order on_success_memorder = std::memory_order_seq_cst) noexcept{
-
-        std::atomic_signal_fence(std::memory_order_seq_cst);
-
-        if (mtx->yield_thr_id.load(std::memory_order_relaxed) == std::this_thread::get_id()){
-            return false;
-        }
-
-        bool is_success = mtx->atomic_flag.test_and_set(std::memory_order_relaxed) == false;
-
-        if (!is_success){
-            return false;
-        }
-
-        mtx->yield_thr_id.exchange(NULL_THREAD_ID, std::memory_order_relaxed);
-
-        if (mtx->is_relaxed_lock)
-        {
-            return true;
-        }
-
-        if constexpr(STRONG_MEMORY_ORDERING_FLAG){
-            std::atomic_thread_fence(std::memory_order_seq_cst);
-        } else{
-            std::atomic_thread_fence(on_success_memorder);
-        }
-
-        return true;
-    }
-
-    inline __attribute__((always_inline)) auto try_lock(fair_atomic_flag& mtx, std::memory_order) noexcept -> bool{
-
-        return fair_atomic_flag_memsafe_try_lock(&mtx);
-    }
-
-    inline __attribute__((noinline)) void fair_atomic_flag_memsafe_lock_body(fair_atomic_flag * volatile mtx){
-
-        std::atomic_signal_fence(std::memory_order_seq_cst);
-
-        auto yield_job = [&]() noexcept{
-            return mtx->yield_thr_id.load(std::memory_order_relaxed) != std::this_thread::get_id();
-        };
-
-        eventloop_expbackoff_spin(yield_job, EXPBACKOFF_FAIR_AF_YIELD_SPINLOCK_SIZE, EXPBACKOFF_FAIR_AF_YIELD_SPIN_PERIOD);
-
-        auto job = [&]() noexcept{
-            return mtx->atomic_flag.test_and_set(std::memory_order_relaxed) == false;
-        };
-
-        size_t busy_waiter_sz = mtx->busy_waiter_sz.load(std::memory_order_relaxed);
-
-        if (busy_waiter_sz == 0u){
-            if (!job()){
-                while (true){
-                    if (eventloop_expbackoff_spin(job, EXPBACKOFF_MUTEX_SPINLOCK_SIZE, EXPBACKOFF_MUTEX_SPIN_PERIOD)){
-                        break;
-                    }
-
-                    mtx->busy_waiter_sz.fetch_add(1u, std::memory_order_relaxed);
-                    std::atomic_signal_fence(std::memory_order_seq_cst);
-                    mtx->atomic_flag.wait(true, std::memory_order_relaxed);
-                    mtx->busy_waiter_sz.fetch_sub(1u, std::memory_order_relaxed);
-                    std::atomic_signal_fence(std::memory_order_seq_cst);
-                }
-            }
-        } else{
-            while (true){
-                mtx->busy_waiter_sz.fetch_add(1u, std::memory_order_relaxed);
-                std::atomic_signal_fence(std::memory_order_seq_cst);
-                mtx->atomic_flag.wait(true, std::memory_order_relaxed);
-                mtx->busy_waiter_sz.fetch_sub(1u, std::memory_order_relaxed);
-                std::atomic_signal_fence(std::memory_order_seq_cst);
-
-                if (eventloop_expbackoff_spin(job, EXPBACKOFF_MUTEX_SPINLOCK_SIZE, EXPBACKOFF_MUTEX_SPIN_PERIOD)){
-                    break;
-                }
-            }
-        }
-
-        mtx->yield_thr_id.exchange(NULL_THREAD_ID, std::memory_order_relaxed);
-    }
-
-    inline __attribute__((always_inline)) void fair_atomic_flag_memsafe_lock(fair_atomic_flag * volatile mtx){
-
-        fair_atomic_flag_memsafe_lock_body(mtx);
-
-        if (mtx->is_relaxed_lock)
-        {
-            return;
-        }
-
-        if constexpr(STRONG_MEMORY_ORDERING_FLAG){
-            std::atomic_thread_fence(std::memory_order_seq_cst);
-        } else{
-            std::atomic_thread_fence(std::memory_order_acquire);
-        }
-    }
-
-    inline __attribute__((noinline)) void fair_atomic_flag_memsafe_unlock_body(fair_atomic_flag * volatile mtx){
-
-        size_t busy_waiter_sz = mtx->busy_waiter_sz.load(std::memory_order_relaxed);
-        std::atomic_signal_fence(std::memory_order_seq_cst);
-
-        if (busy_waiter_sz > 0u){
-            mtx->yield_thr_id.exchange(std::this_thread::get_id(), std::memory_order_relaxed);
-            std::atomic_signal_fence(std::memory_order_seq_cst);
-        }
-
-        mtx->atomic_flag.clear(std::memory_order_relaxed);
-        mtx->atomic_flag.notify_one();
-    }
-
-    inline __attribute__((always_inline)) void fair_atomic_flag_memsafe_unlock(fair_atomic_flag * volatile mtx){
-
-        if (!mtx->is_relaxed_lock)
-        {
-            if constexpr(STRONG_MEMORY_ORDERING_FLAG){
-                std::atomic_thread_fence(std::memory_order_seq_cst);
-            } else{
-                std::atomic_thread_fence(std::memory_order_release);
-            }   
-        }
-
-        fair_atomic_flag_memsafe_unlock_body(mtx);
-        std::atomic_signal_fence(std::memory_order_seq_cst);
-    }
-
-    inline __attribute__((always_inline)) bool atomic_flag_memsafe_try_lock(std::atomic_flag * volatile mtx) noexcept{
-
-        //fencing the before transaction, this is very important
-        std::atomic_signal_fence(std::memory_order_seq_cst);
-
-        bool is_success = mtx->test_and_set(std::memory_order_relaxed) == false;
-
-        if (!is_success){
-            return false;
-        }
-
-        //the test_and_set is guaranteed to be sequenced before this line, because there is a branch inferring the relaxed operation
-
-        if constexpr(STRONG_MEMORY_ORDERING_FLAG){
-            std::atomic_thread_fence(std::memory_order_seq_cst);
-        } else{
-            std::atomic_thread_fence(std::memory_order_acquire);
-        }
-    } 
-
-    inline __attribute__((always_inline)) void atomic_flag_memsafe_lock(std::atomic_flag * volatile mtx) noexcept{
-
-        //fencing the before transaction, this is very important
-        std::atomic_signal_fence(std::memory_order_seq_cst);
-
-        auto job = [&]() noexcept{
-            return mtx->test_and_set(std::memory_order_relaxed) == false;
-        };
-
-        if (!job()){ //fast_path
-            while (true){
-                if (eventloop_expbackoff_spin(job, EXPBACKOFF_MUTEX_SPINLOCK_SIZE, EXPBACKOFF_MUTEX_SPIN_PERIOD)){
-                    break;
-                }
-
-                mtx->wait(true, std::memory_order_relaxed); //slow path
-            }
-        }
-
-        //the test_and_set is guaranteed to be sequenced before this line, because there is a branch inferring the relaxed operation
-
-        if constexpr(STRONG_MEMORY_ORDERING_FLAG){
-            std::atomic_thread_fence(std::memory_order_seq_cst);
-        } else{
-            std::atomic_thread_fence(std::memory_order_acquire);
-        }
-    }
-
-    inline __attribute__((always_inline)) void atomic_flag_memsafe_unlock(std::atomic_flag * volatile mtx) noexcept{
-        
-        if constexpr(STRONG_MEMORY_ORDERING_FLAG){
-            std::atomic_thread_fence(std::memory_order_seq_cst);
-        } else{
-            std::atomic_thread_fence(std::memory_order_release);
-        }
-
-        //ok, memory-wise OK
-        //we are to make sure that the relaxed operation is sequenced after this, 
-
-        std::atomic_signal_fence(std::memory_order_seq_cst);
-        mtx->clear(std::memory_order_relaxed);
-        mtx->notify_one(); //we are to notify, notify is guaranteed to be sequenced after clear, 
-        std::atomic_signal_fence(std::memory_order_seq_cst); //we are to guard the transaction of clear + notify one
-    }
-
-    template <class Lock>
-    class xlock_guard_base{};
-
-    template <>
-    class xlock_guard_base<std::atomic_flag>{
-
-        private:
-
-            std::atomic_flag * volatile mtx; 
-
         public:
 
-            using self = xlock_guard_base;
-
-            inline __attribute__((always_inline)) xlock_guard_base(std::atomic_flag& mtx) noexcept: mtx(&mtx){
-
-                atomic_flag_memsafe_lock(this->mtx);
-           }
-
-            xlock_guard_base(const self&) = delete;
-            xlock_guard_base(self&&) = delete;
-
-            inline __attribute__((always_inline)) ~xlock_guard_base() noexcept{
-
-                atomic_flag_memsafe_unlock(this->mtx);
-            }
-
-            self& operator =(const self&) = delete;
-            self& operator =(self&&) = delete;
-    };
-
-    template <>
-    class xlock_guard_base<stdxx::fair_atomic_flag>{
-
-        private:
-
-            stdxx::fair_atomic_flag * volatile mtx;
-
-        public:
-
-            using self = xlock_guard_base;
-
-            inline __attribute__((always_inline)) xlock_guard_base(stdxx::fair_atomic_flag& mtx) noexcept: mtx(&mtx){
-
-                fair_atomic_flag_memsafe_lock(this->mtx);
-            }
-
-            xlock_guard_base(const self&) = delete;
-            xlock_guard_base(self&&) = delete;
-
-            inline __attribute__((always_inline)) ~xlock_guard_base() noexcept{
-
-                fair_atomic_flag_memsafe_unlock(this->mtx);
-            }
-
-            self& operator =(const self&) = delete;
-            self& operator =(self&&) = delete;
-            
-    };
-
-    template <>
-    class xlock_guard_base<std::mutex>{
-
-        private:
-
-            std::mutex * volatile mtx;
-
-        public:
-
-            using self = xlock_guard_base;
-
-            inline __attribute__((always_inline)) xlock_guard_base(std::mutex& mtx) noexcept: mtx(&mtx){
-
-                this->mtx->lock();
-            }
-
-            xlock_guard_base(const self&) = delete;
-            xlock_guard_base(self&&) = delete;
-
-            inline __attribute__((always_inline)) ~xlock_guard_base() noexcept{
-
-                this->mtx->unlock();
-            }
-
-            self& operator =(const self&) = delete;
-            self& operator =(self&&) = delete;
-    };
-
-    template <class Lock>
-    struct xlock_guard_chooser{};
-
-    template <>
-    struct xlock_guard_chooser<std::atomic_flag>{
-        using type = xlock_guard_base<std::atomic_flag>;
-    };
-
-    template <>
-    struct xlock_guard_chooser<stdxx::fair_atomic_flag>{
-        using type = xlock_guard_base<stdxx::fair_atomic_flag>;
-    };
-
-    template <>
-    struct xlock_guard_chooser<std::mutex>{
-        using type = std::lock_guard<std::mutex>;
-    };
-
-    template <class Lock>
-    using xlock_guard = typename xlock_guard_chooser<Lock>::type;
-
-    //we rather use std::lock_guard for max compatibility
-
-    template <class Lock>
-    class unlock_guard{};
-
-    template <>
-    class unlock_guard<std::mutex>{
-
-        private:
-
-            std::mutex * volatile mtx; 
-        
-        public:
-
-            using self = unlock_guard; 
-
-            inline __attribute__((always_inline)) unlock_guard(std::mutex& mtx) noexcept: mtx(&mtx){}
-
-            unlock_guard(const self&) = delete;
-            unlock_guard(self&&) = delete;
-
-            inline __attribute__((always_inline)) ~unlock_guard() noexcept{
-
-                this->mtx->unlock();
-            }
-
-            self& operator =(const self&) = delete;
-            self& operator =(self&&) = delete;
-    };
-
-    template <>
-    class unlock_guard<std::atomic_flag>{
-
-        private:
-
-            std::atomic_flag * volatile mtx; 
-        
-        public:
-
-            using self = unlock_guard; 
-
-            inline __attribute__((always_inline)) unlock_guard(std::atomic_flag& mtx) noexcept: mtx(&mtx){}
-
-            unlock_guard(const self&) = delete;
-            unlock_guard(self&&) = delete;
-
-            inline __attribute__((always_inline)) ~unlock_guard() noexcept{
-
-                atomic_flag_memsafe_unlock(this->mtx);
-            }
-
-            self& operator =(const self&) = delete;
-            self& operator =(self&&) = delete;
-    };
-
-    template <>
-    class unlock_guard<stdxx::fair_atomic_flag>{
-
-        private:
-
-            stdxx::fair_atomic_flag * volatile mtx;
-
-        public:
-
-            using self = unlock_guard;
-
-            inline __attribute__((always_inline)) unlock_guard(stdxx::fair_atomic_flag& mtx) noexcept: mtx(&mtx){}
-
-            unlock_guard(const self&) = delete;
-            unlock_guard(self&&) = delete;
-
-            inline __attribute__((always_inline)) ~unlock_guard() noexcept{
-
-                fair_atomic_flag_memsafe_unlock(this->mtx);
-            }
-
-            self& operator =(const self&) = delete;
-            self& operator =(self&&) = delete;
-    };
-
-    class seq_cst_guard{
-
-        public:
-
-            inline __attribute__((always_inline)) seq_cst_guard() noexcept{
-            
+            inline __attribute__((always_inline)) seq_cst_guard() noexcept
+            {
                 std::atomic_signal_fence(std::memory_order_seq_cst);
             }
 
             seq_cst_guard(const seq_cst_guard&) = delete;
             seq_cst_guard(seq_cst_guard&&) = delete;
 
-            inline __attribute__((always_inline)) ~seq_cst_guard() noexcept{
-
+            inline __attribute__((always_inline)) ~seq_cst_guard() noexcept
+            {
                 std::atomic_signal_fence(std::memory_order_seq_cst);
             }
 
             seq_cst_guard& operator =(const seq_cst_guard&) = delete;
             seq_cst_guard& operator =(seq_cst_guard&&) = delete;
     };
-    
-    class memtransaction_guard{
 
+    class memtransaction_guard
+    {
         public:
 
-            inline __attribute__((always_inline)) memtransaction_guard() noexcept{
-
-                if constexpr(STRONG_MEMORY_ORDERING_FLAG){
+            inline __attribute__((always_inline)) memtransaction_guard() noexcept
+            {
+                if constexpr(STRONG_MEMORY_ORDERING_FLAG)
+                {
                     std::atomic_thread_fence(std::memory_order_seq_cst);
-                } else{
+                }
+                else
+                {
                     std::atomic_thread_fence(std::memory_order_acquire);
                 }
             }
@@ -564,11 +77,14 @@ namespace stdxx
             memtransaction_guard(const memtransaction_guard&) = delete;
             memtransaction_guard(memtransaction_guard&&) = delete;
 
-            inline __attribute__((always_inline)) ~memtransaction_guard() noexcept{
-
-                if constexpr(STRONG_MEMORY_ORDERING_FLAG){
+            inline __attribute__((always_inline)) ~memtransaction_guard() noexcept
+            {
+                if constexpr(STRONG_MEMORY_ORDERING_FLAG)
+                {
                     std::atomic_thread_fence(std::memory_order_seq_cst);
-                } else{
+                }
+                else
+                {
                     std::atomic_thread_fence(std::memory_order_release);
                 }
             }
@@ -578,9 +94,10 @@ namespace stdxx
     };
 
     template <class T>
-    inline __attribute__((always_inline)) auto safe_ptr_access(T * ptr) noexcept -> T *{
-
-        if (!ptr) [[unlikely]]{
+    inline __attribute__((always_inline)) auto safe_ptr_access(T * ptr) noexcept -> T *
+    {
+        if (!ptr) [[unlikely]]
+        {
             std::abort();
         }
 
@@ -645,12 +162,13 @@ namespace stdxx
     }
 
     template <class Destructor>
-    inline auto resource_guard(Destructor destructor) noexcept{
-        
+    inline auto resource_guard(Destructor destructor) noexcept
+    {    
         static_assert(std::is_nothrow_move_constructible_v<Destructor>);
         static_assert(std::is_nothrow_invocable_v<Destructor>);
-        
-        auto backout_ld = [destructor_arg = std::move(destructor)](int) noexcept{
+
+        auto backout_ld = [destructor_arg = std::move(destructor)](int) noexcept
+        {
             destructor_arg();
         };
 
@@ -658,8 +176,8 @@ namespace stdxx
     }
 
     template <class T, class T1>
-    constexpr auto pow2mod_unsigned(T lhs, T1 rhs) noexcept -> std::conditional_t<(sizeof(T) > sizeof(T1)), T, T1>{
-
+    constexpr auto pow2mod_unsigned(T lhs, T1 rhs) noexcept -> std::conditional_t<(sizeof(T) > sizeof(T1)), T, T1>
+    {
         static_assert(std::is_unsigned_v<T>);
         static_assert(std::is_unsigned_v<T1>);
         
@@ -668,14 +186,14 @@ namespace stdxx
     }
 
     template <class T, std::enable_if_t<std::is_unsigned_v<T>, bool> = true>
-    constexpr auto ulog2_aligned(T val) noexcept -> size_t{
-
+    constexpr auto ulog2_aligned(T val) noexcept -> size_t
+    {
         return std::countr_zero(val);
     }
 
     template <class T, std::enable_if_t<std::is_unsigned_v<T>, bool> = true>
-    constexpr auto ulog2(T val) noexcept -> T{
-
+    constexpr auto ulog2(T val) noexcept -> T
+    {
         return static_cast<T>(sizeof(T) * CHAR_BIT - 1u) - static_cast<T>(std::countl_zero(val));
     }
 

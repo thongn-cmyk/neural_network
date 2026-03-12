@@ -807,6 +807,7 @@ namespace dg::dgbuf::datastructure
         public:
 
             using value_type        = std::pair<Key, Value>;
+            using mapped_type       = Value;
             using difference_type   = typename vector_view<std::optional<std::pair<Key, Value>>, AutoSetter>::difference_type;
             using iterator_type     = iterator::unordered_flat_map_view_iterator<Key, Value, AutoSetter, iterator::propagator_device<std::pair<Key, Value>, AutoSetter>>;
 
@@ -899,7 +900,7 @@ namespace dg::dgbuf::datastructure
             }
 
             template <class ...Args>
-            constexpr auto operator[](Args&& ...args) noexcept -> value_type
+            constexpr auto operator[](Args&& ...args) noexcept -> mapped_type
             {
                 return (*this->find(std::forward<Args>(args)...)).second;
             } 

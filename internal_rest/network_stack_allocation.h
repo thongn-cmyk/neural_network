@@ -10,8 +10,8 @@
 
 namespace dg_sock::network_stack_allocation{
 
-    class StackAllocator{
-
+    class StackAllocator
+    {
         private:
 
             std::vector<size_t> stack_cursor_vec;
@@ -91,6 +91,51 @@ namespace dg_sock::network_stack_allocation{
 
             inline auto enter_scope() noexcept -> exception_t
             {
+                if (this->valid_point.has_value()) [[likely]]
+                {
+                    this->saved_point_vec.push_back(this->valid_point);                
+                    return dg_sock::network_exception::SUCCESS;
+                }
+                else [[unlikely]]
+                {
+                    return slow_enter_scope();
+                }
+            }
+
+            inline auto allocate(size_t blk_sz) noexcept -> std::expected<void *, exception_t>
+            {
+                if (this->valid_point.has_value() && this->stack_buffer_vec[this->valid_point->slot].buf_sz - this->valid_point->offset >= blk_sz) [[likley]]
+                {
+                    void * rs           = std::next(this->stack_buffer_vec[this->valid_point->slot].buf.get(), this->valid_point->offset); 
+                    this->valid_point   = MemoryPoint
+                    {
+                        .slot   = this->valid_point->slot,
+                        .offset = this->valid_point->offset + blk_sz
+                    };
+
+                    return rs;
+                }
+                else [[unlikely]]
+                {
+                    return this->slow_allocate(blk_sz);
+                }
+            }
+
+            inline void exit_scope() noexcept
+            {
+                if (this->saved_point_vec.empty())
+                {
+                    std::abort();
+                }
+
+                this->valid_point = this->saved_point_vec.back();
+                this->saved_point_vec.pop_back();
+            }
+
+        private:
+
+            __attribute__((noinline)) auto slow_enter_scope() noexcept -> exception_t
+            {
                 MemoryPoint next_point;
 
                 if (this->valid_point.has_value())
@@ -127,7 +172,7 @@ namespace dg_sock::network_stack_allocation{
                 return dg_sock::network_exception::SUCCESS;
             }
 
-            inline auto allocate(size_t blk_sz) noexcept -> std::expected<void *, exception_t>
+            __attribute__((noinline)) auto slow_allocate(size_t blk_sz) noexcept -> std::expected<void *, exception_t>
             {
                 if (!this->valid_point.has_value())
                 {
@@ -169,19 +214,6 @@ namespace dg_sock::network_stack_allocation{
                 }
             }
 
-            inline void exit_scope() noexcept
-            {
-                if (this->saved_point_vec.empty())
-                {
-                    std::abort();
-                }
-
-                this->valid_point = this->saved_point_vec.back();
-                this->saved_point_vec.pop_back();
-            }
-
-        private:
-
             auto reserve_for_vector_size_of(size_t sz) noexcept -> exception_t
             {
                 size_t new_sz   = std::max(sz, static_cast<size_t>(this->stack_buffer_vec.size()));
@@ -213,8 +245,8 @@ namespace dg_sock::network_stack_allocation{
             }            
     };
 
-    class ConcurrentAllocator{
-
+    class ConcurrentAllocator
+    {
         private:
 
             std::vector<std::unique_ptr<SplitStackAllocator>> allocator_vec;
@@ -325,8 +357,9 @@ namespace dg_sock::network_stack_allocation{
                 ConcurrentAllocator * allocator_ins     = get_allocator();
                 exception_t err                         = allocator_ins->enter_scope();
 
-                if (dg_sock::network_exception::is_failed(err)){
-                    dg_sock::network_exception::throw_exception(err);
+                if (dg_sock::network_exception::is_failed(err))
+                {
+                    std::abort();
                 }
 
                 size_t allocation_sz                    = sizeof(T) + alignof(T) - 1u;
@@ -339,12 +372,18 @@ namespace dg_sock::network_stack_allocation{
 
                 void * head = stdxx::align_ptr(static_cast<char *>(buf.value()), std::integral_constant<size_t, alignof(T)>{});
 
-                if constexpr(std::is_nothrow_constructible_v<T, Args&&...>){
+                if constexpr(std::is_nothrow_constructible_v<T, Args&&...>)
+                {
                     this->obj = new (head) T(std::forward<Args>(args)...);
-                } else{
-                    try{
+                }
+                else
+                {
+                    try
+                    {
                         this->obj = new (head) T(std::forward<Args>(args)...);
-                    } catch (...){
+                    }
+                    catch (...)
+                    {
                         allocator_ins->exit_scope();
                         std::rethrow_exception(std::current_exception());
                     }
@@ -369,19 +408,19 @@ namespace dg_sock::network_stack_allocation{
             self& operator =(const self&) = delete;
             self& operator =(self&&) = delete;
 
-            ~Allocation() noexcept{
-
+            ~Allocation() noexcept
+            {
                 std::destroy_at(this->obj);
                 get_allocator()->exit_scope();
             }
 
-            auto data() const noexcept -> T *{
-
+            auto data() const noexcept -> T *
+            {
                 return this->obj;
             }
 
-            auto get() const noexcept -> T *{
-
+            auto get() const noexcept -> T *
+            {
                 return this->obj;
             }
     };
@@ -402,9 +441,10 @@ namespace dg_sock::network_stack_allocation{
 
             using self = Allocation;
 
-            Allocation(size_t sz){
-
-                if (sz == 0u){
+            Allocation(size_t sz)
+            {
+                if (sz == 0u)
+                {
                     this->arr       = nullptr;
                     this->arr_sz    = 0u;
                     return;
@@ -413,28 +453,35 @@ namespace dg_sock::network_stack_allocation{
                 ConcurrentAllocator * allocator_ins     = get_allocator();
                 exception_t err                         = allocator_ins->enter_scope();
 
-                if (dg_sock::network_exception::is_failed(err)){
-                    dg_sock::network_exception::throw_exception(err);
+                if (dg_sock::network_exception::is_failed(err))
+                {
+                    std::abort();
                 }
 
                 size_t allocation_sz                    = sz * sizeof(T) + (alignof(T) - 1u);
                 std::expected<void *, exception_t> buf  = allocator_ins->allocate(allocation_sz);
 
-                if (!buf.has_value()){
-                    allocator_ins->exit_scope();
-                    dg_sock::network_exception::throw_exception(buf.error());
+                if (!buf.has_value())
+                {
+                    std::abort();
                 }
 
                 void * head = stdxx::align_ptr(static_cast<char *>(buf.value()), std::integral_constant<size_t, alignof(T)>{}); 
 
-                if constexpr(std::is_nothrow_default_constructible_v<T>){
+                if constexpr(std::is_nothrow_default_constructible_v<T>)
+                {
                     this->arr       = new (head) T[sz];
                     this->arr_sz    = sz;
-                } else{
-                    try{
+                }
+                else
+                {
+                    try
+                    {
                         this->arr       = new (head) T[sz];
                         this->arr_sz    = sz;
-                    } catch (...){
+                    }
+                    catch (...)
+                    {
                         allocator_ins->exit_scope();
                         std::rethrow_exception(std::current_exception());
                     }
@@ -446,9 +493,10 @@ namespace dg_sock::network_stack_allocation{
             self& operator =(const self&) = delete;
             self& operator =(self&&) = delete;
 
-            ~Allocation() noexcept{
-
-                if (this->arr == nullptr){
+            ~Allocation() noexcept
+            {
+                if (this->arr == nullptr)
+                {
                     return;
                 }
 
@@ -456,18 +504,18 @@ namespace dg_sock::network_stack_allocation{
                 get_allocator()->exit_scope();
             }
 
-            auto data() const noexcept -> T *{
-
+            auto data() const noexcept -> T *
+            {
                 return this->arr;
             }
 
-            auto get() const noexcept -> T *{
-
+            auto get() const noexcept -> T *
+            {
                 return this->arr;
             }
 
-            auto operator[](size_t idx) const noexcept -> T&{
-
+            auto operator[](size_t idx) const noexcept -> T&
+            {
                 return this->arr[idx];
             }
     };
@@ -486,9 +534,10 @@ namespace dg_sock::network_stack_allocation{
 
             using self = RawAllocation;
 
-            RawAllocation(size_t sz){
-
-                if (sz == 0u){
+            RawAllocation(size_t sz)
+            {
+                if (sz == 0u)
+                {
                     this->arr = nullptr;
                     return;
                 }
@@ -496,15 +545,16 @@ namespace dg_sock::network_stack_allocation{
                 ConcurrentAllocator * allocator_ins     = get_allocator();
                 exception_t err                         = allocator_ins->enter_scope();
 
-                if (dg_sock::network_exception::is_failed(err)){
-                    dg_sock::network_exception::throw_exception(err);
+                if (dg_sock::network_exception::is_failed(err))
+                {
+                    std::abort();
                 }
 
                 std::expected<void *, exception_t> buf  = allocator_ins->allocate(sz);
 
-                if (!buf.has_value()){
-                    allocator_ins->exit_scope();
-                    dg_sock::network_exception::throw_exception(buf.error());
+                if (!buf.has_value())
+                {
+                    std::abort();
                 }
 
                 this->arr = static_cast<char *>(buf.value());
@@ -516,53 +566,54 @@ namespace dg_sock::network_stack_allocation{
             self& operator =(const self&) = delete;
             self& operator =(self&&) = delete;
 
-            __attribute__((noipa)) ~RawAllocation() noexcept{
-                
-                if (this->arr == nullptr){ //!arr
+            __attribute__((noipa)) ~RawAllocation() noexcept
+            {
+                if (this->arr == nullptr)
+                {
                     return;
                 }
 
                 get_allocator()->exit_scope();
             }
 
-            auto data() const noexcept -> char *{
-
+            auto data() const noexcept -> char *
+            {
                 return this->arr;
             }
 
-            auto get() const noexcept -> char *{
-
+            auto get() const noexcept -> char *
+            {
                 return this->arr;
             }
 
-            auto operator[](size_t idx) const noexcept -> char&{
-
+            auto operator[](size_t idx) const noexcept -> char&
+            {
                 return this->arr[idx];
             }
     };
 
     template <class T>
-    class NoExceptAllocation: public Allocation<T>{
-
+    class NoExceptAllocation: public Allocation<T>
+    {
         public:
 
             NoExceptAllocation() noexcept: Allocation<T>(){}
-            
+
             template <class ...Args>
             NoExceptAllocation(const std::in_place_t, Args&& ...args) noexcept: Allocation<T>(std::in_place_t{}, std::forward<Args>(args)...){}
     };
 
     template <class T>
-    class NoExceptAllocation<T[]>: public Allocation<T[]>{
-
+    class NoExceptAllocation<T[]>: public Allocation<T[]>
+    {
         public:
 
             NoExceptAllocation(size_t sz) noexcept: Allocation<T[]>(sz){}
     };
 
     template <class T>
-    class NoExceptRawAllocation: public RawAllocation<T>{
-
+    class NoExceptRawAllocation: public RawAllocation<T>
+    {
         public:
 
             NoExceptRawAllocation() noexcept: RawAllocation<T>(){}
@@ -572,8 +623,8 @@ namespace dg_sock::network_stack_allocation{
     };
 
     template <class T>
-    class NoExceptRawAllocation<T[]>: public RawAllocation<T[]>{
-
+    class NoExceptRawAllocation<T[]>: public RawAllocation<T[]>
+    {
         public:
 
             NoExceptRawAllocation(size_t sz) noexcept: RawAllocation<T[]>(sz){}

@@ -523,6 +523,18 @@ void test_rest_client_many()
 
 int main()
 {
+    //today we'd tune
+
+    //(1): affined fair_atomic_flag (second acquire from the same thread would not need memory orderings)
+    //(2): try_acquire_for implementation
+
+    //and we'd move on from the implementation for now
+
+    //we have sucessfully tested the bandwidth theory, we'd need timeout on failure or exponential-step synchronization to bring the system to equilibrium (0)
+
+    //this is under the assumption that there is one process holds unique reference over the entire stack of transportation (imagine binary tree)
+    //so that we must retry, as if this is a RAM-bus physical system, not a network-tolerant system
+
     init_basic();
     init_mailbox();
     init_rest_server();

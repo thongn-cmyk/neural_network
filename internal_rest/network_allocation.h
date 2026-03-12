@@ -1341,7 +1341,7 @@ namespace dg_sock::network_allocation
     }
 
     template <class T, class ...Args>
-    auto make_unique(Args&& ...args) -> unique_ptr<T> //people in the prophecy said that if we change unique_ptr -> shared_ptr most people wouldn't notice
+    auto make_unique(Args&& ...args) -> unique_ptr<T> //people in the prophecy said that if we change unique_ptr -> shared_ptr most people wouldn't notice, we'll write unique_ptr tmr, because this is important for memory orderings
     {
         return std::allocate_shared<T>(NoExceptAllocator<char>{}, std::forward<Args>(args)...);
 

@@ -14,7 +14,7 @@
 #include <array>
 #include "assert.h"
 #include <deque>
-#include "stdx.h"
+#include <stl_extension/stdx.h>
 #include <bit>
 
 namespace dg::network_huffman_encoder::constants{

@@ -31,54 +31,43 @@ namespace dg_sock::network_exception_handler{
             }
         }
     }
-    
-    inline void err_log(exception_t) noexcept{
 
-    }
-
-    inline void err_log_optional(exception_t) noexcept{
-
-    }
-
-    template <class T>
-    inline auto err_log(std::expected<T, exception_t>) noexcept{
-
-    }
-
-    template <class T>
-    inline auto err_log_optional(std::expected<T, exception_t>) noexcept{
-
-    }
-
-    inline void nothrow_nolog(exception_t err_code) noexcept{
-
+    inline void nothrow_nolog(exception_t err_code) noexcept
+    {
         dispatch(err_code, false, false);
     }
 
-    inline void nothrow_log(exception_t err_code) noexcept{
-
+    inline void nothrow_log(exception_t err_code) noexcept
+    {
         dispatch(err_code, false, true);
     }
 
-    inline void throw_nolog(exception_t err_code){
-
+    inline void throw_nolog(exception_t err_code)
+    {
         dispatch(err_code, true, false);
     }
 
-    inline void throw_log(exception_t err_code){
-
+    inline void throw_log(exception_t err_code)
+    {
         dispatch(err_code, true, true);
     }
     
     template <class T, std::enable_if_t<std::is_nothrow_move_constructible_v<T>, bool> = true>
-    inline auto nothrow_nolog(std::expected<T, exception_t>) noexcept -> T{
+    inline auto nothrow_nolog(std::expected<T, exception_t> arg) noexcept -> T
+    {
+        if (!arg.has_value())
+        {
+            nothrow_nolog(arg.error());
+        }
 
+        return std::move(arg.value());
     }
 
     template <class T, std::enable_if_t<std::is_nothrow_move_constructible_v<T>, bool> = true>
-    inline auto nothrow_log(std::expected<T, exception_t> arg) noexcept -> T{
-
-        if (!arg.has_value()){
+    inline auto nothrow_log(std::expected<T, exception_t> arg) noexcept -> T
+    {
+        if (!arg.has_value())
+        {
             nothrow_log(arg.error());
         }
 
@@ -86,22 +75,36 @@ namespace dg_sock::network_exception_handler{
     }
 
     template <class T, std::enable_if_t<std::is_nothrow_move_constructible_v<T>, bool> = true>
-    inline auto throw_nolog(std::expected<T, exception_t> arg) -> T{
-
-        if (!arg.has_value()){
-            dg_sock::network_exception::throw_exception(arg.error());
+    inline auto throw_nolog(std::expected<T, exception_t> arg) -> T
+    {
+        if (!arg.has_value())
+        {
+            throw_nolog(arg.error());
         }
 
         return std::move(arg.value());
     }
 
     template <class T, std::enable_if_t<std::is_nothrow_move_constructible_v<T>, bool> = true>
-    inline auto throw_log(std::expected<T, exception_t>) -> T{
+    inline auto throw_log(std::expected<T, exception_t> arg) -> T
+    {
+        if (!arg.has_value())
+        {
+            throw_log(arg.error());
+        }
 
+        return std::move(arg.value());
     }
 
-    inline void dg_assert(bool){
-
+    inline void dg_assert(bool value) noexcept
+    {
+        if constexpr(DEBUG_MODE_FLAG)
+        {
+            if (!value)
+            {
+                std::abort();
+            }
+        }
     }
 } 
 

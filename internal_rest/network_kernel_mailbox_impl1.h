@@ -58,6 +58,7 @@
 #include "network_ack_expiry_queue.h"
 // #include <cron_subsystem/cron_subsystem.h>
 #include "network_cron.h"
+#include "network_reactor.h"
 
 namespace dg_sock::network_kernel_mailbox_impl1::types{
 
@@ -1507,7 +1508,7 @@ namespace dg_sock::network_kernel_mailbox_impl1::socket_service{
                                                                               .sin_fam = sin_fam,
                                                                               .comm = comm,
                                                                               .protocol = protocol,
-                                                                              .mtx = stdxx::make_unique_fair_atomic_flag(false, true)},
+                                                                              .mtx = stdxx::make_unique_fair_atomic_flag()},
                                                              destructor);
     }
 
@@ -2747,143 +2748,7 @@ namespace dg_sock::network_kernel_mailbox_impl1::packet_controller{
     };
 
     //OK
-    class ComplexReactor{
-
-        private:
-
-            dg_sock::unordered_unstable_map<std::thread::id, std::shared_ptr<semaphore_impl::dg_binary_semaphore>> mtx_queue;
-            size_t mtx_queue_cap;
-            stdxx::fair_atomic_flag mtx_mtx_queue;
-            stdxx::inplace_hdi_container<std::atomic<intmax_t>> counter;
-            stdxx::inplace_hdi_container<std::atomic<intmax_t>> wakeup_threshold;
-            stdxx::inplace_hdi_container<std::atomic<size_t>> mtx_queue_sz;
-
-        public:
-
-            ComplexReactor(size_t mtx_queue_cap): mtx_queue(),
-                                                  mtx_queue_cap(mtx_queue_cap), 
-                                                  mtx_mtx_queue(),
-                                                  counter(std::in_place_t{}, 0),
-                                                  wakeup_threshold(std::in_place_t{}, 0),
-                                                  mtx_queue_sz(std::in_place_t{}, 0u){
-                
-                stdxx::inplace_make_fair_atomic_flag(this->mtx_mtx_queue);
-            }
-
-            void increment(size_t sz) noexcept{
-
-                constexpr size_t INCREMENT_RETRY_SZ                 = 4u;
-                const std::chrono::nanoseconds FAILED_LOCK_SLEEP    = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::microseconds{1});
-
-                this->counter.value.fetch_add(sz, std::memory_order_relaxed); //increment
-                intmax_t expected = this->wakeup_threshold.value.load(std::memory_order_relaxed);
-
-                for (size_t epoch = 0u; epoch < INCREMENT_RETRY_SZ; ++epoch){
-                    intmax_t current = this->counter.value.load(std::memory_order_relaxed);
-
-                    if (current < expected){
-                        break;
-                    }
-
-                    std::atomic_signal_fence(std::memory_order_seq_cst);
-                    size_t current_queue_sz = this->mtx_queue_sz.value.load(std::memory_order_relaxed);
-
-                    if (current_queue_sz == 0u){
-                        break;
-                    }
-
-                    bool try_lock_rs = stdxx::try_lock(this->mtx_mtx_queue, std::memory_order_relaxed); 
-
-                    if (!try_lock_rs){
-                        stdxx::critical_yield_for(FAILED_LOCK_SLEEP); //we proved that this just needs to yield the time of critical sections (so we could transfer the responsibility of waking up to whoever holding the lock then on)
-                                                                      //so a lock acquisition is not mandatory here
-                                                                      //the odd cases of anomaly, such as kernel intervention of round-robin + etc. is handled by the default wakers
-                        continue;
-                    }
-
-                    {
-                        stdxx::unlock_guard<stdxx::fair_atomic_flag> lck_grd(this->mtx_mtx_queue);
-
-                        this->mtx_queue_sz.value.exchange(0u, std::memory_order_relaxed);
-                        this->do_release(this->mtx_queue);
-                    }
-
-                    break;
-                }
-            }
-
-            void decrement(size_t sz) noexcept{
-
-                this->counter.value.fetch_sub(sz, std::memory_order_relaxed);
-            }
-
-            void reset() noexcept{
-
-                this->counter.value.exchange(intmax_t{0}, std::memory_order_relaxed);
-            } 
-
-            auto set_wakeup_threshold(intmax_t arg) noexcept{
-
-                this->wakeup_threshold.value.exchange(arg, std::memory_order_relaxed);
-            } 
-
-            void subscribe(std::chrono::nanoseconds waiting_time) noexcept{
-
-                intmax_t current    = this->counter.value.load(std::memory_order_relaxed);
-                intmax_t expected   = this->wakeup_threshold.value.load(std::memory_order_relaxed);
-
-                if (current >= expected){
-                    return;
-                }
-
-                std::shared_ptr<semaphore_impl::dg_binary_semaphore> waiting_smp = network_kernel_mailbox_impl1::allocation::urgent_make_shared<semaphore_impl::dg_binary_semaphore>(0);
-
-                [&, this]() noexcept{
-                    stdxx::xlock_guard<stdxx::fair_atomic_flag> lck_grd(this->mtx_mtx_queue);
-
-                    if constexpr(DEBUG_MODE_FLAG){
-                        if (this->mtx_queue.size() == this->mtx_queue_cap){
-                            dg_sock::network_log_stackdump::critical(dg_sock::network_exception::verbose(dg_sock::network_exception::INTERNAL_CORRUPTION));
-                            std::abort();
-                        }
-                    }
-
-                    this->mtx_queue[std::this_thread::get_id()] = waiting_smp;
-                    std::atomic_signal_fence(std::memory_order_seq_cst);
-                    this->mtx_queue_sz.value.fetch_add(1u, std::memory_order_relaxed);
-                    std::atomic_signal_fence(std::memory_order_seq_cst);
-
-                    intmax_t new_current = this->counter.value.load(std::memory_order_relaxed); 
-
-                    if (new_current >= expected){
-                        stdxx::seq_cst_guard seqcst_tx;
-
-                        this->mtx_queue_sz.value.exchange(0u, std::memory_order_relaxed);
-                        this->do_release(this->mtx_queue);
-                    }
-                }();
-
-                std::atomic_signal_fence(std::memory_order_seq_cst); // another fence
-                std::expected<bool, exception_t> err = waiting_smp->try_acquire_for(waiting_time);
-
-                if (err.has_value() && err.value() == false)
-                {
-                    stdxx::xlock_guard<stdxx::fair_atomic_flag> lck_grd(this->mtx_mtx_queue);
-                    this->mtx_queue.erase(std::this_thread::get_id());
-                }
-            }
-
-        private:
-
-            inline __attribute__((force_inline)) void do_release(dg_sock::unordered_unstable_map<std::thread::id, std::shared_ptr<semaphore_impl::dg_binary_semaphore>>& smp_vec){
-
-                for (const auto& kv_pair: smp_vec){
-                    kv_pair.second->release();
-                }
-
-                smp_vec.clear();
-            }
-    };
+    using ComplexReactor = dg_sock::network_reactor::ComplexReactor;
 
     template <class T>
     class LIFOUnitAllocator: public virtual UnitAllocatorInterface<T>{

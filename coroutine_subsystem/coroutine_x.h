@@ -6,9 +6,9 @@
 #include <vector>
 #include <unordered_map>
 #include <memory>
-#include <stdx.h>
+#include <stl_extension/stdx.h>
 #include <chrono>
-#include <fair_mutex.h>
+#include <mutex_extension/fair_mutex.h>
 #include <climits>
 #include <optional>
 #include <deque>
