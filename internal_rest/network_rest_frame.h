@@ -14,6 +14,7 @@
 #include "network_exception.h"
 #include "stdx.h"
 #include "network_log.h"
+#include "network_exception_handler.h"
 #include "network_compact_serializer.h"
 #include <variant>
 #include "network_kernel_mailbox.h"
@@ -2951,25 +2952,30 @@ namespace dg_sock::network_rest_frame::server_instance
         SolutionSingleton::get()    = {};
     }
 
-    void bind_filter(const ResourceAddress& resource_addr, std::shared_ptr<RequestFiltererInterface> filterer)
+    void bind_filter(std::string_view resource_addr, std::shared_ptr<RequestFiltererInterface> filterer)
     {
-        dg_sock::network_exception_handler::nothrow_log(SolutionSingleton::get().request_filterer_dictionary->add_filterer(resource_addr.resource_addr, filterer));
+        dg_sock::network_exception_handler::nothrow_log(SolutionSingleton::get().request_filterer_dictionary->add_filterer(resource_addr, filterer));
     }
 
-    void hook(const ResourceAddress& resource_addr, std::shared_ptr<OneRequestHandlerInterface> request_handler)
+    void unbind_filter(std::string_view resource_addr)
     {
-        dg_sock::network_exception_handler::nothrow_log(SolutionSingleton::get().rest_resolver_dictionary->add_resolver(resource_addr.resource_addr,
+        SolutionSingleton::get().request_filterer_dictionary->remove_filterer(resource_addr);
+    }
+
+    void hook(std::string_view resource_addr, std::shared_ptr<OneRequestHandlerInterface> request_handler)
+    {
+        dg_sock::network_exception_handler::nothrow_log(SolutionSingleton::get().rest_resolver_dictionary->add_resolver(resource_addr,
                                                                                                                         server_impl1::ComponentFactory::get_one_request_adapter(request_handler)));
     }
 
-    void hook(const ResourceAddress& resource_addr, std::shared_ptr<RequestHandlerInterface> request_handler)
+    void hook(std::string_view resource_addr, std::shared_ptr<RequestHandlerInterface> request_handler)
     {
-        dg_sock::network_exception_handler::nothrow_log(SolutionSingleton::get().rest_resolver_dictionary->add_resolver(resource_addr.resource_addr, request_handler));
+        dg_sock::network_exception_handler::nothrow_log(SolutionSingleton::get().rest_resolver_dictionary->add_resolver(resource_addr, request_handler));
     }
 
-    void unhook(const ResourceAddress& resource_addr) noexcept
+    void unhook(std::string_view resource_addr) noexcept
     {
-        SolutionSingleton::get().rest_resolver_dictionary->remove_resolver(resource_addr.resource_addr);
+        SolutionSingleton::get().rest_resolver_dictionary->remove_resolver(resource_addr);
     }
 }
 

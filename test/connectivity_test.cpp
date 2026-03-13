@@ -1,17 +1,20 @@
 #define DEBUG_MODE_FLAG true
 #define STRONG_MEMORY_ORDERING_FLAG true
 
+#include <connectivity_subsystem/connectivity_subsystem.h>
+#include <coroutine_subsystem/coroutine_x.h>
 #include <iostream>
-#include "network_concurrency.h"
+#include <internal_rest/network_concurrency.h>
 #include <string>
 #include <thread>
 #include <mutex>
-#include "network_kernel_mailbox_impl1.h"
-#include "network_kernel_mailbox_impl1_flash_stream_x.h"
-#include "network_kernel_mailbox_impl1_channel_x.h"
+#include <internal_rest/network_kernel_mailbox_impl1.h>
+#include <internal_rest/network_kernel_mailbox_impl1_flash_stream_x.h>
+#include <internal_rest/network_kernel_mailbox_impl1_channel_x.h>
 #include <random>
-#include "network_rest_frame.h"
-#include "logging_subsystem.h"
+#include <internal_rest/network_rest_frame.h>
+#include <logging_subsystem/logging_subsystem.h>
+#include <coroutine_subsystem/coroutine_x.h>
 
 class IPSiever: public virtual dg_sock::network_kernel_mailbox_impl1::external_interface::IPSieverInterface{
 
@@ -82,6 +85,12 @@ void init_basic()
 {
     init_concurrency();
 
+    std::cout << "initializing cron subsystem\n"; 
+    cron_subsystem::init();
+
+    std::cout << "initializing coroutine\n";
+    coroutine_x::init(true, false, false);
+
     std::cout << "initializing network randomizer\n";
     dg_sock::network_randomizer::init();
 
@@ -90,9 +99,6 @@ void init_basic()
     
     std::cout << "initializing network allocation\n";
     dg_sock::network_allocation::init();
-
-    std::cout << "initializing cron subsystem\n"; 
-    cron_subsystem::init();
 
     std::cout << "initializing network_cron\n";
     dg_sock::network_cron::init();
@@ -446,95 +452,209 @@ void init_rest_client()
     dg_sock::network_rest_frame::client_instance::init(std::move(controller), addr);
 }
 
-void test_rest_client_one() noexcept
+void test_connection_master_break()
 {
-    std::cout << "testing REST client\n";
+    using namespace connectivity_subsystem;
 
-    using namespace dg_sock::network_rest_frame::model;
+    const std::chrono::seconds WAIT_DUR = std::chrono::seconds(20);
 
-    ResourceAddress dst
+    MasterConfiguration config
     {
-        .remote_addr    =
+        .connection_timeout_dur = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(10)),
+        .connection_broke_dur   = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(10)),
+        .abs_timeout_dur        = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::minutes(1)),
+        .ping_retry_count       = uint64_t{0},
+        .ping_retry_break_dur   = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(10)),
+        .slave_count            = uint64_t{1}
+    };
+
+    MasterConnection master_connection(config);
+    std::chrono::time_point<std::chrono::steady_clock> then = std::chrono::steady_clock::now();
+
+    while (true)
+    {
+        if (!master_connection.is_alive())
         {
-            .ip     = dg_sock::network_kernel_mailbox_impl1::utility::ipv4_std_formatted_str_to_compact("127.0.0.1").value(),
-            .port   = 5000
-        },
-        .resource_addr  = dg_sock::string(HELLO_WORLD_PATH)
-    };
+            return;
+        }
 
-    Address requestor = 
-    {
-        .ip     = dg_sock::network_kernel_mailbox_impl1::utility::ipv4_std_formatted_str_to_compact("127.0.0.1").value(),
-        .port   = 5000
-    };
+        std::chrono::time_point<std::chrono::steady_clock> now = std::chrono::steady_clock::now();
+        std::chrono::seconds dur = std::chrono::duration_cast<std::chrono::seconds>(now - then);
 
-    HelloMessage hello_msg
-    {
-        .hello_msg  = std::string("ping 123"),
-        .when       = std::chrono::utc_clock::now()
-    };
-
-    ClientRequest request
-    {
-        .requestee_url                  = dst,
-        .requestor                      = requestor,
-        .payload                        = dg_sock::network_compact_serializer::dgstd_serialize<dg_sock::string>(hello_msg),
-        .payload_serialization_format   = dg_sock::network_compact_serializer::get_dgstd_serialization_identifier()
-    };
-
-    auto resolutor  = [](const Response& response)
-    {
-        if (response.response_serialization_format != dg_sock::network_compact_serializer::get_dgstd_serialization_identifier())
+        if (dur > WAIT_DUR)
         {
-            std::cout << "mayday, bad response serialization format\n";
+            std::cout << "mayday, master does not break after expected duration\n";
             std::abort();
         }
 
-        if (dg_sock::network_exception::is_failed(response.err_code))
-        {
-            std::cout << "mayday, bad response error code\n";
-            std::abort();
-        }
-
-        return dg_sock::network_compact_serializer::dgstd_deserialize<HelloMessage>(response.response);
-    };
-    
-    for (size_t i = 0u; i < size_t{1} << 20; ++i)
-    {
-        std::chrono::time_point<std::chrono::steady_clock> then = std::chrono::steady_clock::now();
-        std::cout << "requesting >\n"; 
-        HelloMessage rs = dg_sock::network_rest_frame::client_instance::RequestClient{}.request(request).set_resolutor(resolutor).get();
-
-        std::chrono::time_point<std::chrono::steady_clock> now  = std::chrono::steady_clock::now();
-        std::chrono::milliseconds dur                           = std::chrono::duration_cast<std::chrono::milliseconds>(now - then);
-
-        std::cout << "recv >" << rs.hello_msg << "<>" << dur.count() << "<ms>" << i << "<iteration>" << "\n";
+        std::this_thread::sleep_for(std::chrono::seconds(1));
     }
 }
 
-void test_rest_client_many()
+void test_connection_slave_break()
 {
+    using namespace connectivity_subsystem;
 
+    const std::chrono::seconds WAIT_DUR = std::chrono::seconds(20);
+
+    MasterConfiguration config
+    {
+        .connection_timeout_dur = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(10)),
+        .connection_broke_dur   = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(10)),
+        .abs_timeout_dur        = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::minutes(1)),
+        .ping_retry_count       = uint64_t{0},
+        .ping_retry_break_dur   = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(10)),
+        .slave_count            = uint64_t{1}
+    };
+
+    std::unique_ptr<MasterConnection> master_connection     = std::make_unique<MasterConnection>(config);
+    std::unique_ptr<SlaveConnection> slave_connection       = std::make_unique<SlaveConnection>(master_connection->get_slave_configuration());
+    master_connection                                       = nullptr;
+    std::chrono::time_point<std::chrono::steady_clock> then = std::chrono::steady_clock::now();
+
+    while (true)
+    {
+        if (!slave_connection->is_alive())
+        {
+            return;
+        }
+
+        std::chrono::time_point<std::chrono::steady_clock> now = std::chrono::steady_clock::now();
+        std::chrono::seconds dur = std::chrono::duration_cast<std::chrono::seconds>(now - then);
+
+        if (dur > WAIT_DUR)
+        {
+            std::cout << "mayday, slave does not break after expected duration\n";
+            std::abort();
+        }
+
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+    }
 }
 
-int main()
+void test_stable_connection()
 {
-    //today we'd tune
+    using namespace connectivity_subsystem;
 
-    //(1): affined fair_atomic_flag (second acquire from the same thread would not need memory orderings)
-    //(2): try_acquire_for implementation
+    const std::chrono::seconds WAIT_DUR = std::chrono::seconds(20);
 
-    //and we'd move on from the implementation for now
+    MasterConfiguration config
+    {
+        .connection_timeout_dur = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(10)),
+        .connection_broke_dur   = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(10)),
+        .abs_timeout_dur        = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::minutes(1)),
+        .ping_retry_count       = uint64_t{0},
+        .ping_retry_break_dur   = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(10)),
+        .slave_count            = uint64_t{1}
+    };
 
-    //we have sucessfully tested the bandwidth theory, we'd need timeout on failure or exponential-step synchronization to bring the system to equilibrium (0)
+    MasterConnection master_connection(config);
+    SlaveConnection slave_connection(master_connection.get_slave_configuration());
+    std::chrono::time_point<std::chrono::steady_clock> then = std::chrono::steady_clock::now();
 
-    //this is under the assumption that there is one process holds unique reference over the entire stack of transportation (imagine binary tree)
-    //so that we must retry, as if this is a RAM-bus physical system, not a network-tolerant system
+    while (true)
+    {
+        if (!master_connection.is_alive())
+        {
+            std::cout << "mayday, master is not alive within expected duration\n";
+            std::abort();
+        }
 
+        if (!slave_connection.is_alive())
+        {
+            std::cout << "mayday, slave is not alive within expected duration\n";
+            std::abort();
+        }
+
+        std::chrono::time_point<std::chrono::steady_clock> now = std::chrono::steady_clock::now();
+        std::chrono::seconds dur = std::chrono::duration_cast<std::chrono::seconds>(now - then);
+
+        if (dur > WAIT_DUR)
+        {
+            return;
+        }
+        
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+    }
+}
+
+void test_stable_connection_without_some_slave()
+{
+    using namespace connectivity_subsystem;
+
+    const std::chrono::seconds WAIT_DUR = std::chrono::seconds(20);
+
+    MasterConfiguration config
+    {
+        .connection_timeout_dur = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(10)),
+        .connection_broke_dur   = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(10)),
+        .abs_timeout_dur        = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::minutes(1)),
+        .ping_retry_count       = uint64_t{0},
+        .ping_retry_break_dur   = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(10)),
+        .slave_count            = uint64_t{2}
+    };
+
+    MasterConnection master_connection(config);
+    SlaveConnection slave_connection(master_connection.get_slave_configuration());
+    std::chrono::time_point<std::chrono::steady_clock> then = std::chrono::steady_clock::now();
+
+    while (true)
+    {
+        if (!master_connection.is_alive())
+        {
+            return;
+        }
+
+        std::chrono::time_point<std::chrono::steady_clock> now = std::chrono::steady_clock::now();
+        std::chrono::seconds dur = std::chrono::duration_cast<std::chrono::seconds>(now - then);
+
+        if (dur > WAIT_DUR)
+        {
+            std::cout << "mayday, master does not break after expected duration\n";
+            return;
+        }
+        
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+    }
+}
+
+void init_rest_frame_resource()
+{
     init_basic();
     init_mailbox();
     init_rest_server();
     init_rest_client();
-    test_rest_client_one();
-    test_rest_client_many();
+}
+
+void init_connectivity_subsystem_resource()
+{
+    connectivity_subsystem::init();
+}
+
+void init_resource()
+{
+    init_rest_frame_resource();
+    init_connectivity_subsystem_resource();
+}
+
+int main()
+{
+    std::cout << "__CONNECTIVITY_TEST_BEGIN__\n";
+
+    std::cout << "initializing resource\n";
+    init_resource();
+
+    std::cout << "testing connection master break\n";
+    test_connection_master_break();
+
+    std::cout << "testing connection slave break\n";
+    test_connection_slave_break();
+
+    std::cout << "testing stable connection\n";
+    test_stable_connection();
+
+    std::cout << "testing stable connection without some slave\n";
+    test_stable_connection_without_some_slave();
+
+    std::cout << "__CONNECTIVITY_TEST_END__\n";
 }

@@ -66,7 +66,7 @@ namespace connectivity_subsystem
             return "unidentifier error";
         }
 
-        return "";
+        return "success";
     }
 
     auto exception_to_error_code(std::exception_ptr exception) -> local_err_code_t
@@ -247,7 +247,7 @@ namespace connectivity_subsystem
     struct ConnectionTopic
     {
         MasterConfiguration master_config;
-        std::unordered_map<std::string, std::chrono::time_point<std::chrono::system_clock>> who_when_map;
+        std::unordered_map<std::string, std::chrono::time_point<std::chrono::steady_clock>> who_when_map;
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector) const
@@ -288,14 +288,6 @@ namespace connectivity_subsystem
 
             virtual ~ConnectionPingerInterface() noexcept = default;
             virtual auto ping(const MasterPayload& payload) -> std::shared_ptr<dg_sock::network_rest_frame::client::Promise<stdx::fancy_void>> = 0;
-    };
-
-    struct RestConfiguration
-    {
-        static auto get_ping_resolver_url() -> dg_sock::network_rest_frame::model::Url
-        {
-            return {};
-        }
     };
 
     class ConnectionController: public virtual ConnectionControllerInterface
@@ -363,7 +355,7 @@ namespace connectivity_subsystem
                     map_ptr_2               = new_map_ptr;
                 }
 
-                map_ptr_2->second = std::chrono::system_clock::now();
+                map_ptr_2->second = std::chrono::steady_clock::now();
             }
 
             void close_connection(uint64_t connection_id) noexcept
@@ -449,12 +441,12 @@ namespace connectivity_subsystem
 
         private:
 
-            constexpr auto encode(uint32_t hi, uint32_t lo) const noexcept -> uint64_t
+            static constexpr auto encode(uint32_t hi, uint32_t lo) noexcept -> uint64_t
             {
                 return (static_cast<uint64_t>(hi) << 32) | static_cast<uint64_t>(lo);
             }
 
-            constexpr auto decode(uint64_t encoded) const noexcept -> std::pair<uint32_t, uint32_t>
+            static constexpr auto decode(uint64_t encoded) noexcept -> std::pair<uint32_t, uint32_t>
             {
                 uint32_t lo = encoded & static_cast<uint64_t>(std::numeric_limits<uint32_t>::max());
                 uint32_t hi = encoded >> 32;
@@ -470,13 +462,15 @@ namespace connectivity_subsystem
             std::shared_ptr<ConnectionControllerInterface> connection_controller;
 
         public:
+            
+            static inline constexpr std::string_view RESOLVABLE_PATH = "connectivity_subsystem/ping_resolver";
 
             using Request   = dg_sock::network_rest_frame::model::Request;
             using Response  = dg_sock::network_rest_frame::model::Response;
 
             PingResolver(std::shared_ptr<ConnectionControllerInterface> connection_controller): connection_controller(std::move(connection_controller))
             {
-                if (connection_controller == nullptr)
+                if (this->connection_controller == nullptr)
                 {
                     throw std::invalid_argument("bad connection controller, null");
                 }
@@ -512,8 +506,8 @@ namespace connectivity_subsystem
 
                 return Response
                 {
-                    .response = dg::network_compact_serializer::dgstd_serialize<std::string>(semantic_response),
-                    .response_serialization_format = dg::network_compact_serializer::get_dgstd_serialization_identifier(),
+                    .response = dg::network_compact_serializer::dgstd_serialize<dg_sock::string>(semantic_response),
+                    .response_serialization_format = dg_sock::string(dg::network_compact_serializer::get_dgstd_serialization_identifier()),
                     .err_code = dg_sock::network_exception::SUCCESS
                 };
             }
@@ -554,7 +548,7 @@ namespace connectivity_subsystem
                         throw std::runtime_error(dg_sock::network_exception::verbose(response.err_code));
                     }
 
-                    if (response.response_serialization_format != dg::network_compact_serializer::get_dgstd_serialization_identifier())
+                    if (std::string_view(response.response_serialization_format) != dg::network_compact_serializer::get_dgstd_serialization_identifier())
                     {
                         throw std::runtime_error("unexpected serialization format");
                     }
@@ -566,7 +560,7 @@ namespace connectivity_subsystem
                 };
 
                 return this->client.request(request)
-                                   .set_retry_policy(RequestRetryMachineFactory<>::EXPONENTIAL_MEDIUM)
+                                //    .set_retry_policy(RequestRetryMachineFactory<>::EXPONENTIAL_MEDIUM)
                                    .set_resolutor(resolutor)
                                    .get_promise();
             }
@@ -581,13 +575,12 @@ namespace connectivity_subsystem
     void init()
     {
         ConnectionControllerSingleton::initialize(CONCURRENCY_SZ);
-
-        dg_sock::network_rest_frame::server_instance::hook(RestConfiguration::get_ping_resolver_url(), std::make_unique<PingResolver>(ConnectionControllerSingleton::get()));
+        dg_sock::network_rest_frame::server_instance::hook(PingResolver::RESOLVABLE_PATH, std::make_unique<PingResolver>(ConnectionControllerSingleton::get()));
     }
 
     void deinit() noexcept
     {
-        dg_sock::network_rest_frame::server_instance::unhook(RestConfiguration::get_ping_resolver_url());
+        dg_sock::network_rest_frame::server_instance::unhook(PingResolver::RESOLVABLE_PATH);
         ConnectionControllerSingleton::deinitialize();
     }
 
@@ -604,19 +597,19 @@ namespace connectivity_subsystem
 
         public:
 
-            static inline const std::chrono::nanoseconds MIN_CONNECTION_TIMEOUT_DUR = {};
-            static inline const std::chrono::nanoseconds MAX_CONNECTION_TIMEOUT_DUR = {};
-            static inline const std::chrono::nanoseconds MIN_CONNECTION_BROKE_DUR   = {};
-            static inline const std::chrono::nanoseconds MAX_CONNECTION_BROKE_DUR   = {};
-            static inline const std::chrono::nanoseconds MIN_ABS_TIMEOUT_DUR        = {};
-            static inline const std::chrono::nanoseconds MAX_ABS_TIMEOUT_DUR        = {};
-            static inline const std::chrono::nanoseconds CRON_JOB_DURATION          = {};
-            static inline const uint64_t MIN_PING_RETRY_COUNT                       = {};
-            static inline const uint64_t MAX_PING_RETRY_COUNT                       = {};
-            static inline const std::chrono::nanoseconds MIN_PING_RETRY_BREAK_DUR   = {};
-            static inline const std::chrono::nanoseconds MAX_PING_RETRY_MAX_DUR     = {};
-            static inline const uint64_t MIN_SLAVE_COUNT                            = {};
-            static inline const uint64_t MAX_SLAVE_COUNT                            = {}; 
+            static inline const std::chrono::nanoseconds MIN_CONNECTION_TIMEOUT_DUR = std::chrono::nanoseconds(0);
+            static inline const std::chrono::nanoseconds MAX_CONNECTION_TIMEOUT_DUR = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::hours(1));
+            static inline const std::chrono::nanoseconds MIN_CONNECTION_BROKE_DUR   = std::chrono::nanoseconds(0);
+            static inline const std::chrono::nanoseconds MAX_CONNECTION_BROKE_DUR   = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::hours(1));
+            static inline const std::chrono::nanoseconds MIN_ABS_TIMEOUT_DUR        = std::chrono::nanoseconds(0);
+            static inline const std::chrono::nanoseconds MAX_ABS_TIMEOUT_DUR        = std::chrono::nanoseconds::max();
+            static inline const std::chrono::nanoseconds CRON_JOB_DURATION          = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::milliseconds(100));
+            static inline const uint64_t MIN_PING_RETRY_COUNT                       = 0u;
+            static inline const uint64_t MAX_PING_RETRY_COUNT                       = std::numeric_limits<uint64_t>::max();
+            static inline const std::chrono::nanoseconds MIN_PING_RETRY_BREAK_DUR   = std::chrono::nanoseconds(0);
+            static inline const std::chrono::nanoseconds MAX_PING_RETRY_BREAK_DUR   = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::hours(1));
+            static inline const uint64_t MIN_SLAVE_COUNT                            = 1u;
+            static inline const uint64_t MAX_SLAVE_COUNT                            = std::numeric_limits<uint64_t>::max(); 
 
             MasterConnection(const MasterConfiguration& config,
                              std::shared_ptr<ConnectionControllerInterface> controller = ConnectionControllerSingleton::get())
@@ -710,7 +703,7 @@ namespace connectivity_subsystem
                     throw std::invalid_argument("bad ping retry count, value out of range");
                 }
 
-                if (std::clamp(config.ping_retry_break_dur, MIN_PING_RETRY_BREAK_DUR, MAX_PING_RETRY_MAX_DUR) != config.ping_retry_break_dur)
+                if (std::clamp(config.ping_retry_break_dur, MIN_PING_RETRY_BREAK_DUR, MAX_PING_RETRY_BREAK_DUR) != config.ping_retry_break_dur)
                 {
                     throw std::invalid_argument("bad ping retry break duration, duration out of range");
                 }
@@ -723,7 +716,11 @@ namespace connectivity_subsystem
 
             auto get_master_payload_url() -> dg_sock::network_rest_frame::model::Url
             {
-                return RestConfiguration::get_ping_resolver_url();
+                return 
+                {
+                    .remote_addr    = dg_sock::network_rest_frame::client_instance::address(),
+                    .resource_addr  = dg_sock::string(PingResolver::RESOLVABLE_PATH)
+                };
             }
 
             auto internal_get_slave_configuration() -> SlaveConfiguration
@@ -749,16 +746,16 @@ namespace connectivity_subsystem
                     std::shared_ptr<ConnectionControllerInterface> controller;
                     uint64_t connection_id;
                     std::shared_ptr<std::atomic<bool>> is_alive_flag;
-                    std::optional<std::chrono::time_point<std::chrono::system_clock>> first_timepoint;
-                    std::optional<std::chrono::time_point<std::chrono::system_clock>> broke_timepoint;
+                    std::optional<std::chrono::time_point<std::chrono::steady_clock>> first_timepoint;
+                    std::optional<std::chrono::time_point<std::chrono::steady_clock>> broke_timepoint;
 
                 public:
 
                     InternalResolutor(std::shared_ptr<ConnectionControllerInterface> controller,
                                       uint64_t connection_id,
                                       std::shared_ptr<std::atomic<bool>> is_alive_flag,
-                                      std::optional<std::chrono::time_point<std::chrono::system_clock>> first_timepoint,
-                                      std::optional<std::chrono::time_point<std::chrono::system_clock>> broke_timepoint) noexcept: controller(std::move(controller)),
+                                      std::optional<std::chrono::time_point<std::chrono::steady_clock>> first_timepoint,
+                                      std::optional<std::chrono::time_point<std::chrono::steady_clock>> broke_timepoint) noexcept: controller(std::move(controller)),
                                                                                                                                    connection_id(connection_id),
                                                                                                                                    is_alive_flag(std::move(is_alive_flag)),
                                                                                                                                    first_timepoint(first_timepoint),
@@ -773,8 +770,7 @@ namespace connectivity_subsystem
 
                         if (!this->first_timepoint.has_value())
                         {
-                            this->first_timepoint = std::chrono::system_clock::now();
-                            return;
+                            this->first_timepoint = std::chrono::steady_clock::now();
                         }
 
                         std::optional<ConnectionTopic> topic = this->controller->get_connection(this->connection_id);
@@ -794,13 +790,13 @@ namespace connectivity_subsystem
                         {
                             if (!this->broke_timepoint.has_value())
                             {
-                                this->broke_timepoint = std::chrono::system_clock::now();
+                                this->broke_timepoint = std::chrono::steady_clock::now();
                             }
                         }
 
                         if (!this->broke_timepoint.has_value())
                         {
-                            std::chrono::nanoseconds lapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now() - this->first_timepoint.value());
+                            std::chrono::nanoseconds lapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - this->first_timepoint.value());
 
                             if (lapsed >= topic->master_config.connection_broke_dur)
                             {
@@ -811,7 +807,7 @@ namespace connectivity_subsystem
 
                         if (this->broke_timepoint.has_value())
                         {
-                            std::chrono::nanoseconds lapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now() - this->broke_timepoint.value());
+                            std::chrono::nanoseconds lapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - this->broke_timepoint.value());
 
                             if (lapsed >= topic->master_config.abs_timeout_dur)
                             {
@@ -822,7 +818,7 @@ namespace connectivity_subsystem
 
                         for (const auto& [who, when]: topic->who_when_map)
                         {
-                            std::chrono::nanoseconds lapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now() - when);
+                            std::chrono::nanoseconds lapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - when);
 
                             if (lapsed >= topic->master_config.connection_timeout_dur)
                             {
@@ -845,15 +841,15 @@ namespace connectivity_subsystem
 
         public:
 
-            static inline const uint64_t MIN_PING_RETRY_COUNT                       = {};
-            static inline const uint64_t MAX_PING_RETRY_COUNT                       = {};
-            static inline const std::chrono::nanoseconds MIN_PING_RETRY_BREAK_DUR   = {};
-            static inline const std::chrono::nanoseconds MAX_PING_RETRY_BREAK_DUR   = {};
-            static inline const std::chrono::nanoseconds MIN_CONNECTION_TIMEOUT_DUR = {};
-            static inline const std::chrono::nanoseconds MAX_CONNECTION_TIMEOUT_DUR = {};
-            static inline const std::chrono::nanoseconds MIN_ABS_TIMEOUT_DUR        = {};
-            static inline const std::chrono::nanoseconds MAX_ABS_TIMEOUT_DUR        = {};
-            static inline const std::chrono::nanoseconds CRON_JOB_DURATION          = {};
+            static inline const uint64_t MIN_PING_RETRY_COUNT                       = 0u;
+            static inline const uint64_t MAX_PING_RETRY_COUNT                       = std::numeric_limits<uint64_t>::max();
+            static inline const std::chrono::nanoseconds MIN_PING_RETRY_BREAK_DUR   = std::chrono::nanoseconds(0);
+            static inline const std::chrono::nanoseconds MAX_PING_RETRY_BREAK_DUR   = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::hours(1));
+            static inline const std::chrono::nanoseconds MIN_CONNECTION_TIMEOUT_DUR = std::chrono::nanoseconds(0);
+            static inline const std::chrono::nanoseconds MAX_CONNECTION_TIMEOUT_DUR = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::hours(1));
+            static inline const std::chrono::nanoseconds MIN_ABS_TIMEOUT_DUR        = std::chrono::nanoseconds(0);
+            static inline const std::chrono::nanoseconds MAX_ABS_TIMEOUT_DUR        = std::chrono::nanoseconds::max();
+            static inline const std::chrono::nanoseconds CRON_JOB_DURATION          = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::milliseconds(100));
 
             SlaveConnection(const SlaveConfiguration& config)
             {
@@ -924,14 +920,14 @@ namespace connectivity_subsystem
                     struct PingPromise
                     {
                         std::shared_ptr<dg_sock::network_rest_frame::client::Promise<stdx::fancy_void>> base_promise;
-                        std::chrono::time_point<std::chrono::system_clock> since;
+                        std::chrono::time_point<std::chrono::steady_clock> since;
                     };
 
                     SlaveConfiguration slave_config;
                     std::unique_ptr<ConnectionPingerInterface> connection_pinger;
                     std::shared_ptr<std::atomic<bool>> is_alive_flag;
-                    std::optional<std::chrono::time_point<std::chrono::system_clock>> last_updated;
-                    std::optional<std::chrono::time_point<std::chrono::system_clock>> since;
+                    std::optional<std::chrono::time_point<std::chrono::steady_clock>> last_updated;
+                    std::optional<std::chrono::time_point<std::chrono::steady_clock>> since;
                     std::optional<PingPromise> ping_promise;
 
                 public:
@@ -954,10 +950,8 @@ namespace connectivity_subsystem
 
                         if (!this->last_updated.has_value())
                         {
-                            this->last_updated  = std::chrono::system_clock::now();
+                            this->last_updated  = std::chrono::steady_clock::now();
                             this->since         = this->last_updated;
-
-                            return;
                         }
 
                         if (this->ping_promise.has_value())
@@ -968,7 +962,7 @@ namespace connectivity_subsystem
                                 {
                                     this->ping_promise->base_promise->wait();
                                     this->ping_promise = std::nullopt;
-                                    this->last_updated = std::chrono::system_clock::now();
+                                    this->last_updated = std::chrono::steady_clock::now();
 
                                     return;
                                 }
@@ -995,11 +989,11 @@ namespace connectivity_subsystem
                                 }
                             }
 
-                            std::chrono::nanoseconds lapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now() - this->ping_promise->since);
+                            std::chrono::nanoseconds lapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - this->ping_promise->since);
 
                             if (lapsed < this->slave_config.connection_timeout_dur)
                             {
-                                this->last_updated = std::chrono::system_clock::now();
+                                this->last_updated = std::chrono::steady_clock::now();
                                 return;
                             }
 
@@ -1010,7 +1004,7 @@ namespace connectivity_subsystem
                         }
 
                         {
-                            std::chrono::nanoseconds lapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now() - this->last_updated.value());
+                            std::chrono::nanoseconds lapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - this->last_updated.value());
 
                             if (lapsed >= this->slave_config.connection_timeout_dur)
                             {
@@ -1020,7 +1014,7 @@ namespace connectivity_subsystem
                         }
 
                         {
-                            std::chrono::nanoseconds lapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now() - this->since.value());
+                            std::chrono::nanoseconds lapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - this->since.value());
 
                             if (lapsed >= this->slave_config.abs_timeout_dur)
                             {
@@ -1034,7 +1028,7 @@ namespace connectivity_subsystem
                             this->ping_promise = PingPromise
                             {
                                 .base_promise   = this->connection_pinger->ping(this->slave_config.master_payload),
-                                .since          = std::chrono::system_clock::now()
+                                .since          = std::chrono::steady_clock::now()
                             };
                         }
                         catch (std::exception& e)
@@ -1050,8 +1044,6 @@ namespace connectivity_subsystem
 
                             return;
                         }
-
-                        this->last_updated = std::chrono::system_clock::now();
                     }
             };
     };

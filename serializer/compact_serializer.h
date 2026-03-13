@@ -2354,9 +2354,9 @@ namespace dg::network_compact_serializer::archive{
 
 namespace dg::network_compact_serializer{
 
-    constexpr auto get_dgstd_serialization_identifier() -> std::string
+    constexpr auto get_dgstd_serialization_identifier() noexcept -> std::string_view
     {
-        return {};
+        return "";
     }
 
     template <class SizeType, class T>

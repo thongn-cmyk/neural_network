@@ -896,13 +896,91 @@ namespace dg_sock::network_allocation
             }
     };
 
+    struct GlobalExternalAllocator: private GlobalAllocator
+    {
+        private:
+
+            std::unique_ptr<ThreadSafeBatchBinaryUnitAllocator> base;
+        
+        public:
+
+            static inline constexpr size_t DEFAULT_ALIGNMENT_SZ = 1u;
+
+            GlobalExternalAllocator(): GlobalAllocator(),
+                                       base(std::make_unique<ThreadSafeBatchBinaryUnitAllocator>()){}
+
+            inline auto malloc(size_t sz) -> void *
+            {
+                if (sz == 0u)
+                {
+                    return nullptr;
+                }
+
+                static_assert(sizeof(bool) == 1u);
+
+                bool is_registered  = dg_sock::network_concurrency::is_registered_thread();
+                size_t nxt_sz       = sz + sizeof(bool);
+                void * rs;
+
+                if (is_registered) [[likely]]
+                {
+                    rs  = GlobalAllocator::malloc(nxt_sz);
+                }
+                else [[unlikely]]
+                {
+                    rs  = this->external_malloc(nxt_sz);
+                }
+
+                std::memcpy(rs, &is_registered, sizeof(bool));
+
+                return std::next(static_cast<char *>(rs), sizeof(bool));
+            }
+
+            inline void free(void * buf) noexcept
+            {
+                if (buf == nullptr)
+                {
+                    return;
+                }
+
+                bool is_registered;
+                void * buf_head = std::prev(static_cast<char *>(buf), sizeof(bool));
+
+                std::memcpy(&is_registered, buf_head, sizeof(bool));
+
+                if (is_registered) [[likely]]
+                {
+                    GlobalAllocator::free(buf_head);
+                }
+                else [[unlikely]]
+                {
+                    this->external_free(buf_head);
+                }
+            }
+
+        private:
+
+            __attribute__((noinline)) auto external_malloc(size_t sz) -> void *
+            {
+                void * rs = nullptr;
+                this->base->malloc(&sz, 1u, &rs);
+
+                return rs;
+            }
+
+            __attribute__((noinline)) void external_free(void * buf) noexcept
+            {
+                this->base->free(&buf, 1u);
+            }
+    };
+
     struct AllocationResourceSignature{};
 
-    using allocation_resource_obj = stdxx::singleton<AllocationResourceSignature, std::shared_ptr<GlobalAllocator>>; 
+    using allocation_resource_obj = stdxx::singleton<AllocationResourceSignature, std::shared_ptr<GlobalExternalAllocator>>; 
 
     void init()
     {
-        allocation_resource_obj::get() = std::make_shared<GlobalAllocator>();
+        allocation_resource_obj::get() = std::make_shared<GlobalExternalAllocator>();
         std::atomic_thread_fence(std::memory_order_seq_cst);
     }
 
@@ -911,7 +989,7 @@ namespace dg_sock::network_allocation
         allocation_resource_obj::get() = nullptr;
     }
 
-    static inline constexpr size_t DEFAULT_ALIGNMENT_SZ = GlobalAllocator::DEFAULT_ALIGNMENT_SZ; 
+    static inline constexpr size_t DEFAULT_ALIGNMENT_SZ = GlobalExternalAllocator::DEFAULT_ALIGNMENT_SZ; 
 
     using alignment_header_t        = uint32_t;
     using xalign_metadata_size_t    = uint32_t;

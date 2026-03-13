@@ -91,6 +91,11 @@ namespace dg_sock::network_concurrency{
         return SingletonObject::get().thrid_to_idx_map.size();
     }
 
+    extern auto is_registered_thread() noexcept -> bool
+    {
+        return SingletonObject::get().thrid_to_idx_map.contains(std::this_thread::get_id());
+    }
+
     extern auto this_thread_idx() noexcept -> size_t
     {    
         auto ptr = SingletonObject::get().thrid_to_idx_map.find(std::this_thread::get_id());
