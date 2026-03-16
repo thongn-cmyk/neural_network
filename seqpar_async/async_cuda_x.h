@@ -16,8 +16,9 @@
 #include <mutex>
 #include <semaphore>
 #include <deque>
-#include "fair_mutex.h"
-#include "stdx.h"
+#include <mutex_extension/fair_mutex.h>
+#include <stl_extension/stdx.h>
+#include <concurrency_base/concurrency_base.h>
 
 namespace async_cuda_x
 {
@@ -270,14 +271,13 @@ namespace async_cuda_x
             }
     };
 
-    class CudaWorker
+    class CudaWorker: public virtual concurrency_base::WorkerInterface
     {
         private:
 
             std::shared_ptr<CudaExecutableContainerInterface> workorder_container;
             size_t consumption_sz;
             std::chrono::nanoseconds consumption_wait_time;
-            std::atomic<bool> poison_pill;
 
         public:
 
@@ -285,56 +285,34 @@ namespace async_cuda_x
                        size_t consumption_sz,
                        std::chrono::nanoseconds consumption_wait_time): workorder_container(std::move(workorder_container)),
                                                                         consumption_sz(consumption_sz),
-                                                                        consumption_wait_time(consumption_wait_time),
-                                                                        poison_pill(false){}
+                                                                        consumption_wait_time(consumption_wait_time){}
 
-            void run() noexcept
+            auto run_one_epoch() noexcept -> bool
             {
-                while (true)
+                try
                 {
-                    bool poison_status = this->poison_pill.load(std::memory_order_relaxed);
+                    std::vector<std::unique_ptr<InternalCudaExecutableInterface>> executable_vec = this->workorder_container->pop(this->consumption_sz, this->consumption_wait_time);
 
-                    if (poison_status)
+                    for (const auto& executable: executable_vec)
                     {
-                        break;
+                        executable->run();
                     }
 
-                    try
+                    cuda_async_exception_t sync_err = sync_cuda_device();
+
+                    for (const auto& executable: executable_vec)
                     {
-                        std::vector<std::unique_ptr<InternalCudaExecutableInterface>> executable_vec = this->workorder_container->pop(this->consumption_sz, this->consumption_wait_time);
-
-                        for (const auto& executable: executable_vec)
-                        {
-                            executable->run();
-                        }
-
-                        cuda_async_exception_t sync_err = sync_cuda_device();
-
-                        for (const auto& executable: executable_vec)
-                        {
-                            executable->notify(sync_err);
-                        }
-                    }   
-                    catch (...)
-                    {
-                        std::this_thread::sleep_for(PANIC_GRACE_PERIOD);
-                        continue;
-                    }                 
+                        executable->notify(sync_err);
+                    }
+                }   
+                catch (...)
+                {
+                    std::this_thread::sleep_for(PANIC_GRACE_PERIOD);
+                    return true;
                 }
 
-                std::atomic_thread_fence(std::memory_order_seq_cst);
+                return true;
             }
-
-            void stop() noexcept
-            {
-                this->poison_pill.exchange(true, std::memory_order_relaxed);
-            }
-    };
-
-    struct CudaWorkerHandle
-    {
-        std::shared_ptr<CudaWorker> worker;
-        std::shared_ptr<std::thread> thr;
     };
 
     static auto make_cuda_worker(std::shared_ptr<CudaExecutableContainerInterface> workorder_container,
@@ -361,48 +339,17 @@ namespace async_cuda_x
             throw std::invalid_argument("bad consumption wait time, out of range wait time");
         }
 
-        auto destructor = [](void * arg) noexcept
-        {
-            CudaWorkerHandle * worker_handle = static_cast<CudaWorkerHandle *>(arg);
-            worker_handle->worker->stop();
-            std::atomic_signal_fence(std::memory_order_seq_cst);
-            worker_handle->thr->join();
+        auto worker_resource = concurrency_base::daemon_saferegister(concurrency_base::ASYNC_CUDA,
+                                                                     std::make_unique<CudaWorker>(workorder_container,
+                                                                                                  consumption_sz,
+                                                                                                  consumption_wait_time));
 
-            delete worker_handle;
-        };
-
-        std::shared_ptr<CudaWorker> cuda_worker = std::make_shared<CudaWorker>(workorder_container, consumption_sz, consumption_wait_time);
-        auto cuda_runner = [=]() noexcept
+        if (!worker_resource.has_value())
         {
-            cuda_worker->run();
-        };
-        std::shared_ptr<std::thread> thr        = std::make_shared<std::thread>(cuda_runner);
-        CudaWorkerHandle * cuda_worker_handle; 
-
-        try
-        {
-            cuda_worker_handle = new CudaWorkerHandle
-            (
-                CudaWorkerHandle
-                {
-                    .worker = cuda_worker,
-                    .thr    = thr
-                }
-            );
-        }
-        catch (...)
-        {
-            cuda_worker->stop();
-            std::atomic_signal_fence(std::memory_order_seq_cst);
-            thr->join();
-            throw;
+            common_exception::throw_exception(worker_resource.error());
         }
 
-        return std::unique_ptr<void, decltype(destructor)>
-        (
-            static_cast<void *>(cuda_worker_handle),
-            destructor
-        );
+        return std::make_shared<decltype(worker_resource)>(std::move(worker_resource));
     }
 
     class CudaAsyncLauncher: public virtual CudaAsyncLauncherInterface

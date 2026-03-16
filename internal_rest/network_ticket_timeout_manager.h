@@ -10,7 +10,7 @@
 #include "stdx.h"
 #include "network_log.h"
 #include "network_ack_expiry_queue.h"
-#include "network_cron.h"
+#include <cron_subsystem/cron_subsystem.h>
 
 namespace dg_sock::ticket_system
 {
@@ -391,8 +391,8 @@ namespace dg_sock::ticket_system
                 }
 
                 this->base      = std::move(base_arg);
-                std::shared_ptr<dg_sock::network_cron::UpdatableInterface> updatable = dg_sock::make_shared<InternalUpdater>(this->base);
-                this->daemon    = dg_sock::network_cron::register_periodic_cronjob(updatable, UPDATE_DURATION);
+                std::shared_ptr<cron_subsystem::UpdatableInterface> updatable = dg_sock::make_shared<InternalUpdater>(this->base);
+                this->daemon    = cron_subsystem::register_periodic_cronjob(updatable, UPDATE_DURATION);
             }
 
             void clock_in(ClockInArgument<ticket_id_t> * clockin_arr, size_t sz, exception_t * exception_arr) noexcept
@@ -422,7 +422,7 @@ namespace dg_sock::ticket_system
 
         private:
 
-            class InternalUpdater: public virtual dg_sock::network_cron::UpdatableInterface
+            class InternalUpdater: public virtual cron_subsystem::UpdatableInterface
             {
                 private:
 

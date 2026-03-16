@@ -1,7 +1,7 @@
 //HEADER_CONTROL 0
 
-#ifndef __STDX_H__
-#define __STDX_H__
+#ifndef __DG_STD_X_H__
+#define __DG_STD_X_H__
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -22,9 +22,230 @@
 #include <bit>
 #include <mutex_extension/fair_mutex.h>
 #include <climits>
+#include "assert.h"
 
 namespace stdx
 {
+    static inline constexpr bool IS_SAFE_INTEGER_CONVERSION_ENABLED = true;
+
+    template <class T>
+    inline __attribute__((always_inline)) auto safe_ptr_access(T * ptr) noexcept -> T *
+    {
+        if (!ptr) [[unlikely]]
+        {
+            std::abort();
+        }
+
+        return ptr;
+    }
+
+    template <size_t BIT_SZ, class T, std::enable_if_t<std::is_unsigned_v<T>, bool> = true>
+    constexpr auto low_bit(T value) noexcept -> T
+    {
+        constexpr size_t MAX_BIT_CAP = std::numeric_limits<T>::digits;
+        static_assert(BIT_SZ <= MAX_BIT_CAP);
+
+        if constexpr(BIT_SZ == MAX_BIT_CAP)
+        {
+            return value & std::numeric_limits<T>::max(); 
+        }
+        else
+        {
+            constexpr T low_mask = (T{1u} << BIT_SZ) - 1;
+            return value & low_mask;
+        }
+    }
+
+    template <class T, size_t BIT_SIZE, std::enable_if_t<std::is_unsigned_v<T>, bool> = true>
+    consteval auto lowones_bitgen(const std::integral_constant<size_t, BIT_SIZE>) noexcept -> T
+    {
+        static_assert(BIT_SIZE <= std::numeric_limits<T>::digits);
+
+        if constexpr(BIT_SIZE == std::numeric_limits<T>::digits)
+        {
+            return std::numeric_limits<T>::max();
+        }
+        else
+        {
+            return (T{1} << BIT_SIZE) - 1u;
+        }
+    }
+
+    template <class T, std::enable_if_t<std::is_unsigned_v<T>, bool> = true>
+    constexpr auto lowones_bitgen(size_t bit_size) noexcept -> T
+    {
+        assert(bit_size <= std::numeric_limits<T>::digits);
+
+        if (bit_size == std::numeric_limits<T>::digits)
+        {
+            return std::numeric_limits<T>::max();
+        }
+        else
+        {
+            return (T{1} << bit_size) - 1u;
+        }
+    }
+
+    template <class T, std::enable_if_t<std::is_unsigned_v<T>, bool> = true>
+    constexpr auto is_pow2(T value)
+    {
+        return value != 0u && (value & static_cast<T>(value - 1)) == 0u;
+    }
+
+    constexpr auto align_address(uintptr_t arithmetic_buf, uintptr_t alignment_sz) noexcept -> uintptr_t
+    {
+        assert(is_pow2(alignment_sz));
+
+        uintptr_t FWD_SZ                = alignment_sz - 1u;
+        uintptr_t MASK_VALUE            = ~FWD_SZ;
+        uintptr_t fwd_arithmetic_buf    = (arithmetic_buf + FWD_SZ) & MASK_VALUE;
+
+        return fwd_arithmetic_buf;
+    }
+
+    template <size_t ALIGNMENT_SZ>
+    constexpr auto align_address(uintptr_t arithmetic_buf, std::integral_constant<size_t, ALIGNMENT_SZ>) noexcept -> uintptr_t
+    {
+        static_assert(is_pow2(ALIGNMENT_SZ));
+
+        constexpr uintptr_t FWD_SZ          = ALIGNMENT_SZ - 1u;
+        constexpr uintptr_t MASK_VALUE      = ~FWD_SZ;
+        const uintptr_t fwd_arithmetic_buf  = (arithmetic_buf + FWD_SZ) & MASK_VALUE;
+
+        return fwd_arithmetic_buf;
+    }
+
+    constexpr auto align_ptr(char * buf, size_t alignment_sz) noexcept -> char *
+    {
+        return reinterpret_cast<char *>(align_address(reinterpret_cast<uintptr_t>(buf), alignment_sz));
+    }
+
+    constexpr auto align_ptr(const char * buf, size_t alignment_sz) noexcept -> const char *
+    {
+        return reinterpret_cast<const char *>(align_address(reinterpret_cast<uintptr_t>(buf), alignment_sz));
+    }
+
+    template <size_t ALIGNMENT_SZ>
+    constexpr auto align_ptr(char * buf, std::integral_constant<size_t, ALIGNMENT_SZ> alignment) noexcept -> char *
+    {
+        return reinterpret_cast<char *>(align_address(reinterpret_cast<uintptr_t>(buf), alignment));
+    }
+
+    template <size_t ALIGNMENT_SZ>
+    constexpr auto align_ptr(const char * buf, std::integral_constant<size_t, ALIGNMENT_SZ> alignment) noexcept -> const char *
+    {
+        return reinterpret_cast<const char *>(align_address(reinterpret_cast<uintptr_t>(buf), alignment));
+    }
+
+    template <class T1, class T>
+    constexpr auto safe_integer_cast(T value) noexcept -> T1{
+
+        static_assert(std::numeric_limits<T>::is_integer);
+        static_assert(std::numeric_limits<T1>::is_integer);
+
+        if constexpr(IS_SAFE_INTEGER_CONVERSION_ENABLED)
+        {
+            if constexpr(std::is_unsigned_v<T> && std::is_unsigned_v<T1>)
+            {
+                (void) value;
+            }
+            else if constexpr(std::is_signed_v<T> && std::is_signed_v<T1>)
+            {
+                (void) value;
+            }
+            else
+            {
+                if constexpr(std::is_signed_v<T>)
+                {
+                    if constexpr(sizeof(T) > sizeof(T1))
+                    {
+                        (void) value;
+                    }
+                    else
+                    {
+                        if (value < 0)
+                        {
+                            std::abort();
+                        }
+                        else
+                        {
+                            return value; //sizeof(signed) <= sizeof(unsigned)
+                        }
+                    }
+                }
+                else
+                {
+                    if constexpr(sizeof(T1) > sizeof(T))
+                    {
+                        (void) value;
+                    }
+                    else
+                    {
+                        if (value > std::numeric_limits<T1>::max())
+                        {
+                            std::abort();
+                        }
+                        else
+                        {
+                            return value; //sizeof(unsigned) >= sizeof(signed)
+                        }
+                    }
+                }
+            }
+
+            if (value > std::numeric_limits<T1>::max())
+            {
+                std::abort();
+            }
+
+            if (value < std::numeric_limits<T1>::min())
+            {
+                std::abort();
+            }
+
+            return value;
+        }
+        else
+        {
+            return value;
+        }
+    }
+
+    template <class T>
+    struct safe_integer_cast_wrapper
+    {
+        static_assert(std::numeric_limits<T>::is_integer);
+        T value;
+
+        template <class U>
+        constexpr operator U() const noexcept
+        {
+            return stdx::safe_integer_cast<U>(this->value);
+        }
+    };
+
+    template <class T>
+    constexpr auto wrap_safe_integer_cast(T value) noexcept
+    {
+        return stdx::safe_integer_cast_wrapper<T>{value};
+    }
+
+    template <class Destructor>
+    inline auto resource_guard(Destructor destructor) noexcept
+    {    
+        static_assert(std::is_nothrow_move_constructible_v<Destructor>);
+        static_assert(std::is_nothrow_invocable_v<Destructor>);
+
+        auto backout_ld = [destructor_arg = std::move(destructor)](int *) noexcept
+        {
+            destructor_arg();
+        };
+
+        static int i{};
+
+        return std::unique_ptr<int, decltype(backout_ld)>(&i, std::move(backout_ld));
+    }
+
     struct fancy_void{};
 
     struct reflectible_monostate
@@ -51,9 +272,12 @@ namespace stdx
     template <class T, std::enable_if_t<std::is_unsigned_v<T>, bool> = true>
     constexpr auto ceil2(T val) noexcept -> T
     {
-        if (val < 2u) [[unlikely]]{
+        if (val < 2u) [[unlikely]]
+        {
             return 1u;
-        } else [[likely]]{
+        }
+        else [[likely]]
+        {
             T uplog_value = ulog2(static_cast<T>(val - 1u)) + 1u;
             return T{1u} << uplog_value;
         }
@@ -125,39 +349,61 @@ namespace stdx
         static_assert(std::numeric_limits<T>::is_integer);
         static_assert(std::numeric_limits<T1>::is_integer);
 
-        if constexpr(std::is_unsigned_v<T> && std::is_unsigned_v<T1>){
+        if constexpr(std::is_unsigned_v<T> && std::is_unsigned_v<T1>)
+        {
             (void) value;
-        } else if constexpr(std::is_signed_v<T> && std::is_signed_v<T1>){
+        }
+        else if constexpr(std::is_signed_v<T> && std::is_signed_v<T1>)
+        {
             (void) value;
-        } else{
-            if constexpr(std::is_signed_v<T>){
-                if constexpr(sizeof(T) > sizeof(T1)){
+        }
+        else
+        {
+            if constexpr(std::is_signed_v<T>)
+            {
+                if constexpr(sizeof(T) > sizeof(T1))
+                {
                     (void) value;
-                } else{
-                    if (value < 0){
+                }
+                else
+                {
+                    if (value < 0)
+                    {
                         throw std::runtime_error("overflow integer conversion");
-                    } else{
+                    }
+                    else
+                    {
                         return value; //sizeof(signed) <= sizeof(unsigned)
                     }
                 }
-            } else{
-                if constexpr(sizeof(T1) > sizeof(T)){
+            }
+            else
+            {
+                if constexpr(sizeof(T1) > sizeof(T))
+                {
                     (void) value;
-                } else{
-                    if (value > std::numeric_limits<T1>::max()){
+                }
+                else
+                {
+                    if (value > std::numeric_limits<T1>::max())
+                    {
                         throw std::runtime_error("overflow integer conversion");
-                    } else{
+                    }
+                    else
+                    {
                         return value; //sizeof(unsigned) >= sizeof(signed)
                     }
                 }
             }
         }
 
-        if (value > std::numeric_limits<T1>::max()){
+        if (value > std::numeric_limits<T1>::max())
+        {
             throw std::runtime_error("overflow integer conversion");
         }
 
-        if (value < std::numeric_limits<T1>::min()){
+        if (value < std::numeric_limits<T1>::min())
+        {
             throw std::runtime_error("overflow integer conversion");
         }
 
@@ -175,19 +421,6 @@ namespace stdx
         {
             std::abort();
         }
-    }
-
-    template <class T, std::enable_if_t<std::is_unsigned_v<T>, bool> = true>
-    constexpr auto is_pow2(T value) -> bool
-    {
-        if (value == 0u)
-        {
-            return false;
-        }
-
-        T value_one = value - 1;
-
-        return (value & value_one) == 0u;
     }
 
     constexpr auto safe_non_zero_access(size_t sz) -> size_t
@@ -704,16 +937,16 @@ namespace stdx
         return result;
     }
 
-    template <class T>
-    constexpr auto safe_ptr_access(T * ptr) -> T *
-    {
-        if (ptr == nullptr)
-        {
-            throw std::runtime_error("invalid pointer, null pointer");
-        }
+    // template <class T>
+    // constexpr auto safe_ptr_access(T * ptr) -> T *
+    // {
+    //     if (ptr == nullptr)
+    //     {
+    //         throw std::runtime_error("invalid pointer, null pointer");
+    //     }
 
-        return ptr;
-    }
+    //     return ptr;
+    // }
 
     template <class T, class T1>
     constexpr auto zip(const std::vector<T>& lhs, const std::vector<T1>& rhs) -> std::vector<std::pair<T, T1>>
@@ -831,6 +1064,41 @@ namespace stdx
 
         return rs;
     }
+
+    class memtransaction_guard
+    {
+        public:
+
+            inline __attribute__((always_inline)) memtransaction_guard() noexcept
+            {
+                if constexpr(STRONG_MEMORY_ORDERING_FLAG)
+                {
+                    std::atomic_thread_fence(std::memory_order_seq_cst);
+                }
+                else
+                {
+                    std::atomic_thread_fence(std::memory_order_acquire);
+                }
+            }
+
+            memtransaction_guard(const memtransaction_guard&) = delete;
+            memtransaction_guard(memtransaction_guard&&) = delete;
+
+            inline __attribute__((always_inline)) ~memtransaction_guard() noexcept
+            {
+                if constexpr(STRONG_MEMORY_ORDERING_FLAG)
+                {
+                    std::atomic_thread_fence(std::memory_order_seq_cst);
+                }
+                else
+                {
+                    std::atomic_thread_fence(std::memory_order_release);
+                }
+            }
+
+            memtransaction_guard& operator =(const memtransaction_guard&) = delete;
+            memtransaction_guard& operator =(memtransaction_guard&&) = delete;
+    };
 }
 
 #endif

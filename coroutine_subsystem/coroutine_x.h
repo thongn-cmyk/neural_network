@@ -1,5 +1,5 @@
-#ifndef __COROUTINE_X_H__
-#define __COROUTINE_X_H__
+#ifndef __DG_COROUTINE_X_H__
+#define __DG_COROUTINE_X_H__
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -15,6 +15,8 @@
 #include <semaphore>
 #include <thread>
 #include <cron_subsystem/cron_subsystem.h>
+#include <concurrency_base/concurrency_base.h>
+#include <common_exception/common_exception.h>
 
 namespace coroutine_x
 {
@@ -33,6 +35,9 @@ namespace coroutine_x
     //we'd have to solve for the otherwise in other components
     //the waiting tiem cannot be 100 microseconds, because it'd explode, so we'd have to add another base2 factor or accumulative factor to scale it to ... n(n+1)/2, such is that latency n for n(n+1)/2 task
 
+    //let's do affined processing, affined counter of sleep time and redistribution of the task -> the containers
+    //specifically, we'd need object-oriented extension of the coroutineable to do tracking, and an affined container to increase unit size of invokes (essentially 10 invokes == 1 unit) to reduce memory ordering + thread lock contention
+
     static inline const std::chrono::nanoseconds COROUTINE_DELAY = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::microseconds(100));
 
     class CoroutineableInterface
@@ -45,16 +50,25 @@ namespace coroutine_x
             virtual auto next() noexcept -> bool = 0;
     };
 
+    class InternalCoroutineableInterface: public virtual CoroutineableInterface
+    {
+        public:
+
+            virtual void increment_delay_counter() noexcept = 0;
+            virtual auto get_delay_counter() noexcept -> size_t = 0;
+            virtual void clear_delay_counter() noexcept = 0;
+    };
+
     class CoroutineableManagerInterface: public virtual cron_subsystem::UpdatableInterface
     {
         public:
 
             virtual ~CoroutineableManagerInterface() noexcept = default;
 
-            virtual void add(std::shared_ptr<CoroutineableInterface> coroutineable,
+            virtual void add(std::shared_ptr<InternalCoroutineableInterface> coroutineable,
                              std::optional<std::chrono::time_point<std::chrono::system_clock>> wakeup_time) noexcept = 0;
 
-            virtual auto get() noexcept -> std::shared_ptr<CoroutineableInterface> = 0;
+            virtual auto get() noexcept -> std::shared_ptr<InternalCoroutineableInterface> = 0;
             virtual void poison() noexcept = 0;
     };
 
@@ -64,9 +78,7 @@ namespace coroutine_x
 
             virtual ~ConsecutiveDelayCalculatorInterface() noexcept = default;
 
-            virtual void add_delay(const std::shared_ptr<void>& object_reference) = 0;
-            virtual auto get_delay(const std::shared_ptr<void>& object_reference) -> std::chrono::nanoseconds = 0;
-            virtual void clear_delay(const std::shared_ptr<void>& object_reference) noexcept = 0; 
+            virtual auto get_delay(size_t consecutive_run_sz) noexcept -> std::chrono::nanoseconds = 0;
     };
 
     class LauncherInterface
@@ -74,7 +86,54 @@ namespace coroutine_x
         public:
 
             virtual ~LauncherInterface() noexcept = default;
+
             virtual void add(std::shared_ptr<CoroutineableInterface> coroutineable) noexcept = 0;
+    };
+
+    class InternalCoroutineable: public virtual InternalCoroutineableInterface
+    {
+        private:
+
+            std::shared_ptr<CoroutineableInterface> base;
+            size_t delay_counter;
+
+        public:
+
+            InternalCoroutineable(std::shared_ptr<CoroutineableInterface> base)
+            {
+                if (base == nullptr)
+                {
+                    throw std::invalid_argument("bad base, null");
+                }
+
+                this->base                  = std::move(base);
+                this->delay_counter         = 0u;
+            }
+
+            auto has_next() noexcept -> bool
+            {
+                return this->base->has_next();
+            }
+
+            auto next() noexcept -> bool
+            {
+                return this->base->next();
+            }
+
+            void increment_delay_counter() noexcept
+            {
+                ++this->delay_counter;
+            }
+
+            auto get_delay_counter() noexcept -> size_t
+            {
+                return this->delay_counter;
+            }
+
+            void clear_delay_counter() noexcept
+            {
+                this->delay_counter = 0u;
+            }
     };
 
     class CoroutineableManager: public virtual CoroutineableManagerInterface
@@ -83,17 +142,17 @@ namespace coroutine_x
 
             struct PriorityBucket
             {
-                std::shared_ptr<CoroutineableInterface> item;
+                std::shared_ptr<InternalCoroutineableInterface> item;
                 std::chrono::time_point<std::chrono::system_clock> wakeup_time;
             };
 
             struct WaitBucket
             {
-                std::shared_ptr<CoroutineableInterface> * waiting_addr;
+                std::shared_ptr<InternalCoroutineableInterface> * waiting_addr;
                 std::binary_semaphore * smp;
             };
 
-            std::deque<std::shared_ptr<CoroutineableInterface>> coroutineable_vec;
+            std::deque<std::shared_ptr<InternalCoroutineableInterface>> coroutineable_vec;
             std::vector<PriorityBucket> priority_vec;
             std::deque<WaitBucket> wait_bucket_vec;
             std::unique_ptr<fair_mutex::fair_atomic_flag> mtx;
@@ -117,7 +176,7 @@ namespace coroutine_x
                                     mtx(fair_mutex::make_unique_fair_atomic_flag()),
                                     was_poisoned(false){}
 
-            void add(std::shared_ptr<CoroutineableInterface> coroutineable,
+            void add(std::shared_ptr<InternalCoroutineableInterface> coroutineable,
                      std::optional<std::chrono::time_point<std::chrono::system_clock>> wakeup_time) noexcept
             {
                 if (coroutineable == nullptr)
@@ -161,9 +220,9 @@ namespace coroutine_x
                 }
             }
 
-            auto get() noexcept -> std::shared_ptr<CoroutineableInterface>
+            auto get() noexcept -> std::shared_ptr<InternalCoroutineableInterface>
             {
-                std::shared_ptr<CoroutineableInterface> waiting_item{};
+                std::shared_ptr<InternalCoroutineableInterface> waiting_item{};
                 std::binary_semaphore smp(0);
 
                 {
@@ -220,7 +279,7 @@ namespace coroutine_x
                         return;
                     }
 
-                    std::shared_ptr<CoroutineableInterface> item = std::move(this->priority_vec.front().item);
+                    std::shared_ptr<InternalCoroutineableInterface> item = std::move(this->priority_vec.front().item);
                     std::pop_heap(this->priority_vec.begin(), this->priority_vec.end(), this->get_priority_bucket_comparator());
                     this->priority_vec.pop_back();
 
@@ -261,19 +320,10 @@ namespace coroutine_x
     {
         private:
 
-            struct ReferenceBucket
-            {
-                std::shared_ptr<void> obj;
-                size_t counter;
-            };
-
-            std::unordered_map<uintptr_t, ReferenceBucket> bucket_map;
             std::chrono::nanoseconds max_delay;
             std::chrono::nanoseconds base_multiplier;
 
-            std::unique_ptr<fair_mutex::fair_atomic_flag> mtx;
-
-            static inline constexpr size_t BASE = 2u;
+            static inline constexpr size_t BASE             = 2u;
             static inline constexpr size_t MAX_BASE_COUNTER = 30u;
         
         public:
@@ -291,82 +341,29 @@ namespace coroutine_x
                     throw std::invalid_argument("bad base multiplier, negative value");
                 }
 
-                this->bucket_map        = {};
                 this->max_delay         = max_delay;
                 this->base_multiplier   = base_multiplier;
-                this->mtx               = fair_mutex::make_unique_fair_atomic_flag();
             }
 
-            void add_delay(const std::shared_ptr<void>& object_reference)
+            auto get_delay(size_t consecutive_run_sz) noexcept -> std::chrono::nanoseconds
             {
-                fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*this->mtx);
-
-                uintptr_t obj_addr  = reinterpret_cast<uintptr_t>(object_reference.get());
-                auto map_ptr        = this->bucket_map.find(obj_addr);
-
-                if (map_ptr == this->bucket_map.end())
-                {
-                    auto [new_map_ptr, status] = this->bucket_map.insert
-                    (
-                        {
-                            obj_addr, 
-                            ReferenceBucket
-                            {
-                                .obj        = object_reference, 
-                                .counter    = size_t{0u}
-                            }
-                        }
-                    );
-
-                    map_ptr = new_map_ptr;
-                }
-
-                map_ptr->second.counter += 1u;
-            }
-
-            auto get_delay(const std::shared_ptr<void>& object_reference) -> std::chrono::nanoseconds
-            {
-                fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*this->mtx);
-
-                uintptr_t obj_addr  = reinterpret_cast<uintptr_t>(object_reference.get());
-                size_t counter;
-
-                if (auto map_ptr = this->bucket_map.find(obj_addr); map_ptr != this->bucket_map.end())
-                {
-                    counter = map_ptr->second.counter;
-                }
-                else
-                {
-                    counter = 0u;
-                }
-
-                counter = std::min(counter, MAX_BASE_COUNTER);
+                size_t counter  = consecutive_run_sz;
+                counter         = std::min(counter, MAX_BASE_COUNTER);
 
                 std::chrono::nanoseconds tentative_delay    = std::chrono::duration_cast<std::chrono::nanoseconds>(this->base_multiplier * static_cast<size_t>(std::pow(BASE, counter)));
                 std::chrono::nanoseconds actual_delay       = std::clamp(tentative_delay, std::chrono::nanoseconds(0), this->max_delay);
 
                 return actual_delay;
             }
-
-            void clear_delay(const std::shared_ptr<void>& object_reference) noexcept
-            {
-                fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*this->mtx);
-
-                uintptr_t obj_addr  = reinterpret_cast<uintptr_t>(object_reference.get());
-                this->bucket_map.erase(obj_addr);
-            }
     };
 
-    class Worker
+    class Worker: public virtual concurrency_base::WorkerInterface
     {
         private:
 
-            std::atomic<bool> poison_pill;
             std::shared_ptr<CoroutineableManagerInterface> manager;
             std::shared_ptr<ConsecutiveDelayCalculatorInterface> delay_calculator;
-            std::atomic<bool> run_broke_pill;
-
-            static inline constexpr size_t POISON_CHK_INTERVAL = 8u;
+            std::vector<std::shared_ptr<InternalCoroutineableInterface>> success_container;
 
         public:
 
@@ -383,126 +380,100 @@ namespace coroutine_x
                     throw std::invalid_argument("bad delay calculator, null");
                 }
 
-                this->poison_pill       = false;
-                this->manager           = manager;
-                this->delay_calculator  = delay_calculator;
-                this->run_broke_pill    = false;
+                this->manager           = std::move(manager);
+                this->delay_calculator  = std::move(delay_calculator);
+                this->success_container = {};
             }
 
-            void run() noexcept
+            auto run_one_epoch() noexcept -> bool
             {
-                if (this->run_broke_pill.exchange(true, std::memory_order_relaxed))
+                if (!this->success_container.empty())
                 {
-                    std::abort();
+                    this->resolve_one_from_success_container();
+                    return true;
                 }
 
-                size_t local_counter = 0u;
+                std::shared_ptr<InternalCoroutineableInterface> coroutine = this->manager->get();
 
-                while (true)
+                if (coroutine == nullptr)
                 {
-                    if (local_counter == POISON_CHK_INTERVAL)
-                    {
-                        if (this->poison_pill.load(std::memory_order_relaxed))
-                        {
-                            break;
-                        }
-
-                        local_counter = 0u;
-                    }
-
-                    local_counter += 1;
-
-                    std::shared_ptr<CoroutineableInterface> coroutine = this->manager->get();
-
-                    if (coroutine == nullptr)
-                    {
-                        continue;
-                    }
-
-                    if (coroutine->has_next())
-                    {
-                        bool need_sleep = !coroutine->next();
-
-                        if (need_sleep)
-                        {
-                            using dur_t = typename std::chrono::time_point<std::chrono::system_clock>::duration;
-
-                            std::chrono::nanoseconds delay_time = this->delay_calculator->get_delay(coroutine);
-                            this->delay_calculator->add_delay(coroutine);
-                            std::chrono::time_point<std::chrono::system_clock> nxt_timepoint = std::chrono::time_point_cast<dur_t>(std::chrono::system_clock::now() + delay_time);
-
-                            this->manager->add(coroutine, nxt_timepoint);
-                        }
-                        else
-                        {
-                            this->delay_calculator->clear_delay(coroutine);
-                            this->manager->add(coroutine, std::nullopt);
-                        }
-                    }
-                    else
-                    {
-                        this->delay_calculator->clear_delay(coroutine);
-                    }
+                    return true;
+                }
+                
+                if (!coroutine->has_next())
+                {
+                    return true;
                 }
 
-                std::atomic_thread_fence(std::memory_order_seq_cst);
+                bool need_sleep = !coroutine->next();
+
+                if (need_sleep)
+                {
+                    using dur_t = typename std::chrono::time_point<std::chrono::system_clock>::duration;
+
+                    std::chrono::nanoseconds delay_time = this->delay_calculator->get_delay(coroutine->get_delay_counter());
+                    coroutine->increment_delay_counter();
+                    std::chrono::time_point<std::chrono::system_clock> nxt_timepoint = std::chrono::time_point_cast<dur_t>(std::chrono::system_clock::now() + delay_time);
+
+                    this->manager->add(coroutine, nxt_timepoint);
+                }
+                else
+                {
+                    coroutine->clear_delay_counter();
+                    this->success_container.push_back(coroutine);
+                }
+
+                return true;
             }
 
-            void poison() noexcept
+        private:
+
+            void resolve_one_from_success_container() noexcept
             {
-                this->poison_pill.exchange(true, std::memory_order_relaxed);
-            }
-    };
+                if (this->success_container.empty())
+                {
+                    return;
+                }
 
-    struct MuscleWorkerResource
-    {
-        std::shared_ptr<Worker> worker;
-        std::shared_ptr<std::thread> thr;
+                const std::shared_ptr<InternalCoroutineableInterface>& coroutine = this->success_container.back();
+
+                if (!coroutine->has_next())
+                {
+                    this->success_container.pop_back();
+                    return;
+                }
+
+                bool need_sleep = !coroutine->next();
+
+                if (need_sleep)
+                {
+                    using dur_t = typename std::chrono::time_point<std::chrono::system_clock>::duration;
+
+                    std::chrono::nanoseconds delay_time = this->delay_calculator->get_delay(coroutine->get_delay_counter());
+                    coroutine->increment_delay_counter();
+                    std::chrono::time_point<std::chrono::system_clock> nxt_timepoint = std::chrono::time_point_cast<dur_t>(std::chrono::system_clock::now() + delay_time);
+
+                    this->manager->add(coroutine, nxt_timepoint);
+                    this->success_container.pop_back();
+
+                    return;
+                }
+            }
     };
 
     auto get_muscle_worker(std::shared_ptr<CoroutineableManagerInterface> manager,
                            std::shared_ptr<ConsecutiveDelayCalculatorInterface> delay_calculator) -> std::shared_ptr<void>
     {
-        auto destructor = [](void * arg) noexcept
-        {
-            MuscleWorkerResource * worker_pack = static_cast<MuscleWorkerResource *>(arg); //safe memory access, by shared_ptr<> acquisition of arg when reaches 0 only, I'm afraid that std does not understand what they wrote
-            worker_pack->worker->poison(); //poison fine, we are holding right address, and followed by a mutex acquisition
-            std::atomic_signal_fence(std::memory_order_seq_cst);
-            worker_pack->thr->join(); //join fine, we are holding right memory reference due to the shared_ptr<> and we are the sole operator of the std::thread
+        auto worker_resource = concurrency_base::daemon_saferegister(concurrency_base::COROUTINE_DAEMON,
+                                                                     std::make_unique<Worker>(std::move(manager),
+                                                                                              std::move(delay_calculator)));
 
-            delete worker_pack;
-        };
-
-        std::shared_ptr<Worker> worker      = std::make_shared<Worker>(manager, delay_calculator);
-        auto worker_runner = [=]() noexcept
+        if (!worker_resource.has_value())
         {
-            worker->run();
-        };
-
-        std::shared_ptr<std::thread> thr    = std::make_shared<std::thread>(worker_runner);
-        MuscleWorkerResource * worker_pack;
-
-        try
-        {
-            worker_pack = new MuscleWorkerResource
-            {
-                MuscleWorkerResource
-                {
-                    .worker = worker,
-                    .thr    = thr
-                }
-            };
-        }
-        catch (...)
-        {
-            std::abort();
+            common_exception::throw_exception(worker_resource.error());
         }
 
-        return std::unique_ptr<void, decltype(destructor)>
-        (
-            static_cast<void * >(worker_pack),
-            destructor
-        );
+        return std::make_shared<decltype(worker_resource)>(std::move(worker_resource));
     }
 
     auto get_periodic_update_worker(std::shared_ptr<CoroutineableManagerInterface> manager,
@@ -533,7 +504,7 @@ namespace coroutine_x
 
             void add(std::shared_ptr<CoroutineableInterface> coroutineable) noexcept
             {
-                this->manager->add(std::move(coroutineable), std::nullopt);
+                this->manager->add(std::make_shared<InternalCoroutineable>(std::move(coroutineable)), std::nullopt);
             }
     };
 

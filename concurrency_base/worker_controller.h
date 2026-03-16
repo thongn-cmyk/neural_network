@@ -1,5 +1,5 @@
-#ifndef __DG_NETWORK_CONCURRENCY_IMPL1_LINUX_H__
-#define __DG_NETWORK_CONCURRENCY_IMPL1_LINUX_H__
+#ifndef __DG_CONCURRENCY_BASE_WORKER_CONTROLLER_H__
+#define __DG_CONCURRENCY_BASE_WORKER_CONTROLLER_H__
 
 //define HEADER_CONTROL 1
 
@@ -11,34 +11,20 @@
 #include <atomic>
 #include <unordered_map>
 #include <vector>
-#include "network_exception.h"
-#include "stdx.h"
+#include <common_exception/common_exception.h>
+#include <mutex_extension/fair_mutex.h>
+#include <stl_extension/stdx.h>
 
-namespace dg_sock::network_concurrency_impl1::daemon_option_ns{
-
-    using daemon_kind_t = uint8_t; 
-
-    enum daemon_option: daemon_kind_t
-    {
-        MAILBOX_UNIT_DAEMON     = 0u,
-        MAILBOX_STREAM_DAEMON   = 1u,
-        MAILBOX_CHANNEL_DAEMON  = 2u,
-        REST_SERVER_DAEMON      = 3u,
-        REST_CLIENT_DAEMON      = 4u,
-        UPDATE_DAEMON           = 5u
-    };
-} 
-
-namespace dg_sock::network_concurrency_impl1
+namespace concurrency_base::worker_controller
 {
-    using namespace daemon_option_ns;
+    using daemon_kind_t = uint8_t; 
 
     struct StdDaemonRunnableInterface
     {
         virtual ~StdDaemonRunnableInterface() noexcept = default;
 
         virtual void infloop() noexcept = 0;
-        virtual void signal_abort() noexcept = 0; 
+        virtual void signal_abort() noexcept = 0;
     };
 
     struct WorkerInterface
@@ -116,7 +102,7 @@ namespace dg_sock::network_concurrency_impl1
         private:
 
             std::unique_ptr<std::atomic<bool>> poison_pill;
-            std::unique_ptr<stdxx::fair_atomic_flag> mtx;
+            std::unique_ptr<fair_mutex::fair_atomic_flag> mtx;
             std::unique_ptr<WorkerInterface> worker;
             std::unique_ptr<ReschedulerInterface> rescheduler; 
             size_t loopchk_sz; 
@@ -124,7 +110,7 @@ namespace dg_sock::network_concurrency_impl1
         public:
 
             StdDaemonRunner(std::unique_ptr<std::atomic<bool>> poison_pill,
-                            std::unique_ptr<stdxx::fair_atomic_flag> mtx,
+                            std::unique_ptr<fair_mutex::fair_atomic_flag> mtx,
                             std::unique_ptr<WorkerInterface> worker,
                             std::unique_ptr<ReschedulerInterface> rescheduler,
                             size_t loopchk_sz) noexcept: poison_pill(std::move(poison_pill)),
@@ -135,7 +121,7 @@ namespace dg_sock::network_concurrency_impl1
 
             void set_worker(std::unique_ptr<WorkerInterface> worker) noexcept
             {
-                stdxx::xlock_guard<stdxx::fair_atomic_flag> lck_grd(*this->mtx);
+                fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*this->mtx);
 
                 this->worker = std::move(worker);
             }
@@ -160,7 +146,7 @@ namespace dg_sock::network_concurrency_impl1
                         reschedule_on_null = false;
                     }
 
-                    stdxx::xlock_guard<stdxx::fair_atomic_flag> lck_grd(*this->mtx);
+                    fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*this->mtx);
 
                     if (this->worker == nullptr)
                     {
@@ -225,34 +211,34 @@ namespace dg_sock::network_concurrency_impl1
 
             std::unordered_map<daemon_kind_t, std::vector<size_t>> daemon_id_map;
             std::unordered_map<size_t, std::unique_ptr<DaemonRunnerInterface>> id_runner_map;
-            std::unique_ptr<stdxx::fair_atomic_flag> mtx;
+            std::unique_ptr<fair_mutex::fair_atomic_flag> mtx;
 
         public:
 
             DaemonController(std::unordered_map<daemon_kind_t, std::vector<size_t>> daemon_id_map,
                              std::unordered_map<size_t, std::unique_ptr<DaemonRunnerInterface>> id_runner_map,
-                             std::unique_ptr<stdxx::fair_atomic_flag> mtx) noexcept: daemon_id_map(std::move(daemon_id_map)),
+                             std::unique_ptr<fair_mutex::fair_atomic_flag> mtx) noexcept: daemon_id_map(std::move(daemon_id_map)),
                                                                                      id_runner_map(std::move(id_runner_map)),
                                                                                      mtx(std::move(mtx)){}
 
             auto _register(daemon_kind_t daemon_kind, std::unique_ptr<WorkerInterface>&& worker) noexcept -> std::expected<size_t, exception_t>
             {    
-                stdxx::xlock_guard<stdxx::fair_atomic_flag> lck_grd(*this->mtx);
+                fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*this->mtx);
                 auto map_ptr = this->daemon_id_map.find(daemon_kind);
 
                 if (worker == nullptr)
                 {
-                    return std::unexpected(dg_sock::network_exception::INVALID_ARGUMENT);
+                    return std::unexpected(common_exception::INVALID_ARGUMENT);
                 }
 
                 if (map_ptr == this->daemon_id_map.end())
                 {
-                    return std::unexpected(dg_sock::network_exception::INVALID_ARGUMENT);
+                    return std::unexpected(common_exception::INVALID_ARGUMENT);
                 }
 
                 if (map_ptr->second.size() == 0u)
                 {
-                    return std::unexpected(dg_sock::network_exception::NO_DAEMON_RUNNER_AVAILABLE);
+                    return std::unexpected(common_exception::NO_DAEMON_RUNNER_AVAILABLE);
                 }
 
                 size_t id = map_ptr->second.back();
@@ -266,7 +252,7 @@ namespace dg_sock::network_concurrency_impl1
 
             void deregister(size_t encoded) noexcept
             {
-                stdxx::xlock_guard<stdxx::fair_atomic_flag> lck_grd(*this->mtx);
+                fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*this->mtx);
                 auto [id, daemon_kind]  = this->decode(encoded);
 
                 this->daemon_id_map[daemon_kind].push_back(id);
@@ -288,7 +274,7 @@ namespace dg_sock::network_concurrency_impl1
                 static_assert(std::is_unsigned_v<daemon_kind_t>);
                 constexpr size_t LOW_BIT_SZ = sizeof(daemon_kind_t) * CHAR_BIT;
                 size_t id                   = encoded >> LOW_BIT_SZ;
-                daemon_kind_t daemon_kind   = stdxx::low_bit<LOW_BIT_SZ>(encoded);
+                daemon_kind_t daemon_kind   = stdx::low_bit<LOW_BIT_SZ>(encoded);
 
                 return {id, daemon_kind};
             }
@@ -328,7 +314,7 @@ namespace dg_sock::network_concurrency_impl1
 
             if (!legacy_cpusetup)
             {
-                dg_sock::network_exception::throw_exception(dg_sock::network_exception::RESOURCE_EXHAUSTION);
+                common_exception::throw_exception(common_exception::RESOURCE_EXHAUSTION);
             }
             
             size_t alloc_sz = CPU_ALLOC_SIZE(cpu_sz);
@@ -354,20 +340,20 @@ namespace dg_sock::network_concurrency_impl1
             {
                 if (err == EFAULT)
                 {
-                    dg_sock::network_exception::throw_exception(dg_sock::network_exception::PTHREAD_EFAULT);
+                    common_exception::throw_exception(common_exception::PTHREAD_EFAULT);
                 }
 
                 if (err == EINVAL)
                 {
-                    dg_sock::network_exception::throw_exception(dg_sock::network_exception::PTHREAD_EINVAL);
+                    common_exception::throw_exception(common_exception::PTHREAD_EINVAL);
                 }
 
                 if (err == ESRCH)
                 {
-                    dg_sock::network_exception::throw_exception(dg_sock::network_exception::PTHREAD_ESRCH);
+                    common_exception::throw_exception(common_exception::PTHREAD_ESRCH);
                 }
 
-                dg_sock::network_exception::throw_exception(dg_sock::network_exception::UNIDENTIFIED_ERROR);
+                common_exception::throw_exception(common_exception::UNIDENTIFIED_ERROR);
             }
         }
 
@@ -375,12 +361,12 @@ namespace dg_sock::network_concurrency_impl1
         {
             if (runnable == nullptr)
             {
-                dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
+                common_exception::throw_exception(common_exception::INVALID_ARGUMENT);
             }
 
             if (cpu_vec.empty())
             {
-                dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
+                common_exception::throw_exception(common_exception::INVALID_ARGUMENT);
             }
 
             auto executable = [=]() noexcept
@@ -413,7 +399,7 @@ namespace dg_sock::network_concurrency_impl1
         {
             if (runnable == nullptr)
             {
-                dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
+                common_exception::throw_exception(common_exception::INVALID_ARGUMENT);
             }
 
             auto executable = [=]() noexcept
@@ -431,11 +417,11 @@ namespace dg_sock::network_concurrency_impl1
         {
             using namespace std::chrono_literals;
 
-            const size_t LOOPCHK_SZ = 32u;
+            const size_t LOOPCHK_SZ = 64u;
 
             auto rescheduler    = ReschedulerFactory::spawn_sleepy_rescheduler(10ms);
-            auto mtx            = std::make_unique<stdxx::fair_atomic_flag>();
-            stdxx::inplace_make_fair_atomic_flag(*mtx);
+            auto mtx            = std::make_unique<fair_mutex::fair_atomic_flag>();
+            fair_mutex::inplace_make_fair_atomic_flag(*mtx);
             auto poison_pill    = std::make_unique<std::atomic<bool>>();
             auto daemon_runner  = std::make_shared<StdDaemonRunner>(std::move(poison_pill), std::move(mtx), nullptr, std::move(rescheduler), LOOPCHK_SZ);
             auto thr_instance   = StdThreadFactory::spawn_thread(daemon_runner, cpu_set); 
@@ -454,11 +440,11 @@ namespace dg_sock::network_concurrency_impl1
         {
             using namespace std::chrono_literals;
 
-            const size_t LOOPCHK_SZ = 32u;
+            const size_t LOOPCHK_SZ = 64u;
 
             auto rescheduler    = ReschedulerFactory::spawn_sleepy_rescheduler(10ms);
-            auto mtx            = std::make_unique<stdxx::fair_atomic_flag>();
-            stdxx::inplace_make_fair_atomic_flag(*mtx);
+            auto mtx            = std::make_unique<fair_mutex::fair_atomic_flag>();
+            fair_mutex::inplace_make_fair_atomic_flag(*mtx);
             auto poison_pill    = std::make_unique<std::atomic<bool>>();
             auto daemon_runner  = std::make_shared<StdDaemonRunner>(std::move(poison_pill), std::move(mtx), nullptr, std::move(rescheduler), LOOPCHK_SZ);
             auto thr_instance   = StdThreadFactory::spawn_thread(daemon_runner);
@@ -490,7 +476,7 @@ namespace dg_sock::network_concurrency_impl1
 
                 if (runner == nullptr)
                 {
-                    dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
+                    common_exception::throw_exception(common_exception::INVALID_ARGUMENT);
                 }
 
                 kind_id_map[kind].push_back(id);
@@ -498,7 +484,7 @@ namespace dg_sock::network_concurrency_impl1
                 id_sz += 1;
             }
 
-            auto mtx = stdxx::make_unique_fair_atomic_flag(); 
+            auto mtx = fair_mutex::make_unique_fair_atomic_flag(); 
             return std::make_unique<DaemonController>(std::move(kind_id_map), std::move(id_runner_map), std::move(mtx));
         }
     };

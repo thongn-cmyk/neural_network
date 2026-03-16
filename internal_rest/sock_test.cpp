@@ -11,7 +11,7 @@
 #include <mutex>
 #include "network_kernel_mailbox_impl1.h"
 #include <random>
-#include "network_cron.h"
+#include <cron_subsystem/cron_subsystem.h>
 
 class TestWorker: public virtual dg_sock::network_concurrency::WorkerInterface
 {
@@ -337,7 +337,7 @@ int main()
         dg_sock::network_randomizer::init();
 
         cron_subsystem::init();
-        dg_sock::network_cron::init();
+        // dg_sock::network_cron::init();
 
         std::filesystem::path tmp_file = std::filesystem::temp_directory_path() / "sock_test.txt";
         dg_sock::network_log::init(tmp_file);

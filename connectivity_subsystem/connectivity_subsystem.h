@@ -1,15 +1,15 @@
-#ifndef __CONNECTIVITY_SUBSYSTEM_H__
-#define __CONNECTIVITY_SUBSYSTEM_H__
+#ifndef __DG_CONNECTIVITY_SUBSYSTEM_H__
+#define __DG_CONNECTIVITY_SUBSYSTEM_H__
 
 #include <stdint.h>
 #include <stdlib.h>
 #include <unordered_map>
 #include <vector>
 #include <variant>
-#include <stdx.h>
-#include <fair_mutex.h>
+#include <stl_extension/stdx.h>
+#include <mutex_extension/fair_mutex.h>
 #include <internal_rest/network_rest_frame.h>
-#include <compact_serializer.h>
+#include <serializer/compact_serializer.h>
 #include <cron_subsystem/cron_subsystem.h>
 
 namespace connectivity_subsystem
@@ -436,7 +436,7 @@ namespace connectivity_subsystem
                     return;
                 }
 
-                this->base_vec[slot_idx]->close_connection(connection_id);
+                this->base_vec[slot_idx]->close_connection(base_connection_id);
             }
 
         private:
@@ -592,6 +592,7 @@ namespace connectivity_subsystem
             std::shared_ptr<ConnectionControllerInterface> controller;
             uint64_t connection_id;
             std::shared_ptr<std::atomic<bool>> is_alive_flag;
+            std::shared_ptr<std::atomic<bool>> is_connection_disposed;
             std::shared_ptr<void> cron_obj;
             bool is_closed;
 
@@ -627,12 +628,12 @@ namespace connectivity_subsystem
 
                 try
                 {
-                    this->is_alive_flag = std::make_shared<std::atomic<bool>>(true);
-                    auto resolutor_obj  = std::make_shared<InternalResolutor>(this->controller,
-                                                                              this->connection_id,
-                                                                              this->is_alive_flag,
-                                                                              std::nullopt,
-                                                                              std::nullopt);
+                    this->is_alive_flag             = std::make_shared<std::atomic<bool>>(true);
+                    this->is_connection_disposed    = std::make_shared<std::atomic<bool>>(false);
+                    auto resolutor_obj              = std::make_shared<InternalResolutor>(this->controller,
+                                                                                          this->connection_id,
+                                                                                          this->is_alive_flag,
+                                                                                          this->is_connection_disposed);
 
                     this->cron_obj      = cron_subsystem::register_periodic_cronjob(resolutor_obj, CRON_JOB_DURATION);
                     this->is_closed     = false;
@@ -671,6 +672,12 @@ namespace connectivity_subsystem
                 }
 
                 this->cron_obj = nullptr;
+
+                if (this->is_connection_disposed->exchange(true, std::memory_order_relaxed))
+                {
+                    return;
+                }
+
                 this->controller->close_connection(this->connection_id);
             }
 
@@ -746,25 +753,39 @@ namespace connectivity_subsystem
                     std::shared_ptr<ConnectionControllerInterface> controller;
                     uint64_t connection_id;
                     std::shared_ptr<std::atomic<bool>> is_alive_flag;
+                    std::shared_ptr<std::atomic<bool>> is_connection_disposed;
                     std::optional<std::chrono::time_point<std::chrono::steady_clock>> first_timepoint;
                     std::optional<std::chrono::time_point<std::chrono::steady_clock>> broke_timepoint;
+                    bool is_connection_dispose_inquired;
 
                 public:
 
                     InternalResolutor(std::shared_ptr<ConnectionControllerInterface> controller,
                                       uint64_t connection_id,
                                       std::shared_ptr<std::atomic<bool>> is_alive_flag,
-                                      std::optional<std::chrono::time_point<std::chrono::steady_clock>> first_timepoint,
-                                      std::optional<std::chrono::time_point<std::chrono::steady_clock>> broke_timepoint) noexcept: controller(std::move(controller)),
-                                                                                                                                   connection_id(connection_id),
-                                                                                                                                   is_alive_flag(std::move(is_alive_flag)),
-                                                                                                                                   first_timepoint(first_timepoint),
-                                                                                                                                   broke_timepoint(broke_timepoint){}
+                                      std::shared_ptr<std::atomic<bool>> is_connection_disposed): controller(std::move(controller)),
+                                                                                                  connection_id(connection_id),
+                                                                                                  is_alive_flag(std::move(is_alive_flag)),
+                                                                                                  is_connection_disposed(std::move(is_connection_disposed)),
+                                                                                                  first_timepoint(std::nullopt),
+                                                                                                  broke_timepoint(std::nullopt),
+                                                                                                  is_connection_dispose_inquired(false){}
 
                     void update()
                     {
                         if (!this->is_alive_flag->load(std::memory_order_relaxed))
                         {
+                            if (std::exchange(this->is_connection_dispose_inquired, true))
+                            {
+                                return;
+                            }
+
+                            if (this->is_connection_disposed->exchange(true, std::memory_order_relaxed))
+                            {
+                                return;
+                            }
+
+                            this->controller->close_connection(this->connection_id);
                             return;
                         }
 

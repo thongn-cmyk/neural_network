@@ -356,8 +356,7 @@ int main()
         dg_sock::network_allocation::init();
 
         cron_subsystem::init();
-        dg_sock::network_cron::init();
-
+        // dg_sock::network_cron::init();
 
         std::filesystem::path tmp_file = std::filesystem::temp_directory_path() / "sock_stream_test.txt";
 

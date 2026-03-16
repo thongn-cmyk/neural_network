@@ -11,7 +11,7 @@
 #include "network_kernel_mailbox_impl1_channel_x.h"
 #include <random>
 #include "network_rest_frame.h"
-#include "logging_subsystem.h"
+#include <logging_subsystem/logging_subsystem.h>
 
 class IPSiever: public virtual dg_sock::network_kernel_mailbox_impl1::external_interface::IPSieverInterface{
 
@@ -70,9 +70,24 @@ void init_concurrency()
         worker_info_vec.push_back(WorkerInformation{.cpu_id = std::nullopt, .daemon = REST_CLIENT_DAEMON});   
     }
 
+    // for (size_t i = 0u; i < 1u; ++i)
+    // {
+    //     worker_info_vec.push_back(WorkerInformation{.cpu_id = std::nullopt, .daemon = UPDATE_DAEMON});
+    // }
+
     for (size_t i = 0u; i < 1u; ++i)
     {
-        worker_info_vec.push_back(WorkerInformation{.cpu_id = std::nullopt, .daemon = UPDATE_DAEMON});
+        worker_info_vec.push_back(WorkerInformation{.cpu_id = std::nullopt, .daemon = COROUTINE_DAEMON});
+    }
+
+    for (size_t i = 0u; i < 1u; ++i)
+    {
+        worker_info_vec.push_back(WorkerInformation{.cpu_id = std::nullopt, .daemon = CRON_TICK_DAEMON});
+    }
+
+    for (size_t i = 0u; i < 1u; ++i)
+    {
+        worker_info_vec.push_back(WorkerInformation{.cpu_id = std::nullopt, .daemon = CRON_WORK_DAEMON});
     }
 
     dg_sock::network_concurrency::init({worker_info_vec});
@@ -94,8 +109,8 @@ void init_basic()
     std::cout << "initializing cron subsystem\n"; 
     cron_subsystem::init();
 
-    std::cout << "initializing network_cron\n";
-    dg_sock::network_cron::init();
+    // std::cout << "initializing network_cron\n";
+    // dg_sock::network_cron::init();
 
     std::filesystem::path tmp_file = std::filesystem::temp_directory_path() / "request_test.txt";
 

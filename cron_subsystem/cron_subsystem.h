@@ -1,5 +1,5 @@
-#ifndef __CRON_SUBSYSTEM_H__
-#define __CRON_SUBSYSTEM_H__
+#ifndef __DG_CRON_SUBSYSTEM_H__
+#define __DG_CRON_SUBSYSTEM_H__
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -11,11 +11,14 @@
 #include <utility>
 #include <type_traits>
 #include <deque>
+#include <concurrency_base/concurrency_base.h>
 
 namespace cron_subsystem
 {
     //point is we have a dedicated waker, because we cant deep dive into the operating system and their friends
     //this dedicated waiter would fulfill the punctuality of the contracts which we'd leverage for other wakeup tasks there forward
+
+    //we'd need interrupter to interrupt sleeping routine only
 
     static inline const std::chrono::nanoseconds PERIODIC_CRON_SCAN_WAVELENGTH  = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::microseconds(100));
     static inline constexpr size_t PERIODIC_CRON_WORKER_SZ                      = 1;
@@ -134,15 +137,13 @@ namespace cron_subsystem
             }
     };
 
-    class PeriodicUpdateWorker
+    class PeriodicUpdateWorker: public virtual concurrency_base::WorkerInterface
     {
         private:
 
             std::shared_ptr<NoexceptUpdatableInterface> updatable;
-            std::unique_ptr<SleepingMachineInterface> sleeping_machine;
             std::chrono::nanoseconds periodic_dur;
-            std::atomic<bool> poison_pill;
-            std::atomic<bool> run_broke_pill;
+            std::unique_ptr<SleepingMachineInterface> sleeping_machine;
 
             static inline constexpr size_t POISON_CHK_INTERVAL = 8u;
 
@@ -168,101 +169,34 @@ namespace cron_subsystem
                 }
 
                 this->updatable         = std::move(updatable);
-                this->sleeping_machine  = std::move(sleeping_machine);
                 this->periodic_dur      = periodic_dur;
-                this->poison_pill       = false;
-                this->run_broke_pill    = false;
+                this->sleeping_machine  = std::move(sleeping_machine);
             }
 
-            void run() noexcept
+            auto run_one_epoch() noexcept -> bool
             {
-                if (this->run_broke_pill.exchange(true, std::memory_order_relaxed))
-                {
-                    std::abort();
-                }
+                this->updatable->update();
+                this->sleeping_machine->sleep_for(this->periodic_dur);
 
-                size_t local_counter = 0u;
-
-                while (true)
-                {
-                    if (local_counter == POISON_CHK_INTERVAL)
-                    {
-                        if (this->poison_pill.load(std::memory_order_relaxed))
-                        {
-                            break;
-                        }
-
-                        local_counter = 0u;
-                    }
-
-                    local_counter += 1u;
-
-                    this->updatable->update();
-                    this->sleeping_machine->sleep_for(this->periodic_dur);
-                }
-                
-                std::atomic_thread_fence(std::memory_order_seq_cst);
+                return true;
             }
-
-            void poison() noexcept
-            {
-                this->poison_pill.exchange(true, std::memory_order_relaxed);
-            }
-    };
-
-    struct WakerWorkerResource
-    {
-        std::shared_ptr<PeriodicUpdateWorker> worker;
-        std::shared_ptr<std::thread> thr;
     };
 
     auto get_periodic_waker_worker(const std::shared_ptr<NoexceptUpdatableInterface>& updatable,
                                    std::unique_ptr<SleepingMachineInterface>&& sleeping_machine,
                                    std::chrono::nanoseconds periodic_dur) -> std::shared_ptr<void>
     {
-        auto destructor = [](void * arg) noexcept
+        auto worker_resource = concurrency_base::daemon_saferegister(concurrency_base::CRON_TICK_DAEMON,
+                                                                     std::make_unique<PeriodicUpdateWorker>(updatable,
+                                                                                                            periodic_dur,
+                                                                                                            std::move(sleeping_machine)));
+                                                                    
+        if (!worker_resource.has_value())
         {
-            WakerWorkerResource * worker_resource = static_cast<WakerWorkerResource *>(arg);
-            worker_resource->worker->poison();
-            std::atomic_signal_fence(std::memory_order_seq_cst);
-            worker_resource->thr->join();
-
-            delete worker_resource;
-        };
-
-        std::shared_ptr<PeriodicUpdateWorker> worker = std::make_shared<PeriodicUpdateWorker>(updatable,
-                                                                                              periodic_dur,
-                                                                                              std::move(sleeping_machine));
-
-        auto worker_runner = [=]() noexcept
-        {
-            worker->run();
-        };
-
-        std::shared_ptr<std::thread> thr = std::make_shared<std::thread>(worker_runner);
-        WakerWorkerResource * worker_resource;
-
-        try
-        {
-            worker_resource = new WakerWorkerResource
-            {
-                WakerWorkerResource
-                {
-                    .worker = worker,
-                    .thr    = thr
-                }
-            };
-        }
-        catch (...)
-        {
-            std::abort();
+            common_exception::throw_exception(worker_resource.error());
         }
 
-        return std::unique_ptr<void, decltype(destructor)>
-        (
-            static_cast<void * >(worker_resource),
-            destructor
-        );
+        return std::make_shared<decltype(worker_resource)>(std::move(worker_resource));
     }
 
     class PeriodicCronContainer: public virtual PeriodicCronContainerInterface
@@ -444,15 +378,11 @@ namespace cron_subsystem
             }
     };
 
-    class CronWorker
+    class CronWorker: public virtual concurrency_base::WorkerInterface
     {
         private:
 
             std::shared_ptr<PeriodicCronContainerInterface> workorder_container;
-            std::atomic<bool> poison_pill;
-            std::atomic<bool> run_broke_pill;
-
-            static inline constexpr size_t POISON_CHK_INTERVAL = 8u;
 
         public:
 
@@ -464,130 +394,69 @@ namespace cron_subsystem
                 }
 
                 this->workorder_container   = std::move(workorder_container);
-                this->poison_pill           = false;
-                this->run_broke_pill        = false;
             }
 
-            void run() noexcept
+            auto run_one_epoch() noexcept -> bool
             {
-                if (this->run_broke_pill.exchange(true, std::memory_order_relaxed))
+                PeriodicCronJob cron_job = this->workorder_container->pop();
+
+                if (cron_job.updatable == nullptr)
                 {
-                    std::abort();
+                    return true;
                 }
 
-                size_t local_counter = 0u;
-
-                while (true)
+                try
                 {
-                    if (local_counter == POISON_CHK_INTERVAL)
-                    {
-                        if (this->poison_pill.load(std::memory_order_relaxed))
-                        {
-                            break;
-                        }
+                    bool has_next = cron_job.updatable->update();
 
-                        local_counter = 0u;
-                    }
-
-                    local_counter += 1u;
-                    PeriodicCronJob cron_job = this->workorder_container->pop();
-
-                    if (cron_job.updatable == nullptr)
+                    if (!has_next)
                     {
-                        continue;
-                    }
-
-                    try
-                    {
-                        bool has_next = cron_job.updatable->update();
-
-                        if (!has_next)
-                        {
-                            continue;
-                        }
-                    }
-                    catch (...)
-                    {
-                        logging_subsystem::noexcept_log(logging_subsystem::LogFactory{}.topic("cron_subsystem")
-                                                                                       .topic("CronWorker")
-                                                                                       .topic("run cron job")
-                                                                                       .error()
-                                                                                       .message(std::current_exception())
-                                                                                       .get());
-                    }
-
-                    try
-                    {
-                        this->workorder_container->push(std::move(cron_job));
-                    }
-                    catch (...)
-                    {
-                        logging_subsystem::noexcept_log(logging_subsystem::LogFactory{}.topic("cron_subsystem")
-                                                                                       .topic("CronWorker")
-                                                                                       .topic("re-queue cron job")
-                                                                                       .critical()
-                                                                                       .message(std::current_exception())
-                                                                                       .get());
+                        return true;
                     }
                 }
+                catch (...)
+                {
+                    logging_subsystem::noexcept_log(logging_subsystem::LogFactory{}.topic("cron_subsystem")
+                                                                                   .topic("CronWorker")
+                                                                                   .topic("run cron job")
+                                                                                   .error()
+                                                                                   .message(std::current_exception())
+                                                                                   .get());
 
-                std::atomic_thread_fence(std::memory_order_seq_cst);
+                    return true;
+                }
+
+                try
+                {
+                    this->workorder_container->push(std::move(cron_job));
+                }
+                catch (...)
+                {
+                    logging_subsystem::noexcept_log(logging_subsystem::LogFactory{}.topic("cron_subsystem")
+                                                                                   .topic("CronWorker")
+                                                                                   .topic("re-queue cron job")
+                                                                                   .critical()
+                                                                                   .message(std::current_exception())
+                                                                                   .get());
+
+                    return true;
+                }
+
+                return true;
             }
-
-            void poison() noexcept
-            {
-                this->poison_pill.exchange(true, std::memory_order_relaxed);
-            }
-    };
-
-    struct CronWorkerResource
-    {
-        std::shared_ptr<CronWorker> worker;
-        std::shared_ptr<std::thread> thr;
     };
 
     auto get_periodic_cron_worker(const std::shared_ptr<PeriodicCronContainerInterface>& cron_container) -> std::shared_ptr<void>
     {
-        auto destructor = [](void * arg) noexcept
-        {
-            CronWorkerResource * worker_resource = static_cast<CronWorkerResource *>(arg);
-            worker_resource->worker->poison();
-            std::atomic_signal_fence(std::memory_order_seq_cst);
-            worker_resource->thr->join();
+        auto worker_resource = concurrency_base::daemon_saferegister(concurrency_base::CRON_WORK_DAEMON,
+                                                                     std::make_unique<CronWorker>(cron_container));
 
-            delete worker_resource;
-        };
-
-        std::shared_ptr<CronWorker> worker  = std::make_shared<CronWorker>(cron_container);
-        auto worker_runner = [=]() noexcept
+        if (!worker_resource.has_value())
         {
-            worker->run();
-        };
-
-        std::shared_ptr<std::thread> thr    = std::make_shared<std::thread>(worker_runner);
-        CronWorkerResource * worker_resource;
-
-        try
-        {
-            worker_resource = new CronWorkerResource
-            {
-                CronWorkerResource
-                {
-                    .worker = worker,
-                    .thr    = thr
-                }
-            };
-        }
-        catch (...)
-        {
-            std::abort();
+            common_exception::throw_exception(worker_resource.error());
         }
 
-        return std::unique_ptr<void, decltype(destructor)>
-        (
-            static_cast<void * >(worker_resource),
-            destructor //
-        );
+        return std::make_shared<decltype(worker_resource)>(std::move(worker_resource));
     }
 
     class PeriodicCronLauncher: public virtual PeriodicCronLauncherInterface

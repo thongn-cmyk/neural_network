@@ -15,6 +15,8 @@
 #include <mutex_extension/fair_mutex.h>
 #include <memory>
 #include <iostream>
+#include <concurrency_base/concurrency_base.h>
+#include <common_exception/common_exception.h>
 
 namespace thread_x
 {
@@ -45,110 +47,50 @@ namespace thread_x
             virtual void poison() noexcept = 0;
     };
 
-    class Worker
+    class Worker: public virtual concurrency_base::WorkerInterface
     {
         private:
 
             std::shared_ptr<WorkOrderContainerInterface> workorder_container;
-            std::atomic<bool> poison_pill;
-            std::atomic<bool> unique_run;
 
         public:
 
-            Worker(std::shared_ptr<WorkOrderContainerInterface> workorder_container): workorder_container(std::move(workorder_container)),
-                                                                                      poison_pill(false),
-                                                                                      unique_run(false){}
-
-            void run() noexcept
+            Worker(std::shared_ptr<WorkOrderContainerInterface> workorder_container)
             {
-                bool was_value = this->unique_run.exchange(true, std::memory_order_relaxed);
-
-                if (was_value != false)
+                if (workorder_container == nullptr)
                 {
-                    std::abort();
+                    throw std::invalid_argument("bad container, null");
                 }
 
-                while (true)
+                this->workorder_container = std::move(workorder_container);
+            }
+
+            auto run_one_epoch() noexcept -> bool
+            {
+                std::unique_ptr<ExecutableInterface> workorder = this->workorder_container->pop();
+
+                if (workorder == nullptr)
                 {
-                    bool is_poisoned = this->poison_pill.load(std::memory_order_relaxed);
-
-                    if (is_poisoned)
-                    {
-                        break;
-                    }
-
-                    std::unique_ptr<ExecutableInterface> workorder = this->workorder_container->pop();
-
-                    if (workorder == nullptr)
-                    {
-                        continue;
-                    }
-
-                    workorder->run();
+                    return true;
                 }
 
-                std::atomic_thread_fence(std::memory_order_seq_cst);
-            }
+                workorder->run();
 
-            void poison() noexcept
-            {
-                this->poison_pill.exchange(true, std::memory_order_relaxed);
+                return true;
             }
-    };
-
-    struct WorkerPack
-    {
-        std::shared_ptr<Worker> worker;
-        std::shared_ptr<std::thread> thr;
     };
 
     auto get_worker(std::shared_ptr<WorkOrderContainerInterface> workorder_container) -> std::shared_ptr<void>
     {
-        if (workorder_container == nullptr)
+        auto worker_resource = concurrency_base::daemon_saferegister(concurrency_base::ASYNC_SEQPAR_DAEMON,
+                                                                     std::make_unique<Worker>(std::move(workorder_container)));
+
+        if (!worker_resource.has_value())
         {
-            throw std::invalid_argument("bad container, null");
+            common_exception::throw_exception(worker_resource.error());
         }
 
-        auto destructor = [](void * arg) noexcept
-        {
-            WorkerPack * worker_pack = static_cast<WorkerPack *>(arg);
-            worker_pack->worker->poison();
-            std::atomic_signal_fence(std::memory_order_seq_cst);
-            worker_pack->thr->join();
-
-            delete worker_pack;
-        };
-
-        std::shared_ptr<Worker> worker      = std::make_shared<Worker>(std::move(workorder_container));
-        auto worker_runner = [=]() noexcept
-        {
-            worker->run();
-        };
-
-        std::shared_ptr<std::thread> thr    = std::make_shared<std::thread>(worker_runner);
-        WorkerPack * worker_pack;
-
-        try
-        {
-            worker_pack = new WorkerPack
-            (
-                WorkerPack
-                {
-                    .worker = worker,
-                    .thr    = thr
-                }
-            );
-        }
-        catch (...)
-        {
-            std::abort();
-        }
-
-        return std::unique_ptr<void, decltype(destructor)>
-        (
-            static_cast<void *>(worker_pack),
-            destructor
-        );
+        return std::make_shared<decltype(worker_resource)>(std::move(worker_resource));
     }
 
     class TwoWayWorkOrderContainer: public virtual WorkOrderContainerInterface
