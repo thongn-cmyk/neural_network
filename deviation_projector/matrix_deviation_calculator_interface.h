@@ -1,14 +1,14 @@
 //HEADER_CONTROL 1
 
-#ifndef __MATRIX_DEVIATION_CALCULATOR_INTERFACE_H__
-#define __MATRIX_DEVIATION_CALCULATOR_INTERFACE_H__
+#ifndef __DG_DEVIATION_PROJECTOR_MATRIX_DEVIATION_CALCULATOR_INTERFACE_H__
+#define __DG_DEVIATION_PROJECTOR_MATRIX_DEVIATION_CALCULATOR_INTERFACE_H__
 
 #include <vector>
-#include "float_def.h"
-#include "tensor_model.h"
+#include <general_definition/float_def.h>
+#include <matrix/tensor_model.h>
 #include <memory>
 
-namespace matrix_deviation_calculator
+namespace deviation_projector
 {
     using mdc_float_t = float_def::mdc_float_t;
 

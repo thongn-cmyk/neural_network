@@ -5,13 +5,13 @@
 
 #include <stdint.h>
 #include <stdlib.h>
-#include "stdx.h"
+#include <stl_extension/stdx.h>
 #include <memory>
 #include <vector>
 #include "tensor_model.h"
 #include <stdexcept>
 #include "tensor_being_unit_operation.h"
-#include "float_def.h"
+#include <general_definition/float_def.h>
 
 namespace tensor_matrix_operation
 {
@@ -339,6 +339,13 @@ namespace tensor_matrix_operation
         {
             tensor_being_unit_operation::flatten(arg->being_vec[i], output_vec);
         }
+    }
+
+    template <class ...Args>
+    constexpr void get_shape(const std::shared_ptr<tensor_model::Matrix>& arg,
+                             std::vector<size_t, Args...>& output_vec)
+    {
+
     }
 
     template <class Allocator = std::allocator<char>>

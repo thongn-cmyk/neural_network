@@ -25,8 +25,9 @@
 
 namespace dg_sock::network_rest_frame::model
 {
-    //
-
+    //we'd have to add secrets to the mailbox_flash_streamx directly to unhash the results
+    //it's seemed that we'd have to split the secrets evenly into the packets, combine them into a master key to decrypt the message
+    
     using ticket_id_t   = uint64_t; //I've thought long and hard, it's better to do bitshift, because the otherwise would be breaking single responsibilities, breach of extensions
     using clock_id_t    = uint64_t; 
 
@@ -85,17 +86,18 @@ namespace dg_sock::network_rest_frame::model
     {
         Address remote_addr;
         dg_sock::string resource_addr;
+        uint32_t channel;
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector) const
         {
-            reflector(remote_addr, resource_addr);
+            reflector(remote_addr, resource_addr, channel);
         }
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector)
         {
-            reflector(remote_addr, resource_addr);
+            reflector(remote_addr, resource_addr, channel);
         }
     };
 
@@ -105,6 +107,7 @@ namespace dg_sock::network_rest_frame::model
     {
         ResourceAddress requestee_url;
         Address requestor;
+        //
 
         dg_sock::string payload;
         dg_sock::string payload_serialization_format;
@@ -2706,14 +2709,12 @@ namespace dg_sock::network_rest_frame::server_instance
         uint64_t cache_unique_write_set_each_capacity;
         uint64_t cache_unique_write_set_concurrency_sz;
 
-        uint32_t recv_channel;
+        std::unordered_map<uint32_t, uint64_t> recv_channel_counter_map;
         uint32_t send_channel;
 
         uint64_t cache_unique_write_traffic_controller_elemental_thru_cap;
         uint64_t cache_unique_write_traffic_controller_concurrency_sz;
         std::chrono::nanoseconds cache_unique_write_traffic_controller_reset_duration;
-
-        uint64_t request_resolver_worker_sz;
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector) const
@@ -2723,10 +2724,11 @@ namespace dg_sock::network_rest_frame::server_instance
                       cache_concurrency_sz,
                       cache_unique_write_set_each_capacity,
                       cache_unique_write_set_concurrency_sz,
+                      recv_channel_counter_map,
+                      send_channel,
                       cache_unique_write_traffic_controller_elemental_thru_cap,
                       cache_unique_write_traffic_controller_concurrency_sz,
-                      cache_unique_write_traffic_controller_reset_duration,
-                      request_resolver_worker_sz);
+                      cache_unique_write_traffic_controller_reset_duration);
         }
 
         template <class Reflector>
@@ -2737,10 +2739,11 @@ namespace dg_sock::network_rest_frame::server_instance
                       cache_concurrency_sz,
                       cache_unique_write_set_each_capacity,
                       cache_unique_write_set_concurrency_sz,
+                      recv_channel_counter_map,
+                      send_channel,
                       cache_unique_write_traffic_controller_elemental_thru_cap,
                       cache_unique_write_traffic_controller_concurrency_sz,
-                      cache_unique_write_traffic_controller_reset_duration,
-                      request_resolver_worker_sz);
+                      cache_unique_write_traffic_controller_reset_duration);
         }
     };
 
@@ -2762,7 +2765,7 @@ namespace dg_sock::network_rest_frame::server_instance
             uint64_t cache_unique_write_set_each_capacity;
             uint64_t cache_unique_write_set_concurrency_sz;
 
-            uint32_t recv_channel;
+            std::unordered_map<uint32_t, uint64_t> recv_channel_counter_map;
             uint32_t send_channel;
 
             uint64_t cache_unique_write_traffic_controller_elemental_thru_cap;
@@ -2778,8 +2781,6 @@ namespace dg_sock::network_rest_frame::server_instance
             uint64_t request_resolver_cache_fetch_feed_cap;
             uint64_t request_resolver_busy_consume_sz;
 
-            uint64_t request_resolver_worker_sz;
-
             static inline constexpr size_t DEFAULT_BATCH_SZ         = size_t{1} << 8;
             static inline constexpr size_t DEFAULT_BUSY_CONSUME_SZ  = 0u;
 
@@ -2790,6 +2791,8 @@ namespace dg_sock::network_rest_frame::server_instance
                                  cache_concurrency_sz(),
                                  cache_unique_write_set_each_capacity(),
                                  cache_unique_write_set_concurrency_sz(),
+                                 recv_channel_counter_map(),
+                                 send_channel(),
                                  cache_unique_write_traffic_controller_elemental_thru_cap(),
                                  cache_unique_write_traffic_controller_concurrency_sz(),
                                  request_resolver_consume_sz(DEFAULT_BATCH_SZ),
@@ -2799,8 +2802,7 @@ namespace dg_sock::network_rest_frame::server_instance
                                  request_resolver_server_fetch_feed_cap(DEFAULT_BATCH_SZ),
                                  request_resolver_cache_server_fetch_feed_cap(DEFAULT_BATCH_SZ),
                                  request_resolver_cache_fetch_feed_cap(DEFAULT_BATCH_SZ),
-                                 request_resolver_busy_consume_sz(DEFAULT_BUSY_CONSUME_SZ),
-                                 request_resolver_worker_sz(){}
+                                 request_resolver_busy_consume_sz(DEFAULT_BUSY_CONSUME_SZ){}
 
 
             auto set_config(const BuilderConfig& config) -> RestServerBuilder&
@@ -2812,14 +2814,12 @@ namespace dg_sock::network_rest_frame::server_instance
                 this->cache_unique_write_set_each_capacity                      = config.cache_unique_write_set_each_capacity;
                 this->cache_unique_write_set_concurrency_sz                     = config.cache_unique_write_set_concurrency_sz;
 
-                this->recv_channel                                              = config.recv_channel;
+                this->recv_channel_counter_map                                  = config.recv_channel_counter_map;
                 this->send_channel                                              = config.send_channel;
 
                 this->cache_unique_write_traffic_controller_elemental_thru_cap  = config.cache_unique_write_traffic_controller_elemental_thru_cap;
                 this->cache_unique_write_traffic_controller_concurrency_sz      = config.cache_unique_write_traffic_controller_concurrency_sz;
                 this->cache_unique_write_traffic_controller_reset_duration      = config.cache_unique_write_traffic_controller_reset_duration;
-
-                this->request_resolver_worker_sz                                = config.request_resolver_worker_sz;
 
                 return *this;
             }
@@ -2895,7 +2895,8 @@ namespace dg_sock::network_rest_frame::server_instance
                                              const std::shared_ptr<RequestFiltererDictionaryInterface>& filterer_dictionary,
                                              const std::shared_ptr<InfiniteCacheControllerInterface>& cache_controller,
                                              const std::shared_ptr<InfiniteCacheUniqueWriteControllerInterface>& cache_unique_write_controller,
-                                             const std::shared_ptr<CacheUniqueWriteTrafficControllerInterface>& traffic_controller) -> std::unique_ptr<dg_sock::network_concurrency::WorkerInterface>
+                                             const std::shared_ptr<CacheUniqueWriteTrafficControllerInterface>& traffic_controller,
+                                             uint32_t recv_channel) -> std::unique_ptr<dg_sock::network_concurrency::WorkerInterface>
             {
                 using namespace dg_sock::network_rest_frame::server_impl1;
 
@@ -2904,7 +2905,7 @@ namespace dg_sock::network_rest_frame::server_instance
                                                               cache_controller,
                                                               cache_unique_write_controller,
                                                               traffic_controller,
-                                                              this->recv_channel,
+                                                              recv_channel,
                                                               this->send_channel,
                                                               this->request_resolver_consume_sz,
                                                               this->request_resolver_mailbox_feed_cap,
@@ -2925,11 +2926,14 @@ namespace dg_sock::network_rest_frame::server_instance
                 std::shared_ptr<InfiniteCacheUniqueWriteControllerInterface> cache_unique_write_controller  = this->get_cache_unique_write_controller();
                 std::shared_ptr<CacheUniqueWriteTrafficControllerInterface> traffic_controller              = this->get_traffic_controller();
 
-                for (size_t i = 0u; i < this->request_resolver_worker_sz; ++i)
+                for (auto [recv_channel, request_resolver_worker_sz]: this->recv_channel_counter_map)
                 {
-                    worker_vec.push_back(this->get_request_resolver_worker(dictionary, filterer_dictionary,
-                                                                           cache_controller, cache_unique_write_controller,
-                                                                           traffic_controller));
+                    for (size_t i = 0u; i < request_resolver_worker_sz; ++i)
+                    {
+                        worker_vec.push_back(this->get_request_resolver_worker(dictionary, filterer_dictionary,
+                                                                               cache_controller, cache_unique_write_controller,
+                                                                               traffic_controller, recv_channel));
+                    }
                 }
 
                 return this->run_workable_vec(std::move(worker_vec));
@@ -2979,8 +2983,8 @@ namespace dg_sock::network_rest_frame::server_instance
     }
 }
 
-namespace dg_sock::network_rest_frame::client_impl1{
-
+namespace dg_sock::network_rest_frame::client_impl1
+{
     using namespace dg_sock::network_rest_frame::client; 
 
     static inline auto request_id_to_cache_id(const RequestID& request_id) noexcept -> CacheID
@@ -3945,31 +3949,28 @@ namespace dg_sock::network_rest_frame::client_impl1{
 
             std::shared_ptr<RequestContainerInterface> request_container;
             size_t mailbox_feed_cap;
-            uint32_t send_channel;
 
         public:
 
             OutBoundWorker(std::shared_ptr<RequestContainerInterface> request_container,
-                           size_t mailbox_feed_cap,
-                           uint32_t send_channel) noexcept: request_container(std::move(request_container)),
-                                                            mailbox_feed_cap(mailbox_feed_cap),
-                                                            send_channel(send_channel){}
+                           size_t mailbox_feed_cap) noexcept: request_container(std::move(request_container)),
+                                                              mailbox_feed_cap(mailbox_feed_cap){}
 
             bool run_one_epoch() noexcept
             {
                 dg_sock::vector<model::InternalRequest> request_vec = this->request_container->pop();
 
                 auto feed_resolutor             = InternalFeedResolutor{};
-                feed_resolutor.send_channel     = this->send_channel;
 
                 size_t trimmed_mailbox_feed_cap = std::min(std::min(this->mailbox_feed_cap, dg_sock::network_kernel_mailbox::max_consume_size()), static_cast<size_t>(request_vec.size()));
-                size_t feeder_allocation_cost   = dg_sock::network_producer_consumer::delvrsrv_allocation_cost(&feed_resolutor, trimmed_mailbox_feed_cap);
+                size_t feeder_allocation_cost   = dg_sock::network_producer_consumer::delvrsrv_kv_allocation_cost(&feed_resolutor, trimmed_mailbox_feed_cap);
                 dg_sock::network_stack_allocation::NoExceptRawAllocation<char[]> feeder_mem(feeder_allocation_cost);
-                auto feeder                     = dg_sock::network_exception_handler::nothrow_log(dg_sock::network_producer_consumer::delvrsrv_open_preallocated_raiihandle(&feed_resolutor, trimmed_mailbox_feed_cap, feeder_mem.get()));
+                auto feeder                     = dg_sock::network_exception_handler::nothrow_log(dg_sock::network_producer_consumer::delvrsrv_kv_open_preallocated_raiihandle(&feed_resolutor, trimmed_mailbox_feed_cap, feeder_mem.get()));
 
                 for (model::InternalRequest& request: request_vec)
                 {
                     Address remote_addr = request.request.requestee_url.remote_addr; 
+                    uint32_t channel    = request.request.requestee_url.channel;
                     std::expected<dg_sock::string, exception_t> bstream = dg_sock::network_exception::to_cstyle_function(dg_sock::network_compact_serializer::dgstd_serialize<dg_sock::string, model::InternalRequest>)(request, model::INTERNAL_REQUEST_SERIALIZATION_SECRET);
 
                     if (!bstream.has_value())
@@ -3984,7 +3985,7 @@ namespace dg_sock::network_rest_frame::client_impl1{
                         .content    = std::move(bstream.value())
                     };
 
-                    dg_sock::network_producer_consumer::delvrsrv_deliver(feeder.get(), std::move(feed_arg));
+                    dg_sock::network_producer_consumer::delvrsrv_kv_deliver(feeder.get(), channel, std::move(feed_arg));
                 }
 
                 return true;
@@ -3998,11 +3999,9 @@ namespace dg_sock::network_rest_frame::client_impl1{
                 dg_sock::string content;
             };
 
-            struct InternalFeedResolutor: dg_sock::network_producer_consumer::ConsumerInterface<InternalMailBoxArgument>
+            struct InternalFeedResolutor: dg_sock::network_producer_consumer::KVConsumerInterface<uint32_t, InternalMailBoxArgument>
             {
-                uint32_t send_channel;
-
-                void push(std::move_iterator<InternalMailBoxArgument *> mailbox_arg, size_t sz) noexcept
+                void push(const uint32_t& send_channel, std::move_iterator<InternalMailBoxArgument *> mailbox_arg, size_t sz) noexcept
                 {
                     dg_sock::network_stack_allocation::NoExceptAllocation<exception_t[]> exception_arr(sz);
                     dg_sock::network_stack_allocation::NoExceptAllocation<Address[]> addr_arr(sz);
@@ -4016,7 +4015,7 @@ namespace dg_sock::network_rest_frame::client_impl1{
                         content_arr[i]  = std::move(base_mailbox_arg[i].content);
                     }
 
-                    dg_sock::network_kernel_mailbox::send(this->send_channel,
+                    dg_sock::network_kernel_mailbox::send(send_channel,
                                                           addr_arr.get(), content_arr.get(), sz,
                                                           exception_arr.get());
 
@@ -4708,8 +4707,7 @@ namespace dg_sock::network_rest_frame::client_impl1{
                 return std::make_unique<IncrementingRequestIDGenerator>(ip, ip_factory_id, id_counter);
             }
 
-            static auto get_outbound_worker(std::shared_ptr<RequestContainerInterface> request_container,
-                                            uint32_t send_channel) -> std::unique_ptr<dg_sock::network_concurrency::WorkerInterface>
+            static auto get_outbound_worker(std::shared_ptr<RequestContainerInterface> request_container) -> std::unique_ptr<dg_sock::network_concurrency::WorkerInterface>
             {
                 if (request_container == nullptr)
                 {
@@ -4719,8 +4717,7 @@ namespace dg_sock::network_rest_frame::client_impl1{
                 size_t mailbox_feed_cap = size_t{1} << 6;
 
                 return std::make_unique<OutBoundWorker>(std::move(request_container),
-                                                        mailbox_feed_cap,
-                                                        send_channel);
+                                                        mailbox_feed_cap);
             }
 
             //we'd attempt to solve the problem of worker pollution on a hollistic scale
@@ -4767,7 +4764,6 @@ namespace dg_sock::network_rest_frame::client_instance
             uint64_t concurrent_request_cap;
             std::chrono::nanoseconds max_wait_dur;
             std::optional<uint32_t> recv_channel;
-            std::optional<uint32_t> send_channel;
             uint64_t outbound_worker_sz;
             uint64_t inbound_worker_sz;
             uint64_t expiry_worker_sz;
@@ -4789,7 +4785,6 @@ namespace dg_sock::network_rest_frame::client_instance
                                concurrent_request_cap(DEFAULT_CONCURRENT_REQUEST_CAP),
                                max_wait_dur(DEFAULT_MAX_WAIT_DUR),
                                recv_channel(std::nullopt),
-                               send_channel(std::nullopt),
                                outbound_worker_sz(DEFAULT_OUTBOUND_WORKER_SZ),
                                inbound_worker_sz(DEFAULT_INBOUND_WORKER_SZ),
                                expiry_worker_sz(DEFAULT_EXPIRY_WORKER_SZ),
@@ -4860,13 +4855,6 @@ namespace dg_sock::network_rest_frame::client_instance
                 return *this;
             }
 
-            auto set_send_channel(uint32_t channel) -> SolutionBuilder&
-            {
-                this->send_channel = channel;
-
-                return *this;
-            }
-
             auto set_outbound_worker_size(size_t sz) -> SolutionBuilder&
             {
                 if (sz == 0u)
@@ -4931,7 +4919,7 @@ namespace dg_sock::network_rest_frame::client_instance
             {
                 reflector(base_ticket_cap, ticket_controller_concurrency_sz,
                           system_thread_count, concurrent_request_cap,
-                          max_wait_dur, recv_channel, send_channel,
+                          max_wait_dur, recv_channel,
                           outbound_worker_sz, inbound_worker_sz,
                           expiry_worker_sz);
             }
@@ -4941,7 +4929,7 @@ namespace dg_sock::network_rest_frame::client_instance
             {
                 reflector(base_ticket_cap, ticket_controller_concurrency_sz,
                           system_thread_count, concurrent_request_cap,
-                          max_wait_dur, recv_channel, send_channel,
+                          max_wait_dur, recv_channel,
                           outbound_worker_sz, inbound_worker_sz,
                           expiry_worker_sz);   
             }
@@ -5037,13 +5025,7 @@ namespace dg_sock::network_rest_frame::client_instance
                     dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
                 }
 
-                if (!this->send_channel.has_value())
-                {
-                    dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
-                }
-
-                std::unique_ptr<dg_sock::network_concurrency::WorkerInterface> worker = client_impl1::ComponentFactory::get_outbound_worker(request_container,
-                                                                                                                                            this->send_channel.value()); //its best practice to just wait here, we'd be back for optimizations
+                std::unique_ptr<dg_sock::network_concurrency::WorkerInterface> worker = client_impl1::ComponentFactory::get_outbound_worker(request_container); //its best practice to just wait here, we'd be back for optimizations
 
                 auto worker_handle = dg_sock::network_exception_handler::throw_nolog(dg_sock::network_concurrency::daemon_saferegister(dg_sock::network_concurrency::REST_CLIENT_DAEMON, std::move(worker)));
 
@@ -5301,7 +5283,7 @@ namespace dg_sock::network_rest_frame::client
                                       dg_sock::unique_ptr<PromiseFactoryInterface<T>>&& promise_factory,
                                       dg_sock::unique_ptr<RetryExceptionRuleInterface>&& exception_rule)
                     {
-                        this->current_promise   = this->promise_factory->get();
+                        this->current_promise   = promise_factory->get();
 
                         this->bucket            = std::move(bucket);
                         this->promise_factory   = std::move(promise_factory);
@@ -5344,7 +5326,9 @@ namespace dg_sock::network_rest_frame::client
 
                         if (this->is_on_retry)
                         {
-                            if (lapsed < this->get_retry_sleep_duration())
+                            std::chrono::nanoseconds retry_lapsed = now - this->on_retry_since;
+
+                            if (retry_lapsed < this->get_retry_sleep_duration())
                             {
                                 return false;
                             }
@@ -5600,6 +5584,7 @@ namespace dg_sock::network_rest_frame::client
                               _payload(std::nullopt),
                               _serialization_method(std::nullopt){}
 
+            //we'd have to abstractize this, I'd like a factory and user not knwoing about Url
             auto url(const Url& url_arg) -> RequestFactory&
             {
                 this->_url = url_arg;

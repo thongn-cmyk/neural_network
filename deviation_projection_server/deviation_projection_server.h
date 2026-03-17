@@ -1,11 +1,19 @@
-#ifndef __DEVIATION_PROJECTION_SERVER_H__
-#define __DEVIATION_PROJECTION_SERVER_H__
+#ifndef __DG_DEVIATION_PROJECTION_SERVER_H__
+#define __DG_DEVIATION_PROJECTION_SERVER_H__
 
 #include <stdint.h>
 #include <stdlib.h>
 #include <vector>
 #include <unordered_map>
-#include "float_def.h"
+#include <general_definition/float_def.h>
+#include <memory>
+#include <internal_rest/network_rest_frame.h>
+#include <deviation_projector/generic_matrix_deviation_calculator_interface.h>
+#include <deviation_projector/generic_resource.h>
+#include <connectivity_subsystem/connectivity_subsystem.h>
+#include <string>
+#include <serializer/compact_serializer.h>
+#include <chrono>
 
 namespace deviation_projection_server
 {
@@ -13,38 +21,26 @@ namespace deviation_projection_server
 
     using local_exception_t = uint8_t;
 
-    struct Remote
-    {
-        std::string ipv6;
-        uint16_t port;
+    static inline constexpr local_exception_t SUCCESS                                       = 0u;
+    static inline constexpr local_exception_t INVALID_ARGUMENT_ERROR_CODE                   = 1u;
+    static inline constexpr local_exception_t RUNTIME_ERROR_CODE                            = 2u;
+    static inline constexpr local_exception_t CLIENT_NOT_FOUND_ERROR_CODE                   = 3u;
 
-        template <class Reflector>
-        void dg_reflect(const Reflector& reflector) const
-        {
-            reflector(ipv6, port);
-        }
-
-        template <class Reflector>
-        void dg_reflect(const Refelctor& reflector)
-        {
-            reflector(ipv6, port);
-        }
-    };
+    static inline constexpr std::string_view DEVIATION_PROJECTION_SERVER_VERSION_CONTROL    = "";
 
     class ClientBox
     {
         private:
 
-            std::vector<std::pair<std::shared_ptr<tensor_model::Matrix>, std::shared_ptr<tensor_model::Matrix>>> training_data;
-            std::vector<std::unique_ptr<deviation_projector::MatrixDeviationCalculatorInterface>> deviation_calculator_vec;
+            std::vector<std::pair<std::shared_ptr<std::string>, std::shared_ptr<std::string>>> training_data;
+            std::vector<std::unique_ptr<deviation_projector::GenericMatrixDeviationCalculatorInterface>> deviation_calculator_vec;
 
         public:
 
             ClientBox(): training_data(),
-                         matrix_resource_vec(),
-                         deviation_calculator(){}
+                         deviation_calculator_vec(){}
 
-            void add_training_data(const std::shared_ptr<tensor_model::Matrix>& inp, const std::shared_ptr<tensor_model::Matrix>& out)
+            void add_training_data(const std::shared_ptr<std::string>& inp, const std::shared_ptr<std::string>& out)
             {
                 if (inp == nullptr)
                 {
@@ -76,11 +72,6 @@ namespace deviation_projection_server
 
             auto get() -> std::vector<mdc_float_t>
             {
-                if (this->deviation_calculator == nullptr)
-                {
-                    throw std::runtime_error("incomplete setup, missing deviation calculator");
-                }
-
                 std::vector<mdc_float_t> rs_vec{};
 
                 for (const auto& deviation_calculator: this->deviation_calculator_vec)
@@ -108,7 +99,7 @@ namespace deviation_projection_server
                                                                                                            was_explicitly_destroyed(false),
                                                                                                            mtx(fair_mutex::make_unique_fair_atomic_flag()){}
 
-            void add_training_data(const std::shared_ptr<tensor_model::Matrix>& inp, const std::shared_ptr<tensor_model::Matrix>& out)
+            void add_training_data(const std::shared_ptr<std::string>& inp, const std::shared_ptr<std::string>& out)
             {
                 fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*this->mtx);
 
@@ -310,7 +301,7 @@ namespace deviation_projection_server
 
         public:
 
-            static inline const std::chrono::nanoseconds CROM_DURATION = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(1));
+            static inline const std::chrono::nanoseconds CRON_DURATION = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(1));
 
             SelfObservedClientManager()
             {
@@ -332,6 +323,39 @@ namespace deviation_projection_server
             {
                 this->base->close_client_box(client_box_id);
             }
+    };
+
+    struct GetVersionRequest
+    {
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector) const
+        {
+            (void) reflector;
+        }
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector)
+        {
+            (void) reflector;
+        }
+    };
+
+    struct GetVersionResponse
+    {
+        std::expected<std::string, deviation_projection_server::local_exception_t> response;
+        std::string err_verbal_description;
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector) const
+        {
+            reflector(response, err_verbal_description);
+        }
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector)
+        {
+            reflector(response, err_verbal_description);
+        }
     };
 
     struct OpenClientRequest
@@ -407,25 +431,19 @@ namespace deviation_projection_server
     struct AddTrainingDataRequest
     {
         uint64_t client_id;
-        std::vector<tensor_model::tensor_std_float_t> input_logit_vec;
-        std::vector<uint64_t> input_logit_vec_shape;
-        std::vector<tensor_model::tensor_std_float_t> output_logit_vec;
-        std::vector<uint64_t> output_logit_vec_shape;
+        std::string input_matrix;
+        std::string output_matrix;
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector) const
         {
-            reflector(client_id,
-                      input_logit_vec, input_logit_vec_shape,
-                      output_logit_vec, output_logit_vec_shape);
+            reflector(client_id, input_matrix, output_matrix);
         }
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector)
         {
-            reflector(client_id,
-                      input_logit_vec, input_logit_vec_shape,
-                      output_logit_vec, output_logit_vec_shape);
+            reflector(client_id, input_matrix, output_matrix);
         }
     };
 
@@ -537,7 +555,7 @@ namespace deviation_projection_server
 
     struct GetDeviationResponse
     {
-        std::expected<mdc_float_t, deviation_projection_server::local_exception_t> result;
+        std::expected<std::vector<mdc_float_t>, deviation_projection_server::local_exception_t> result;
         std::string err_verbal_description;
 
         template <class Reflector>
@@ -553,6 +571,35 @@ namespace deviation_projection_server
         }
     };
 
+    class GetVersionResolver: public virtual dg_sock::network_rest_frame::server::OneRequestHandlerInterface
+    {
+        public:
+
+            static inline constexpr std::string_view RESOLVABLE_PATH = "deviation_projection/get_version";
+
+            auto handle(const dg_sock::network_rest_frame::model::Request& request) -> dg_sock::network_rest_frame::model::Response
+            {
+                if (std::string_view(request.payload_serialization_format) != dg::network_compact_serializer::get_dgstd_serialization_identifier())
+                {
+                    throw std::invalid_argument("unexpected request, bad serialization method");
+                }
+
+                GetVersionRequest semantic_request      = dg::network_compact_serializer::dgstd_deserialize<GetVersionRequest>(request.payload);
+                GetVersionResponse semantic_response    =
+                {
+                    .response = std::string(DEVIATION_PROJECTION_SERVER_VERSION_CONTROL),
+                    .err_verbal_description = {}
+                };
+
+                return dg_sock::network_rest_frame::model::Response
+                {
+                    .response = dg::network_compact_serializer::dgstd_serialize<dg_sock::string>(semantic_response),
+                    .response_serialization_format = dg_sock::string(dg::network_compact_serializer::get_dgstd_serialization_identifier()),
+                    .err_code = dg_sock::network_exception::SUCCESS
+                };
+            }
+    };
+
     class OpenClientResolver: public virtual dg_sock::network_rest_frame::server::OneRequestHandlerInterface
     {
         private:
@@ -565,9 +612,9 @@ namespace deviation_projection_server
 
             OpenClientResolver(std::shared_ptr<SelfObservedClientManager> client_manager) noexcept: client_manager(std::move(client_manager)){}
 
-            auto resolve(const dg_sock::network_rest_frame::Request& request) -> dg_sock::network_rest_frame::Response
+            auto handle(const dg_sock::network_rest_frame::model::Request& request) -> dg_sock::network_rest_frame::model::Response
             {
-                if (request.payload_serialization_format != dg::network_compact_serializer::get_dgstd_serialization_identifier())
+                if (std::string_view(request.payload_serialization_format) != dg::network_compact_serializer::get_dgstd_serialization_identifier())
                 {
                     throw std::invalid_argument("unexpected request, bad serialization method");
                 }
@@ -585,7 +632,7 @@ namespace deviation_projection_server
                         .err_verbal_description = ""
                     };
                 }
-                catch (const std::invalid_argument& e)
+                catch (std::invalid_argument& e)
                 {
                     semantic_response = OpenClientResponse
                     {
@@ -593,19 +640,20 @@ namespace deviation_projection_server
                         .err_verbal_description = std::string(e.what())
                     };
                 }
-                catch (const std::exception& e)
+                catch (std::exception& e)
                 {
                     semantic_response = OpenClientResponse
                     {
-                        .result = std::unexpected(INTERNAL_SERVER_ERROR_CODE),
+                        .result = std::unexpected(RUNTIME_ERROR_CODE),
                         .err_verbal_description = std::string(e.what())
                     };
                 }
                 
-                return dg_sock::network_rest_frame::Response
+                return dg_sock::network_rest_frame::model::Response
                 {
-                    .content = dg::network_compact_serializer::dgstd_serialize<std::string>(semantic_response),
-                    .serialization_kind = dg::network_compact_serializer::get_dgstd_serialization_identifier()
+                    .response = dg::network_compact_serializer::dgstd_serialize<dg_sock::string>(semantic_response),
+                    .response_serialization_format = dg_sock::string(dg::network_compact_serializer::get_dgstd_serialization_identifier()),
+                    .err_code = dg_sock::network_exception::SUCCESS
                 };
             }
     };
@@ -622,9 +670,9 @@ namespace deviation_projection_server
 
             CloseClientResolver(std::shared_ptr<SelfObservedClientManager> client_manager) noexcept: client_manager(std::move(client_manager)){}
 
-            auto resolve(const dg_sock::network_rest_frame::Request& request) -> dg_sock::network_rest_frame::Response
+            auto handle(const dg_sock::network_rest_frame::model::Request& request) -> dg_sock::network_rest_frame::model::Response
             {
-                if (request.payload_serialization_format != dg::network_compact_serializer::get_dgstd_serialization_identifier())
+                if (std::string_view(request.payload_serialization_format) != dg::network_compact_serializer::get_dgstd_serialization_identifier())
                 {
                     throw std::invalid_argument("unexpected request, bad serialization method");
                 }
@@ -637,10 +685,11 @@ namespace deviation_projection_server
                     .err_verbal_description = ""
                 };
 
-                return dg_sock::network_rest_frame::Response
+                return dg_sock::network_rest_frame::model::Response
                 {
-                    .content = dg::network_compact_serializer::dgstd_serialize<std::string>(semantic_response),
-                    .serialization_kind = dg::network_compact_serializer::get_dgstd_serialization_identifier()
+                    .response = dg::network_compact_serializer::dgstd_serialize<dg_sock::string>(semantic_response),
+                    .response_serialization_format = dg_sock::string(dg::network_compact_serializer::get_dgstd_serialization_identifier()),
+                    .err_code = dg_sock::network_exception::SUCCESS
                 };
             }
     };
@@ -657,9 +706,9 @@ namespace deviation_projection_server
 
             AddTrainingDataResolver(std::shared_ptr<SelfObservedClientManager> client_manager) noexcept: client_manager(std::move(client_manager)){}
 
-            auto resolve(const dg_sock::network_rest_frame::Request& request) -> dg_sock::network_rest_frame::Response
+            auto handle(const dg_sock::network_rest_frame::model::Request& request) -> dg_sock::network_rest_frame::model::Response
             {
-                if (request.payload_serialization_format != dg::network_compact_serializer::get_dgstd_serialization_identifier())
+                if (std::string_view(request.payload_serialization_format) != dg::network_compact_serializer::get_dgstd_serialization_identifier())
                 {
                     throw std::invalid_argument("unexpected request, bad serialization method");
                 }
@@ -681,21 +730,18 @@ namespace deviation_projection_server
                 {
                     try
                     {
-                        std::shared_ptr<tensor_model::Matrix> inp = tensor_matrix_operation::make_matrix_from_flat_vec(stdx::to_castable_vector_initializer(semantic_request.input_logit_vec_shape),
-                                                                                                                       semantic_request.input_logit_vec);
-
-                        std::shared_ptr<tensor_model::Matrix> out = tensor_matrix_operation::make_matrix_from_flat_vec(stdx::to_castable_vector_initializer(semantic_request.output_logit_vec_shape),
-                                                                                                                       semantic_request.output_logit_vec);
+                        std::shared_ptr<std::string> inp    = std::make_shared<std::string>(semantic_request.input_matrix);
+                        std::shared_ptr<std::string> out    = std::make_shared<std::string>(semantic_request.output_matrix);
 
                         client_box->add_training_data(inp, out);
 
-                        semantic_Response = AddTrainingDataResponse
+                        semantic_response = AddTrainingDataResponse
                         {
                             .result = SUCCESS,
                             .err_verbal_description = ""
                         };
                     }
-                    catch (const std::invalid_argument& e)
+                    catch (std::invalid_argument& e)
                     {
                         semantic_response = AddTrainingDataResponse
                         {
@@ -703,7 +749,7 @@ namespace deviation_projection_server
                             .err_verbal_description = std::string(e.what())
                         };
                     }
-                    catch (const std::exception& e)
+                    catch (std::exception& e)
                     {
                         semantic_response = AddTrainingDataResponse
                         {
@@ -713,10 +759,11 @@ namespace deviation_projection_server
                     }
                 }
 
-                return dg_sock::network_rest_frame::Response
+                return dg_sock::network_rest_frame::model::Response
                 {
-                    .content = dg::network_compact_serializer::dgstd_serialize<std::string>(semantic_response),
-                    .serialization_kind = dg::network_compact_serializer::get_dgstd_serialization_identifier()
+                    .response = dg::network_compact_serializer::dgstd_serialize<dg_sock::string>(semantic_response),
+                    .response_serialization_format = dg_sock::string(dg::network_compact_serializer::get_dgstd_serialization_identifier()),
+                    .err_code = dg_sock::network_exception::SUCCESS
                 };
             }
     };
@@ -733,9 +780,9 @@ namespace deviation_projection_server
 
             ClearTrainingDataResolver(std::shared_ptr<SelfObservedClientManager> client_manager) noexcept: client_manager(std::move(client_manager)){}
 
-            auto resolve(const dg_sock::network_rest_frame::Request& request) -> dg_sock::network_rest_frame::Response
+            auto handle(const dg_sock::network_rest_frame::model::Request& request) -> dg_sock::network_rest_frame::model::Response
             {
-                if (request.payload_serialization_format != dg::network_compact_serializer::get_dgstd_serialization_identifier())
+                if (std::string_view(request.payload_serialization_format) != dg::network_compact_serializer::get_dgstd_serialization_identifier())
                 {
                     throw std::invalid_argument("unexpected request, bad serialization method");
                 }
@@ -765,7 +812,7 @@ namespace deviation_projection_server
                             .err_verbal_description = ""
                         };
                     }
-                    catch (const std::invalid_argument& e)
+                    catch (std::invalid_argument& e)
                     {
                         semantic_response = ClearTrainingDataResponse
                         {
@@ -773,7 +820,7 @@ namespace deviation_projection_server
                             .err_verbal_description = std::string(e.what())
                         };
                     }
-                    catch (const std::exception& e)
+                    catch (std::exception& e)
                     {
                         semantic_response = ClearTrainingDataResponse
                         {
@@ -783,10 +830,11 @@ namespace deviation_projection_server
                     }
                 }
 
-                return dg_sock::network_rest_frame::Repsonse
+                return dg_sock::network_rest_frame::model::Response
                 {
-                    .content = dg::network_compact_serializer::dgstd_serialize<std::string>(semantic_response),
-                    .serialization_kind = dg::network_compact_serializer::get_dgstd_serialization_identifier()
+                    .response = dg::network_compact_serializer::dgstd_serialize<dg_sock::string>(semantic_response),
+                    .response_serialization_format = dg_sock::string(dg::network_compact_serializer::get_dgstd_serialization_identifier()),
+                    .err_code = dg_sock::network_exception::SUCCESS
                 };
             }
     };
@@ -803,9 +851,9 @@ namespace deviation_projection_server
 
             SetMatrixResourceResolver(std::shared_ptr<SelfObservedClientManager> client_manager) noexcept: client_manager(std::move(client_manager)){}
 
-            auto resolve(const dg_sock::network_rest_frame::Request& request) -> dg_sock::network_rest_frame::Response
+            auto handle(const dg_sock::network_rest_frame::model::Request& request) -> dg_sock::network_rest_frame::model::Response
             {
-                if (request.payload_serialization_format != dg::network_compact_serializer::get_dgstd_serialization_identifier())
+                if (std::string_view(request.payload_serialization_format) != dg::network_compact_serializer::get_dgstd_serialization_identifier())
                 {
                     throw std::invalid_argument("unexpected request, bad serialization method");
                 }
@@ -835,7 +883,7 @@ namespace deviation_projection_server
                             .err_verbal_description = ""
                         };
                     }
-                    catch (const std::invalid_argument& e)
+                    catch (std::invalid_argument& e)
                     {
                         semantic_response = SetMatrixResourceResponse
                         {
@@ -843,7 +891,7 @@ namespace deviation_projection_server
                             .err_verbal_description = std::string(e.what())
                         };
                     }
-                    catch (const std::exception& e)
+                    catch (std::exception& e)
                     {
                         semantic_response = SetMatrixResourceResponse
                         {
@@ -853,10 +901,11 @@ namespace deviation_projection_server
                     }
                 }
 
-                return dg_sock::network_rest_frame::Response
+                return dg_sock::network_rest_frame::model::Response
                 {
-                    .content = dg::network_compact_serializer::dgstd_serialize<std::string>(semantic_response),
-                    .serialization_kind = dg::network_compact_serializer::get_dgstd_serialization_identifier()
+                    .response = dg::network_compact_serializer::dgstd_serialize<dg_sock::string>(semantic_response),
+                    .response_serialization_format = dg_sock::string(dg::network_compact_serializer::get_dgstd_serialization_identifier()),
+                    .err_code = dg_sock::network_exception::SUCCESS
                 };
             }
     };
@@ -873,9 +922,9 @@ namespace deviation_projection_server
 
             GetDeviationResolver(std::shared_ptr<SelfObservedClientManager> client_manager) noexcept: client_manager(std::move(client_manager)){}
 
-            auto resolve(const dg_sock::network_rest_frame::Request& request) -> dg_sock::network_rest_frame::Response
+            auto handle(const dg_sock::network_rest_frame::model::Request& request) -> dg_sock::network_rest_frame::model::Response
             {
-                if (request.payload_serialization_format != dg::network_compact_serializer::get_dgstd_serialization_identifier())
+                if (std::string_view(request.payload_serialization_format) != dg::network_compact_serializer::get_dgstd_serialization_identifier())
                 {
                     throw std::invalid_argument("unexpected request, bad serialization method");
                 }
@@ -903,7 +952,7 @@ namespace deviation_projection_server
                             .err_verbal_description = ""
                         };
                     }
-                    catch (const std::invalid_argument& e)
+                    catch (std::invalid_argument& e)
                     {
                         semantic_response = GetDeviationResponse
                         {
@@ -911,7 +960,7 @@ namespace deviation_projection_server
                             .err_verbal_description = std::string(e.what())
                         };
                     }
-                    catch (const std::exception& e)
+                    catch (std::exception& e)
                     {
                         semantic_response = GetDeviationResponse
                         {
@@ -921,10 +970,11 @@ namespace deviation_projection_server
                     }
                 }
 
-                return dg_sock::network_rest_frame::Response
+                return dg_sock::network_rest_frame::model::Response
                 {
-                    .content = dg::network_compact_serializer::dgstd_serialize<std::string>(semantic_response),
-                    .serialization_kind = dg::network_compact_serializer::get_dgstd_serialization_identifier()
+                    .response = dg::network_compact_serializer::dgstd_serialize<dg_sock::string>(semantic_response),
+                    .response_serialization_format = dg_sock::string(dg::network_compact_serializer::get_dgstd_serialization_identifier()),
+                    .err_code = dg_sock::network_exception::SUCCESS
                 };
             }
     };
@@ -933,22 +983,24 @@ namespace deviation_projection_server
     {
         std::shared_ptr<SelfObservedClientManager> client_manager = std::make_shared<SelfObservedClientManager>();
 
-        dg_sock::network_rest_frame::hook(OpenClientResolver::RESOLVABLE_PATH, std::make_unique<OpenClientResolver>(client_manager));
-        dg_sock::network_rest_frame::hook(CloseClientResolver::RESOLVABLE_PATH, std::make_unique<CloseClientResolver>(client_manager));
-        dg_sock::network_rest_frame::hook(AddTrainingDataResolver::RESOLVABLE_PATH, std::make_unique<AddTrainingDataResolver>(client_manager));
-        dg_sock::network_rest_frame::hook(SetMatrixResourceResolver::RESOLVABLE_PATH, std::make_unique<SetMatrixResourceResolver>(client_manager));
-        dg_sock::network_rest_frame::hook(SetDeviationCalculatorResolver::RESOLVABLE_PATH, std::make_unique<SetDeviationCalculatorResolver>(client_manager));
-        dg_sock::network_rest_frame::hook(GetDeviationResolver::RESOLVABLE_PATH, std::make_unique<GetDeviationResolver>(client_manager));
+        dg_sock::network_rest_frame::server_instance::hook(GetVersionResolver::RESOLVABLE_PATH, std::make_unique<GetVersionResolver>());
+        dg_sock::network_rest_frame::server_instance::hook(OpenClientResolver::RESOLVABLE_PATH, std::make_unique<OpenClientResolver>(client_manager));
+        dg_sock::network_rest_frame::server_instance::hook(CloseClientResolver::RESOLVABLE_PATH, std::make_unique<CloseClientResolver>(client_manager));
+        dg_sock::network_rest_frame::server_instance::hook(AddTrainingDataResolver::RESOLVABLE_PATH, std::make_unique<AddTrainingDataResolver>(client_manager));
+        dg_sock::network_rest_frame::server_instance::hook(ClearTrainingDataResolver::RESOLVABLE_PATH, std::make_unique<ClearTrainingDataResolver>(client_manager));
+        dg_sock::network_rest_frame::server_instance::hook(SetMatrixResourceResolver::RESOLVABLE_PATH, std::make_unique<SetMatrixResourceResolver>(client_manager));
+        dg_sock::network_rest_frame::server_instance::hook(GetDeviationResolver::RESOLVABLE_PATH, std::make_unique<GetDeviationResolver>(client_manager));
     }
 
     void deinit() noexcept
     {
-        dg_sock::network_rest_frame::unhook(OpenClientResolver::RESOLVABLE_PATH);
-        dg_sock::network_rest_frame::unhook(CloseClientResolver::RESOLVABLE_PATH);
-        dg_sock::network_rest_frame::unhook(AddTrainingDataResolver::RESOLVABLE_PATH);
-        dg_sock::network_rest_frame::unhook(SetMatrixResourceResolver::RESOLVABLE_PATH);
-        dg_sock::network_rest_frame::unhook(SetDeviationCalculatorResolver::RESOLVABLE_PATH);
-        dg_sock::network_rest_frame::unhook(GetDeviationResolver::RESOLVABLE_PATH);
+        dg_sock::network_rest_frame::server_instance::unhook(GetDeviationResolver::RESOLVABLE_PATH);
+        dg_sock::network_rest_frame::server_instance::unhook(SetMatrixResourceResolver::RESOLVABLE_PATH);
+        dg_sock::network_rest_frame::server_instance::unhook(ClearTrainingDataResolver::RESOLVABLE_PATH);
+        dg_sock::network_rest_frame::server_instance::unhook(AddTrainingDataResolver::RESOLVABLE_PATH);
+        dg_sock::network_rest_frame::server_instance::unhook(CloseClientResolver::RESOLVABLE_PATH);
+        dg_sock::network_rest_frame::server_instance::unhook(OpenClientResolver::RESOLVABLE_PATH);
+        dg_sock::network_rest_frame::server_instance::unhook(GetVersionResolver::RESOLVABLE_PATH);
     }
 }
 

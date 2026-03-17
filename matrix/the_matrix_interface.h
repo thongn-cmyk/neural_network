@@ -5,7 +5,7 @@
 
 #include "matrix_projector_interface.h"
 #include <vector>
-#include "float_def.h"
+#include <general_definition/float_def.h>
 #include "tensor_model.h"
 #include <memory>
 

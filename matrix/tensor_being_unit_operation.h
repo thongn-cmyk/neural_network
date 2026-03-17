@@ -5,13 +5,13 @@
 
 #include <stdint.h>
 #include <stdlib.h>
-#include "stdx.h"
+#include <stl_extension/stdx.h>
 #include <memory>
 #include <vector>
 #include "tensor_model.h"
 #include <stdexcept>
 #include "tensor_process_group_operation.h"
-#include "float_def.h"
+#include <general_definition/float_def.h>
 
 namespace tensor_being_unit_operation
 {

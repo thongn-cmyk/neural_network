@@ -29,11 +29,11 @@ namespace stdx
     static inline constexpr bool IS_SAFE_INTEGER_CONVERSION_ENABLED = true;
 
     template <class T>
-    inline __attribute__((always_inline)) auto safe_ptr_access(T * ptr) noexcept -> T *
+    inline __attribute__((always_inline)) auto safe_ptr_access(T * ptr) -> T *
     {
         if (!ptr) [[unlikely]]
         {
-            std::abort();
+            throw std::invalid_argument("bad ptr, null");
         }
 
         return ptr;

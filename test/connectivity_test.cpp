@@ -348,10 +348,10 @@ void init_mailbox()
 
     auto channel_socket_config = dg_sock::network_kernel_mailbox_impl1_channel_x::Config //
     {
-        .channel_kind_map       = {{SERVER_IN_CHANNEL, dg_sock::network_kernel_mailbox_impl1_channel_x::PreconfiguratedStickyChannelContainer::THOUSAND_CHANNEL_CODEX},
+        .channel_kind_map       = {{global_config::rest_config::HIGH_AVAILABILITY_CHANNEL, dg_sock::network_kernel_mailbox_impl1_channel_x::PreconfiguratedStickyChannelContainer::THOUSAND_CHANNEL_CODEX},
                                    {CLIENT_IN_CHANNEL, dg_sock::network_kernel_mailbox_impl1_channel_x::PreconfiguratedStickyChannelContainer::THOUSAND_CHANNEL_CODEX}}, // <uint32_t, channel_t>
 
-        .channel_msg_cap_map    = {{SERVER_IN_CHANNEL, RECV_CHANNEL_MSG_CAP},
+        .channel_msg_cap_map    = {{global_config::rest_config::HIGH_AVAILABILITY_CHANNEL, RECV_CHANNEL_MSG_CAP},
                                    {CLIENT_IN_CHANNEL, RECV_CHANNEL_MSG_CAP}}, // <uint32_t, uint64_t>
 
         .assorter_worker_sz     = 1
@@ -430,14 +430,12 @@ void init_rest_server()
         .cache_unique_write_set_each_capacity                       = size_t{1} << 10,
         .cache_unique_write_set_concurrency_sz                      = size_t{1} << 4,
 
-        .recv_channel                                               = SERVER_IN_CHANNEL,
+        .recv_channel_counter_map                                   = {{global_config::rest_config::HIGH_AVAILABILITY_CHANNEL, 1u}},
         .send_channel                                               = CLIENT_IN_CHANNEL,
-        
+
         .cache_unique_write_traffic_controller_elemental_thru_cap   = size_t{1} << 20,
         .cache_unique_write_traffic_controller_concurrency_sz       = size_t{1} << 4,
         .cache_unique_write_traffic_controller_reset_duration       = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(1)),
-
-        .request_resolver_worker_sz                                 = 1
     };
 
     std::cout << "initializing REST server\n";
@@ -452,7 +450,6 @@ void init_rest_client()
     std::cout << "initializing REST client\n";
 
     std::unique_ptr<dg_sock::network_rest_frame::client::RestControllerInterface> controller = dg_sock::network_rest_frame::client_instance::SolutionBuilder{}.set_recv_channel(CLIENT_IN_CHANNEL)
-                                                                                                                                                              .set_send_channel(SERVER_IN_CHANNEL)
                                                                                                                                                               .get();
 
 

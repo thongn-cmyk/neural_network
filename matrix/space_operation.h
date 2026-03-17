@@ -3,11 +3,11 @@
 #ifndef __SPACE_OPERATION_H__
 #define __SPACE_OPERATION_H__
 
-#include "float_def.h"
+#include <general_definition/float_def.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <vector>
-#include "stdx.h"
+#include <stl_extension/stdx.h>
 #include <stdexcept>
 
 namespace space_operation

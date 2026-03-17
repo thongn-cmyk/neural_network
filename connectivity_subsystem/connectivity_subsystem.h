@@ -11,6 +11,7 @@
 #include <internal_rest/network_rest_frame.h>
 #include <serializer/compact_serializer.h>
 #include <cron_subsystem/cron_subsystem.h>
+#include <global_config/rest_config.h>
 
 namespace connectivity_subsystem
 {
@@ -560,7 +561,7 @@ namespace connectivity_subsystem
                 };
 
                 return this->client.request(request)
-                                //    .set_retry_policy(RequestRetryMachineFactory<>::EXPONENTIAL_MEDIUM)
+                                   .set_retry_policy(RequestRetryMachineFactory<>::EXPONENTIAL_MEDIUM)
                                    .set_resolutor(resolutor)
                                    .get_promise();
             }
@@ -726,7 +727,8 @@ namespace connectivity_subsystem
                 return 
                 {
                     .remote_addr    = dg_sock::network_rest_frame::client_instance::address(),
-                    .resource_addr  = dg_sock::string(PingResolver::RESOLVABLE_PATH)
+                    .resource_addr  = dg_sock::string(PingResolver::RESOLVABLE_PATH),
+                    .channel        = global_config::rest_config::HIGH_AVAILABILITY_CHANNEL
                 };
             }
 

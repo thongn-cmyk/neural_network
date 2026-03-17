@@ -11,13 +11,13 @@
 #ifndef __THE_CUDA_MATRIX_H__
 #define __THE_CUDA_MATRIX_H__
 
-#include "compact_serializer.h"
+#include <serializer/compact_serializer.h>
 #include "the_matrix_interface.h"
 #include "tensor_matrix_operation.h"
 #include <vector>
 #include <unordered_map>
-#include "float_def.h"
-#include "fair_mutex.h"
+#include <general_definition/float_def.h>
+#include <mutex_extension/fair_mutex.h>
 #include "tensor_model.h"
 
 namespace the_cuda_matrix

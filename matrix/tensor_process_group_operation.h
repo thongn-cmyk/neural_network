@@ -5,7 +5,7 @@
 
 #include <stdint.h>
 #include <stdlib.h>
-#include "stdx.h"
+#include <stl_extension/stdx.h>
 #include <vector>
 #include "tensor_model.h"
 #include <stdexcept>

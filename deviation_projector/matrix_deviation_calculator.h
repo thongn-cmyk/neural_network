@@ -1,15 +1,15 @@
 //HEADER_CONTROL 7
 
-#ifndef __MATRIX_DEVIATION_CALCULATOR_H__
-#define __MATRIX_DEVIATION_CALCULATOR_H__
+#ifndef __DG_MATRIX_DEVIATION_CALCULATOR_H__
+#define __DG_MATRIX_DEVIATION_CALCULATOR_H__
 
 #include "matrix_deviation_calculator_interface.h"
-#include "float_def.h"
-#include "tensor_model.h"
+#include <general_definition/float_def.h>
+#include <matrix/tensor_model.h>
 #include <memory>
-#include "tensor_matrix_operation.h"
+#include <matrix/tensor_matrix_operation.h>
 
-namespace matrix_deviation_calculator
+namespace deviation_projector
 {
     using tensor_std_float_t = tensor_model::tensor_std_float_t;
 

@@ -3,7 +3,7 @@
 #ifndef __SHAPE_PROJECTION_H__
 #define __SHAPE_PROJECTION_H__
 
-#include "stdx.h"
+#include <stl_extension/stdx.h>
 #include <type_traits>
 #include <cmath>
 #include <numbers>

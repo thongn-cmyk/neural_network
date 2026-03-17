@@ -8,7 +8,7 @@
 #include <utility>
 #include <algorithm>
 #include <functional>
-#include <stl_extension/stl_extension.h>
+#include <stl_extension/hasher.h>
 #include <unordered_map>
 #include <unordered_set>
 #include <iostream>
@@ -74,10 +74,10 @@ auto randomize_positive_graph() -> std::unordered_map<size_t, std::unordered_map
 }
 
 template <class T>
-using default_hasher        = stl_extension::default_hasher<T>;
+using default_hasher        = hasher::default_hasher<T>;
 
 template <class T>
-using default_equal_to      = stl_extension::default_equal_to<T>;
+using default_equal_to      = hasher::default_equal_to<T>;
 
 template <class Key, class Value>
 using unordered_map_x       = std::unordered_map<Key, Value, default_hasher<Key>, default_equal_to<Key>>;

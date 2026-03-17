@@ -5,14 +5,14 @@
 #include <stdlib.h>
 #include <vector>
 #include <unordered_map>
-#include "float_def.h"
+#include <general_definition/float_def.h>
 #include <functional>
 #include <algorithm>
-#include "compact_serializer.h"
+#include <serializer/compact_serializer.h>
 #include "the_host_matrix.h"
 #include "tensor_model.h"
 #include <variant>
-#include "stdx.h"
+#include <stl_extension/stdx.h>
 
 namespace generic_matrix_factory
 {
@@ -32,6 +32,10 @@ namespace generic_matrix_factory
     {
         incompatible_exception(): invalid_argument("incompatible exception"){}
     };
+
+    //-------
+
+    //the problem is that we provide an interface for an abstraction of matrix resource, the below is just one sub-radix of that, but the interface for loader remains, it's subjected to change if there are time and resource on the matter
 
     struct TheHostMatrixResource
     {
@@ -312,14 +316,14 @@ namespace generic_matrix_factory
                 };
             }
 
-            auto virtualize_resource(const TheCudaIfPossibleMatrixResource& resource) -> GenericMatrixResource
-            {
-                return GenericMatrixResource
-                {
-                    .version_control    = VERSION_CONTROL,
-                    .resource           = resource
-                };
-            }
+            // auto virtualize_resource(const TheCudaIfPossibleMatrixResource& resource) -> GenericMatrixResource
+            // {
+            //     return GenericMatrixResource
+            //     {
+            //         .version_control    = VERSION_CONTROL,
+            //         .resource           = resource
+            //     };
+            // }
 
             auto load_resource(const GenericMatrixResource& resource) -> std::unique_ptr<the_matrix::MatrixInterface>
             {
@@ -343,11 +347,11 @@ namespace generic_matrix_factory
                     return std::make_unique<InternalFancyMatrix>(THE_CUDA_MATRIX_VARIANT,
                                                                  TheCudaMatrixLoader{}.load_from_resource(std::get<TheCudaMatrixResource>(resource.resource)));
                 }
-                else if (std::holds_alternative<TheCudaIfPossibleMatrixResource>(resource.resource))
-                {
-                    return std::make_unique<InternalFancyMatrix>(THE_CUDA_IF_POSSIBLE_MATRIX_VARIANT,
-                                                                 TheCudaIfPossibleMatrixLoader{}.load_from_resource(std::get<TheCudaIfPossibleMatrixResource>(resource.resource)));
-                }
+                // else if (std::holds_alternative<TheCudaIfPossibleMatrixResource>(resource.resource))
+                // {
+                //     return std::make_unique<InternalFancyMatrix>(THE_CUDA_IF_POSSIBLE_MATRIX_VARIANT,
+                //                                                  TheCudaIfPossibleMatrixLoader{}.load_from_resource(std::get<TheCudaIfPossibleMatrixResource>(resource.resource)));
+                // }
                 else
                 {
                     throw bad_format_exception();
@@ -373,10 +377,10 @@ namespace generic_matrix_factory
                     {
                         return this->virtualize_resource(TheCudaMatrixLoader{}.unload(*fancy_matrix->get_base()));
                     }
-                    case THE_CUDA_IF_POSSIBLE_MATRIX_VARIANT:
-                    {
-                        return this->virtualize_resource(TheCudaIfPossibleMatrixLoader{}.unload(*fancy_matrix->get_base()));
-                    }
+                    // case THE_CUDA_IF_POSSIBLE_MATRIX_VARIANT:
+                    // {
+                    //     return this->virtualize_resource(TheCudaIfPossibleMatrixLoader{}.unload(*fancy_matrix->get_base()));
+                    // }
                     default:
                     {
                         std::abort();
@@ -414,7 +418,7 @@ namespace generic_matrix_factory
                         return this->base_matrix->get_coefficient_vector();
                     }
 
-                    auto set_coefficient_vector(const std::vector<tensor_model::tensor_std_float_t>& coeff_vec)
+                    void set_coefficient_vector(const std::vector<tensor_model::tensor_std_float_t>& coeff_vec)
                     {
                         this->base_matrix->set_coefficient_vector(coeff_vec);
                     }

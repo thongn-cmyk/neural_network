@@ -3,13 +3,13 @@
 #ifndef __THE_HOST_MATRIX_H__
 #define __THE_HOST_MATRIX_H__
 
-#include "async_x.h"
+#include <seqpar_async/async_x.h>
 #include "the_matrix_interface.h"
 #include "tensor_matrix_operation.h"
 #include "shape_projection.h"
 #include <vector>
 #include <unordered_map>
-#include "float_def.h"
+#include <general_definition/float_def.h>
 #include <functional>
 #include <algorithm>
 #include <execution>

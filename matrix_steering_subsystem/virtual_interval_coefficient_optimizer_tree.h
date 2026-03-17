@@ -11,7 +11,7 @@
 #include "interval_coefficient_optimizer_tree.h"
 #include "graph_optimizer.h"
 #include <stl_extension/unordered_node_map.h>
-#include <stl_extension/stl_extension.h>
+#include <stl_extension/hasher.h>
 #include "assert.h"
 
 namespace virtual_interval_coefficient_optimizer_tree
@@ -60,7 +60,7 @@ namespace virtual_interval_coefficient_optimizer_tree
         private:
 
             template <class Key, class Value>
-            using local_unordered_map = unordered_map_variants::unordered_node_map<Key, Value, size_t, std::integral_constant<bool, true>, stl_extension::default_hasher<Key>, stl_extension::default_equal_to<Key>>;
+            using local_unordered_map = unordered_map_variants::unordered_node_map<Key, Value, size_t, std::integral_constant<bool, true>, hasher::default_hasher<Key>, hasher::default_equal_to<Key>>;
 
             struct Edge
             {

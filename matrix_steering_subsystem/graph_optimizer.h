@@ -6,7 +6,7 @@
 #include <algorithm>
 #include <utility>
 #include <stl_extension/unordered_node_map.h>
-#include <stl_extension/stl_extension.h>
+#include <stl_extension/hasher.h>
 #include <stl_extension/stdx.h>
 #include <iostream>
 
@@ -29,7 +29,7 @@ namespace graph_optimizer
         private:
 
             template <class T>
-            using default_hasher        = stl_extension::default_hasher<T>;
+            using default_hasher        = hasher::default_hasher<T>;
 
             template <class Key>
             using local_unordered_set   = unordered_map_variants::unordered_node_set<Key, size_t, default_hasher<Key>>;
@@ -205,7 +205,7 @@ namespace graph_optimizer
         private:
 
             template <class T>
-            using default_hasher        = stl_extension::default_hasher<T>;
+            using default_hasher        = hasher::default_hasher<T>;
 
             template <class Key, class Value2>
             using local_unordered_map   = unordered_map_variants::unordered_node_map<Key, Value2, size_t, std::integral_constant<bool, true>, default_hasher<Key>>;
@@ -418,7 +418,7 @@ namespace graph_optimizer
         private:
 
             template <class T>
-            using default_hasher        = stl_extension::default_hasher<T>;
+            using default_hasher        = hasher::default_hasher<T>;
 
             template <class Key>
             using local_unordered_set   = unordered_map_variants::unordered_node_set<Key, size_t, default_hasher<Key>>;
@@ -546,7 +546,7 @@ namespace graph_optimizer
         private:
 
             template <class T>
-            using default_hasher        = stl_extension::default_hasher<T>;
+            using default_hasher        = hasher::default_hasher<T>;
 
             template <class Key>
             using local_unordered_set   = unordered_map_variants::unordered_node_set<Key, size_t, default_hasher<Key>>;
@@ -722,7 +722,7 @@ namespace graph_optimizer
         private:
 
             template <class T>
-            using default_hasher        = stl_extension::default_hasher<T>;
+            using default_hasher        = hasher::default_hasher<T>;
 
             template <class Key>
             using local_unordered_set   = unordered_map_variants::unordered_node_set<Key, size_t, default_hasher<Key>>;  
@@ -772,7 +772,7 @@ namespace graph_optimizer
             using Base                  = AStarResource<HeuristicFunction>;
 
             template <class T>
-            using default_hasher        = stl_extension::default_hasher<T>;
+            using default_hasher        = hasher::default_hasher<T>;
 
             template <class Key>
             using local_unordered_set   = unordered_map_variants::unordered_node_set<Key, size_t, default_hasher<Key>>;  
@@ -870,7 +870,7 @@ namespace graph_optimizer
             using Base                  = AStarResource<HeuristicFunction>;
 
             template <class T>
-            using default_hasher        = stl_extension::default_hasher<T>;
+            using default_hasher        = hasher::default_hasher<T>;
 
             template <class Key>
             using local_unordered_set   = unordered_map_variants::unordered_node_set<Key, size_t, default_hasher<Key>>;  
@@ -1011,7 +1011,7 @@ namespace graph_optimizer
         private:
 
             template <class T>
-            using default_hasher        = stl_extension::default_hasher<T>;
+            using default_hasher        = hasher::default_hasher<T>;
 
             template <class Key>
             using local_unordered_set   = unordered_map_variants::unordered_node_set<Key, size_t, default_hasher<Key>>;  

@@ -448,11 +448,17 @@ namespace dg::network_compact_serializer::types_space{
     template <class ...Args>
     struct is_expected<std::expected<Args...>>: std::true_type{};
 
-    // template <class T>
-    // struct is_utc_timepoint: std::false_type{};
-    
-    // template <>
-    // struct is_utc_timepoint<std::chrono::time_point<std::chrono::utc_clock, std::chrono::nanoseconds>>: std::bool_constant<std::is_same_v<typename std::chrono::utc_clock::rep, int64_t>>{};
+    template <class T>
+    struct is_utc_timepoint: std::false_type{};
+
+    template <>
+    struct is_utc_timepoint<std::chrono::time_point<std::chrono::utc_clock, std::chrono::nanoseconds>>: std::bool_constant<std::is_same_v<typename std::chrono::utc_clock::rep, int64_t>>{};
+
+    template <class T>
+    struct is_std_duration: std::false_type{};
+
+    template <class ...Args>
+    struct is_std_duration<std::chrono::duration<Args...>>: std::true_type{};
 
     template <class T, class = void>
     struct is_reflectible: std::false_type{};
@@ -575,8 +581,11 @@ namespace dg::network_compact_serializer::types_space{
     template <class T>
     static inline constexpr bool is_expected_v                                          = is_expected<T>::value;
 
-    // template <class T>
-    // static inline constexpr bool is_utc_timepoint_v                                     = is_utc_timepoint<T>::value;
+    template <class T>
+    static inline constexpr bool is_utc_timepoint_v                                     = is_utc_timepoint<T>::value;
+
+    template <class T>
+    static inline constexpr bool is_std_duration_v                                      = is_std_duration<T>::value;
 
     template <class T>
     static inline constexpr bool is_reflectible_v                                       = is_reflectible<T>::value;
@@ -953,6 +962,29 @@ namespace dg::network_compact_serializer::utility{
                 && is_safe_integer_castable<types::variant_index_type>(variant_idx)
                 && safe_integer_cast<T>(safe_integer_cast<types::variant_index_type>(variant_idx)) == variant_idx;
     }
+
+    template <class To, class Fr>
+    constexpr auto safe_duration_cast(Fr dur) -> To
+    {
+        static_assert(types_space::is_std_duration_v<Fr>);
+        static_assert(types_space::is_std_duration_v<To>);
+
+        static_assert(!(std::is_floating_point_v<Fr> && std::numeric_limits<To>::is_integer));
+
+        if (std::isnan(dur.count()))
+        {
+            throw dg::network_compact_serializer::exception_space::corrupted_format{};
+        }
+
+        auto dst = std::chrono::duration_cast<To>(dur);
+
+        if (std::isnan(dst.count()))
+        {
+            throw dg::network_compact_serializer::exception_space::corrupted_format();
+        }
+
+        return dst;
+    }
 }
 
 namespace dg::network_compact_serializer::archive{
@@ -1032,15 +1064,24 @@ namespace dg::network_compact_serializer::archive{
             return rs;
         }
 
-        // template <class T, std::enable_if_t<types_space::is_utc_timepoint_v<T>, bool> = true>
-        // constexpr auto count(const T& data) const -> size_t{
+        template <class T, std::enable_if_t<types_space::is_utc_timepoint_v<T>, bool> = true>
+        constexpr auto count(const T& data) const -> size_t{
 
-        //     auto dur            = data.time_since_epoch();
-        //     auto casted_dur     = std::chrono::duration_cast<types::serializable_duration_t>(dur);
-        //     auto storable_value = casted_dur.count();
+            auto dur            = data.time_since_epoch();
+            auto casted_dur     = utility::safe_duration_cast<types::serializable_duration_t>(dur);
+            auto storable_value = casted_dur.count();
             
-        //     return this->count(storable_value);
-        // }
+            return this->count(storable_value);
+        }
+
+        template <class T, std::enable_if_t<types_space::is_std_duration_v<T>, bool> = true>
+        constexpr auto count(const T& data) const -> size_t
+        {
+            auto casted_dur     = utility::safe_duration_cast<types::serializable_duration_t>(data);
+            auto storable_value = casted_dur.count();
+
+            return this->count(storable_value);
+        }
 
         template <class T, std::enable_if_t<types_space::is_tuple_v<types_space::base_type_t<T>>, bool> = true>
         constexpr auto count(const T& data) const -> size_t{
@@ -1162,15 +1203,24 @@ namespace dg::network_compact_serializer::archive{
             }
         }
 
-        // template <class T, std::enable_if_t<types_space::is_utc_timepoint_v<types_space::base_type_t<T>>, bool> = true>
-        // constexpr void put(char *& buf, const T& data) const{
+        template <class T, std::enable_if_t<types_space::is_utc_timepoint_v<types_space::base_type_t<T>>, bool> = true>
+        constexpr void put(char *& buf, const T& data) const{
 
-        //     auto dur            = data.time_since_epoch();
-        //     auto casted_dur     = std::chrono::duration_cast<types::serializable_duration_t>(dur);
-        //     auto storable_value = casted_dur.count();
+            auto dur            = data.time_since_epoch();
+            auto casted_dur     = utility::safe_duration_cast<types::serializable_duration_t>(dur);
+            auto storable_value = casted_dur.count();
 
-        //     this->put(buf, storable_value);
-        // }
+            this->put(buf, storable_value);
+        }
+
+        template <class T, std::enable_if_t<types_space::is_std_duration_v<types_space::base_type_t<T>>, bool> = true>
+        constexpr void put(char *& buf, const T& data) const
+        {
+            auto casted_dur     = utility::safe_duration_cast<types::serializable_duration_t>(data);
+            auto storable_value = casted_dur.count();
+
+            this->put(buf, storable_value);
+        }
 
         template <class T, std::enable_if_t<types_space::is_tuple_v<types_space::base_type_t<T>>, bool> = true>
         constexpr void put(char *& buf, const T& data) const{
@@ -1321,19 +1371,31 @@ namespace dg::network_compact_serializer::archive{
             }
         }
 
-        // template <class T, std::enable_if_t<types_space::is_utc_timepoint_v<types_space::base_type_t<T>>, bool> = true>
-        // constexpr void put(const char *& buf, T&& data) const{
+        template <class T, std::enable_if_t<types_space::is_utc_timepoint_v<types_space::base_type_t<T>>, bool> = true>
+        constexpr void put(const char *& buf, T&& data) const{
 
-        //     using data_timepoint_t = types_space::base_type_t<T>;
-        //     using data_dur_t = typename data_timepoint_t::duration;
+            using data_timepoint_t = types_space::base_type_t<T>;
+            using data_dur_t = typename data_timepoint_t::duration;
 
-        //     typename types::serializable_duration_t::rep tick;
+            typename types::serializable_duration_t::rep tick;
 
-        //     this->put(buf, tick);
-        //     auto serializable_dur = types::serializable_duration_t(tick);
-        //     auto data_dur = std::chrono::duration_cast<data_dur_t>(serializable_dur);
-        //     data = data_timepoint_t(data_dur);
-        // }
+            this->put(buf, tick);
+            auto serializable_dur = types::serializable_duration_t(tick);
+            auto data_dur = utility::safe_duration_cast<data_dur_t>(serializable_dur);
+            data = data_timepoint_t(data_dur);
+        }
+
+        template <class T, std::enable_if_t<types_space::is_std_duration_v<types_space::base_type_t<T>>, bool> = true>
+        constexpr void put(const char *& buf, T&& data) const
+        {
+            using data_dur_t = types_space::base_type_t<T>;
+
+            typename types::serializable_duration_t::rep tick;
+
+            this->put(buf, tick);
+            auto serializable_dur = types::serializable_duration_t(tick);
+            data = utility::safe_duration_cast<data_dur_t>(serializable_dur);
+        }
 
         template <class T, std::enable_if_t<types_space::is_tuple_v<types_space::base_type_t<T>>, bool> = true>
         constexpr void put(const char *& buf, T&& data) const{
@@ -1501,19 +1563,31 @@ namespace dg::network_compact_serializer::archive{
             }
         }
 
-        // template <class T, std::enable_if_t<types_space::is_utc_timepoint_v<types_space::base_type_t<T>>, bool> = true>
-        // constexpr void put(const char *& buf, size_t& buf_sz, T&& data) const{
+        template <class T, std::enable_if_t<types_space::is_utc_timepoint_v<types_space::base_type_t<T>>, bool> = true>
+        constexpr void put(const char *& buf, size_t& buf_sz, T&& data) const{
 
-        //     using data_timepoint_t = types_space::base_type_t<T>;
-        //     using data_dur_t = typename data_timepoint_t::duration;
+            using data_timepoint_t = types_space::base_type_t<T>;
+            using data_dur_t = typename data_timepoint_t::duration;
             
-        //     typename types::serializable_duration_t::rep tick;
+            typename types::serializable_duration_t::rep tick;
 
-        //     this->put(buf, buf_sz, tick);
-        //     auto serializable_dur = types::serializable_duration_t(tick);
-        //     auto data_dur = std::chrono::duration_cast<data_dur_t>(serializable_dur);
-        //     data = data_timepoint_t(data_dur);
-        // }
+            this->put(buf, buf_sz, tick);
+            auto serializable_dur = types::serializable_duration_t(tick);
+            auto data_dur = utility::safe_duration_cast<data_dur_t>(serializable_dur);
+            data = data_timepoint_t(data_dur);
+        }
+
+        template <class T, std::enable_if_t<types_space::is_std_duration_v<types_space::base_type_t<T>>, bool> = true>
+        constexpr void put(const char *& buf, size_t& buf_sz, T&& data) const
+        {
+            using data_dur_t = types_space::base_type_t<T>;
+
+            typename types::serializable_duration_t::rep tick;
+
+            this->put(buf, buf_sz, tick);
+            auto serializable_dur = types::serializable_duration_t(tick);
+            data = utility::safe_duration_cast<data_dur_t>(serializable_dur);
+        }
 
         template <class T, std::enable_if_t<types_space::is_tuple_v<types_space::base_type_t<T>>, bool> = true>
         constexpr void put(const char *& buf, size_t& buf_sz, T&& data) const{
@@ -1670,12 +1744,14 @@ namespace dg::network_compact_serializer::archive{
             return 229u;
         } else if constexpr(types_space::is_variant_v<T>){
             return 230u;
-        // } else if constexpr(types_space::is_utc_timepoint_v<T>){
-        //     return 231u;
-        } else if constexpr(types_space::is_container_wrapper_v<T>){
+        } else if constexpr(types_space::is_utc_timepoint_v<T>){
+            return 231u;
+        } else if constexpr(types_space::is_std_duration_v<T>){
             return 232u;
-        } else if constexpr(types_space::is_expected_v<T>){
+        } else if constexpr(types_space::is_container_wrapper_v<T>){
             return 233u;
+        } else if constexpr(types_space::is_expected_v<T>){
+            return 234u;
         } else{
             static_assert(FALSE_VAL<>);
         }
@@ -1756,15 +1832,24 @@ namespace dg::network_compact_serializer::archive{
             return rs;
         }
 
-        // template <class T, std::enable_if_t<types_space::is_utc_timepoint_v<T>, bool> = true>
-        // constexpr auto count(const T& data) const -> size_t{
+        template <class T, std::enable_if_t<types_space::is_utc_timepoint_v<T>, bool> = true>
+        constexpr auto count(const T& data) const -> size_t{
 
-        //     auto dur            = data.time_since_epoch();
-        //     auto casted_dur     = std::chrono::duration_cast<types::serializable_duration_t>(dur);
-        //     auto storable_value = casted_dur.count();
+            auto dur            = data.time_since_epoch();
+            auto casted_dur     = utility::safe_duration_cast<types::serializable_duration_t>(dur);
+            auto storable_value = casted_dur.count();
 
-        //     return this->count(types::dgstd_unsigned_serialization_header_t{}) + this->count(storable_value);
-        // }
+            return this->count(types::dgstd_unsigned_serialization_header_t{}) + this->count(storable_value);
+        }
+
+        template <class T, std::enable_if_t<types_space::is_std_duration_v<T>, bool> = true>
+        constexpr auto count(const T& data) const -> size_t
+        {
+            auto casted_dur     = utility::safe_duration_cast<types::serializable_duration_t>(data);
+            auto storable_value = casted_dur.count();
+
+            return this->count(types::dgstd_unsigned_serialization_header_t{}) + this->count(storable_value);
+        }
 
         template <class T, std::enable_if_t<types_space::is_tuple_v<types_space::base_type_t<T>>, bool> = true>
         constexpr auto count(const T& data) const -> size_t{
@@ -1932,19 +2017,32 @@ namespace dg::network_compact_serializer::archive{
             }
         }
 
-        // template <class T, std::enable_if_t<types_space::is_utc_timepoint_v<types_space::base_type_t<T>>, bool> = true>
-        // constexpr void put(char *& buf, const T& data) const{
+        template <class T, std::enable_if_t<types_space::is_utc_timepoint_v<types_space::base_type_t<T>>, bool> = true>
+        constexpr void put(char *& buf, const T& data) const{
 
-        //     using base_type = types_space::base_type_t<T>;
+            using base_type = types_space::base_type_t<T>;
 
-        //     this->put(buf, get_dgstd_serialization_header<base_type>());
+            this->put(buf, get_dgstd_serialization_header<base_type>());
 
-        //     auto dur            = data.time_since_epoch();
-        //     auto casted_dur     = std::chrono::duration_cast<types::serializable_duration_t>(dur);
-        //     auto storable_value = casted_dur.count();
+            auto dur            = data.time_since_epoch();
+            auto casted_dur     = utility::safe_duration_cast<types::serializable_duration_t>(dur);
+            auto storable_value = casted_dur.count();
 
-        //     this->put(buf, storable_value);
-        // }
+            this->put(buf, storable_value);
+        }
+
+        template <class T, std::enable_if_t<types_space::is_std_duration_v<types_space::base_type_t<T>>, bool> = true>
+        constexpr void put(char *& buf, const T& data) const
+        {
+            using base_type = types_space::base_type_t<T>;
+
+            this->put(buf, get_dgstd_serialization_header<base_type>());
+
+            auto casted_dur     = utility::safe_duration_cast<types::serializable_duration_t>(data);
+            auto storable_value = casted_dur.count();
+
+            this->put(buf, storable_value);
+        }
 
         template <class T, std::enable_if_t<types_space::is_tuple_v<types_space::base_type_t<T>>, bool> = true>
         constexpr void put(char *& buf, const T& data) const{
@@ -2181,27 +2279,48 @@ namespace dg::network_compact_serializer::archive{
             }
         }
 
-        // template <class T, std::enable_if_t<types_space::is_utc_timepoint_v<types_space::base_type_t<T>>, bool> = true>
-        // constexpr void put(const char *& buf, size_t& buf_sz, T&& data) const{
+        template <class T, std::enable_if_t<types_space::is_utc_timepoint_v<types_space::base_type_t<T>>, bool> = true>
+        constexpr void put(const char *& buf, size_t& buf_sz, T&& data) const{
 
-        //     using base_type     = types_space::base_type_t<T>;
-        //     using data_dur_t    = typename base_type::duration;
+            using base_type     = types_space::base_type_t<T>;
+            using data_dur_t    = typename base_type::duration;
 
-        //     types::dgstd_unsigned_serialization_header_t expected_header    = {};
-        //     this->put(buf, buf_sz, expected_header);
-        //     types::dgstd_unsigned_serialization_header_t header             = get_dgstd_serialization_header<base_type>();
+            types::dgstd_unsigned_serialization_header_t expected_header    = {};
+            this->put(buf, buf_sz, expected_header);
+            types::dgstd_unsigned_serialization_header_t header             = get_dgstd_serialization_header<base_type>();
 
-        //     if (header != expected_header){
-        //         throw dg::network_compact_serializer::exception_space::corrupted_format();
-        //     }
+            if (header != expected_header){
+                throw dg::network_compact_serializer::exception_space::corrupted_format();
+            }
 
-        //     typename types::serializable_duration_t::rep tick;
+            typename types::serializable_duration_t::rep tick;
 
-        //     this->put(buf, buf_sz, tick);
-        //     auto serialization_dur = types::serializable_duration_t(tick);
-        //     auto data_dur = std::chrono::duration_cast<data_dur_t>(serialization_dur);
-        //     data = base_type(data_dur);
-        // }
+            this->put(buf, buf_sz, tick);
+            auto serialization_dur = types::serializable_duration_t(tick);
+            auto data_dur = utility::safe_duration_cast<data_dur_t>(serialization_dur);
+            data = base_type(data_dur);
+        }
+
+        template <class T, std::enable_if_t<types_space::is_std_duration_v<types_space::base_type_t<T>>, bool> = true>
+        constexpr void put(const char *& buf, size_t& buf_sz, T&& data) const
+        {
+            using base_type     = types_space::base_type_t<T>;
+
+            types::dgstd_unsigned_serialization_header_t expected_header    = {};
+            this->put(buf, buf_sz, expected_header);
+            types::dgstd_unsigned_serialization_header_t header             = get_dgstd_serialization_header<base_type>();
+
+            if (header != expected_header)
+            {
+                throw dg::network_compact_serializer::exception_space::corrupted_format();
+            }
+
+            typename types::serializable_duration_t::rep tick;
+
+            this->put(buf, buf_sz, tick);
+            auto serialization_dur = types::serializable_duration_t(tick);
+            data = utility::safe_duration_cast<base_type>(serialization_dur);
+        }
 
         template <class T, std::enable_if_t<types_space::is_tuple_v<types_space::base_type_t<T>>, bool> = true>
         void put(const char *& buf, size_t& buf_sz, T&& data) const{

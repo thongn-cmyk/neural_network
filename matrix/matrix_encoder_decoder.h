@@ -8,7 +8,7 @@
 #include <memory>
 #include "tensor_model.h"
 #include <functional>
-#include "float_def.h"
+#include <general_definition/float_def.h>
 #include <limits.h>
 #include <optional>
 
