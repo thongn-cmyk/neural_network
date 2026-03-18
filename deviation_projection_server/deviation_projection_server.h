@@ -11,6 +11,7 @@
 #include <deviation_projector/generic_matrix_deviation_calculator_interface.h>
 #include <deviation_projector/generic_resource.h>
 #include <connectivity_subsystem/connectivity_subsystem.h>
+#include <connection_based_manager/connection_based_manager.h>
 #include <string>
 #include <serializer/compact_serializer.h>
 #include <chrono>
@@ -83,7 +84,7 @@ namespace deviation_projection_server
             }
     };
 
-    class ConnectionBoundClientBox
+    class ConnectionBoundClientBox: public virtual connection_based_manager::HealthcheckableInterface
     {
         private:
 
@@ -159,169 +160,39 @@ namespace deviation_projection_server
                 this->connection->close();
             }
 
-            auto is_closed() -> bool
-            {
-                fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*this->mtx);
-
-                return this->was_explicitly_destroyed;
-            }
-
             auto is_alive() -> bool
             {
                 fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*this->mtx);
 
-                if (this->was_explicitly_destroyed)
-                {
-                    throw std::runtime_error("invalid operation, closed client box");
-                }
-
-                return this->connection->is_alive();
+                return !this->was_explicitly_destroyed && this->connection->is_alive();
             }
     };
 
-    class ClientManager: public virtual cron_subsystem::UpdatableInterface
+    class ClientBoxManager
     {
         private:
 
-            std::unordered_map<uint64_t, std::shared_ptr<ConnectionBoundClientBox>> client_map;
-            std::unique_ptr<fair_mutex::fair_atomic_flag> mtx;
-            uint64_t id_counter;
+            std::unique_ptr<connection_based_manager::ManagerInterface> base;
 
         public:
 
-            ClientManager(): client_map(),
-                             mtx(fair_mutex::make_unique_fair_atomic_flag()),
-                             id_counter(0u){}
+            ClientBoxManager(): base(std::make_unique<connection_based_manager::ClientManager>()){}
 
             auto open_client_box(const connectivity_subsystem::SlaveConfiguration& connection_config) -> uint64_t
             {
                 std::shared_ptr<ConnectionBoundClientBox> obj = std::make_shared<ConnectionBoundClientBox>(connection_config);
 
-                {
-                    fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*this->mtx);
-
-                    uint64_t nxt_id             = this->id_counter;
-                    this->client_map[nxt_id]    = std::move(obj);
-                    this->id_counter            = nxt_id + 1u;
-
-                    return nxt_id;
-                }
+                return this->base->add(obj);
             }
 
             auto get_client_box(uint64_t client_box_id) -> std::shared_ptr<ConnectionBoundClientBox>
             {
-                fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*this->mtx);
-
-                if (auto map_ptr = this->client_map.find(client_box_id); map_ptr != this->client_map.end())
-                {
-                    return map_ptr->second;
-                }
-
-                return nullptr;
+                return std::dynamic_pointer_cast<ConnectionBoundClientBox>(this->base->get(client_box_id));
             }
 
             void close_client_box(uint64_t client_box_id) noexcept
             {
-                std::shared_ptr<ConnectionBoundClientBox> tmp{};
-
-                {
-                    fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*this->mtx);
-
-                    if (auto map_ptr = this->client_map.find(client_box_id); map_ptr != this->client_map.end())
-                    {
-                        tmp = std::move(map_ptr->second);
-                        this->client_map.erase(map_ptr);
-                    }
-                    else
-                    {
-                        tmp = nullptr;
-                    }
-                }
-
-                if (tmp != nullptr)
-                {
-                    tmp->close();
-                }
-            }
-
-            void update()
-            {
-                std::vector<std::pair<uint64_t, std::shared_ptr<ConnectionBoundClientBox>>> client_vec{};
-
-                {
-                    fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*this->mtx);
-                    std::copy(this->client_map.begin(), this->client_map.end(), std::back_inserter(client_vec));
-                }
-
-                std::unordered_set<uint64_t> bad_client_id_set{};
-
-                for (const auto& [client_id, client_instance]: client_vec)
-                {
-                    bool is_bad_client;
-
-                    try
-                    {
-                        is_bad_client = client_instance->is_closed() || !client_instance->is_alive();
-                    }
-                    catch (...)
-                    {
-                        is_bad_client = true;
-                    }
-
-                    if (is_bad_client)
-                    {
-                        bad_client_id_set.insert(client_id);
-                        client_instance->close();
-                    }
-                }
-
-                {
-                    fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*this->mtx);
-                    decltype(this->client_map) new_client_map{};
-
-                    for (const auto& [client_id, client_instance]: this->client_map)
-                    {
-                        if (!bad_client_id_set.contains(client_id))
-                        {
-                            new_client_map.insert({client_id, client_instance});
-                        }
-                    }
-
-                    this->client_map = std::move(new_client_map);
-                }
-            }
-    };
-
-    class SelfObservedClientManager
-    {
-        private:
-
-            std::shared_ptr<ClientManager> base;
-            std::shared_ptr<void> cron_obj;
-
-        public:
-
-            static inline const std::chrono::nanoseconds CRON_DURATION = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(1));
-
-            SelfObservedClientManager()
-            {
-                this->base      = std::make_shared<ClientManager>();
-                this->cron_obj  = cron_subsystem::register_periodic_cronjob(this->base, CRON_DURATION);
-            }
-
-            auto open_client_box(const connectivity_subsystem::SlaveConfiguration& connection_config) -> uint64_t
-            {
-                return this->base->open_client_box(connection_config);
-            }
-
-            auto get_client_box(uint64_t client_box_id) -> std::shared_ptr<ConnectionBoundClientBox>
-            {
-                return this->base->get_client_box(client_box_id);
-            }
-
-            void close_client_box(uint64_t client_box_id) noexcept
-            {
-                this->base->close_client_box(client_box_id);
+                this->base->close(client_box_id);
             }
     };
 
@@ -604,13 +475,13 @@ namespace deviation_projection_server
     {
         private:
 
-            std::shared_ptr<SelfObservedClientManager> client_manager;
+            std::shared_ptr<ClientBoxManager> client_manager;
 
         public:
 
             static inline constexpr std::string_view RESOLVABLE_PATH = "deviation_projection/open_client";
 
-            OpenClientResolver(std::shared_ptr<SelfObservedClientManager> client_manager) noexcept: client_manager(std::move(client_manager)){}
+            OpenClientResolver(std::shared_ptr<ClientBoxManager> client_manager) noexcept: client_manager(std::move(client_manager)){}
 
             auto handle(const dg_sock::network_rest_frame::model::Request& request) -> dg_sock::network_rest_frame::model::Response
             {
@@ -662,13 +533,13 @@ namespace deviation_projection_server
     {
         private:
 
-            std::shared_ptr<SelfObservedClientManager> client_manager;
+            std::shared_ptr<ClientBoxManager> client_manager;
 
         public:
 
             static inline constexpr std::string_view RESOLVABLE_PATH = "deviation_projection/close_client";
 
-            CloseClientResolver(std::shared_ptr<SelfObservedClientManager> client_manager) noexcept: client_manager(std::move(client_manager)){}
+            CloseClientResolver(std::shared_ptr<ClientBoxManager> client_manager) noexcept: client_manager(std::move(client_manager)){}
 
             auto handle(const dg_sock::network_rest_frame::model::Request& request) -> dg_sock::network_rest_frame::model::Response
             {
@@ -698,13 +569,13 @@ namespace deviation_projection_server
     {
         private:
 
-            std::shared_ptr<SelfObservedClientManager> client_manager;
+            std::shared_ptr<ClientBoxManager> client_manager;
 
         public:
 
             static inline constexpr std::string_view RESOLVABLE_PATH = "deviation_projection/add_training_data";
 
-            AddTrainingDataResolver(std::shared_ptr<SelfObservedClientManager> client_manager) noexcept: client_manager(std::move(client_manager)){}
+            AddTrainingDataResolver(std::shared_ptr<ClientBoxManager> client_manager) noexcept: client_manager(std::move(client_manager)){}
 
             auto handle(const dg_sock::network_rest_frame::model::Request& request) -> dg_sock::network_rest_frame::model::Response
             {
@@ -772,13 +643,13 @@ namespace deviation_projection_server
     {
         private:
 
-            std::shared_ptr<SelfObservedClientManager> client_manager;
+            std::shared_ptr<ClientBoxManager> client_manager;
         
         public:
 
             static inline constexpr std::string_view RESOLVABLE_PATH = "deviation_projection/clear_training_data";
 
-            ClearTrainingDataResolver(std::shared_ptr<SelfObservedClientManager> client_manager) noexcept: client_manager(std::move(client_manager)){}
+            ClearTrainingDataResolver(std::shared_ptr<ClientBoxManager> client_manager) noexcept: client_manager(std::move(client_manager)){}
 
             auto handle(const dg_sock::network_rest_frame::model::Request& request) -> dg_sock::network_rest_frame::model::Response
             {
@@ -843,13 +714,13 @@ namespace deviation_projection_server
     {
         private:
 
-            std::shared_ptr<SelfObservedClientManager> client_manager;
+            std::shared_ptr<ClientBoxManager> client_manager;
 
         public:
 
             static inline constexpr std::string_view RESOLVABLE_PATH = "deviation_projection/set_matrix_resource";
 
-            SetMatrixResourceResolver(std::shared_ptr<SelfObservedClientManager> client_manager) noexcept: client_manager(std::move(client_manager)){}
+            SetMatrixResourceResolver(std::shared_ptr<ClientBoxManager> client_manager) noexcept: client_manager(std::move(client_manager)){}
 
             auto handle(const dg_sock::network_rest_frame::model::Request& request) -> dg_sock::network_rest_frame::model::Response
             {
@@ -914,13 +785,13 @@ namespace deviation_projection_server
     {
         private:
 
-            std::shared_ptr<SelfObservedClientManager> client_manager;
+            std::shared_ptr<ClientBoxManager> client_manager;
         
         public:
 
             static inline constexpr std::string_view RESOLVABLE_PATH = "deviation_projection/get_deviation";
 
-            GetDeviationResolver(std::shared_ptr<SelfObservedClientManager> client_manager) noexcept: client_manager(std::move(client_manager)){}
+            GetDeviationResolver(std::shared_ptr<ClientBoxManager> client_manager) noexcept: client_manager(std::move(client_manager)){}
 
             auto handle(const dg_sock::network_rest_frame::model::Request& request) -> dg_sock::network_rest_frame::model::Response
             {
@@ -981,15 +852,15 @@ namespace deviation_projection_server
 
     void init()
     {
-        std::shared_ptr<SelfObservedClientManager> client_manager = std::make_shared<SelfObservedClientManager>();
+        std::shared_ptr<ClientBoxManager> client_box_manager = std::make_shared<ClientBoxManager>();
 
         dg_sock::network_rest_frame::server_instance::hook(GetVersionResolver::RESOLVABLE_PATH, std::make_unique<GetVersionResolver>());
-        dg_sock::network_rest_frame::server_instance::hook(OpenClientResolver::RESOLVABLE_PATH, std::make_unique<OpenClientResolver>(client_manager));
-        dg_sock::network_rest_frame::server_instance::hook(CloseClientResolver::RESOLVABLE_PATH, std::make_unique<CloseClientResolver>(client_manager));
-        dg_sock::network_rest_frame::server_instance::hook(AddTrainingDataResolver::RESOLVABLE_PATH, std::make_unique<AddTrainingDataResolver>(client_manager));
-        dg_sock::network_rest_frame::server_instance::hook(ClearTrainingDataResolver::RESOLVABLE_PATH, std::make_unique<ClearTrainingDataResolver>(client_manager));
-        dg_sock::network_rest_frame::server_instance::hook(SetMatrixResourceResolver::RESOLVABLE_PATH, std::make_unique<SetMatrixResourceResolver>(client_manager));
-        dg_sock::network_rest_frame::server_instance::hook(GetDeviationResolver::RESOLVABLE_PATH, std::make_unique<GetDeviationResolver>(client_manager));
+        dg_sock::network_rest_frame::server_instance::hook(OpenClientResolver::RESOLVABLE_PATH, std::make_unique<OpenClientResolver>(client_box_manager));
+        dg_sock::network_rest_frame::server_instance::hook(CloseClientResolver::RESOLVABLE_PATH, std::make_unique<CloseClientResolver>(client_box_manager));
+        dg_sock::network_rest_frame::server_instance::hook(AddTrainingDataResolver::RESOLVABLE_PATH, std::make_unique<AddTrainingDataResolver>(client_box_manager));
+        dg_sock::network_rest_frame::server_instance::hook(ClearTrainingDataResolver::RESOLVABLE_PATH, std::make_unique<ClearTrainingDataResolver>(client_box_manager));
+        dg_sock::network_rest_frame::server_instance::hook(SetMatrixResourceResolver::RESOLVABLE_PATH, std::make_unique<SetMatrixResourceResolver>(client_box_manager));
+        dg_sock::network_rest_frame::server_instance::hook(GetDeviationResolver::RESOLVABLE_PATH, std::make_unique<GetDeviationResolver>(client_box_manager));
     }
 
     void deinit() noexcept

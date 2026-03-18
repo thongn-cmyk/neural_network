@@ -275,6 +275,23 @@ namespace tensor_being_unit_operation
             tensor_process_group_operation::flatten(arg->process_group_vec[i], output_vec);
         }
     }
+
+    template <class ...Args>
+    constexpr void get_shape(const std::shared_ptr<tensor_model::BeingUnit>& arg,
+                             std::vector<size_t, Args...>& output_vec)
+    {
+        stdx::safe_ptr_access(arg.get());
+
+        if (arg->process_group_vec_sz == 0u)
+        {
+            throw std::invalid_argument("bad being unit, 0 item");
+        }
+
+        output_vec.push_back(arg->process_group_vec_sz);
+
+        stdx::safe_ptr_access(arg->process_group_vec.get());
+        tensor_process_group_operation::get_shape(arg->process_group_vec[0], output_vec);
+    }
 }
 
 #endif

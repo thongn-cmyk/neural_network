@@ -345,7 +345,17 @@ namespace tensor_matrix_operation
     constexpr void get_shape(const std::shared_ptr<tensor_model::Matrix>& arg,
                              std::vector<size_t, Args...>& output_vec)
     {
+        stdx::safe_ptr_access(arg.get());
 
+        if (arg->being_vec_sz == 0u)
+        {
+            throw std::invalid_argument("bad matrix, 0 item");
+        }
+
+        output_vec.push_back(arg->being_vec_sz);
+
+        stdx::safe_ptr_access(arg->being_vec.get());
+        tensor_being_unit_operation::get_shape(arg->being_vec[0], output_vec);
     }
 
     template <class Allocator = std::allocator<char>>

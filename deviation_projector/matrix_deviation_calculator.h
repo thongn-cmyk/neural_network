@@ -144,7 +144,7 @@ namespace deviation_projector
         public:
 
             template <class PromotedFloatType = tensor_std_float_t>
-            static auto get_prenormalized_deviation_calculator(const stdx::Tag<PromotedFloatType>& tag = stdx::Tag<PromotedFloatType>{}) -> std::unique_ptr<MatrixDeviationCalculatorInterface>
+            static auto get_square_deviation_calculator(const stdx::Tag<PromotedFloatType>& tag = stdx::Tag<PromotedFloatType>{}) -> std::unique_ptr<MatrixDeviationCalculatorInterface>
             {
                 return std::make_unique<MatrixSquareDeviationCalculator<PromotedFloatType>>();
             }

@@ -275,6 +275,13 @@ namespace tensor_process_unit_operation
             output_vec.push_back(logit);
         }
     }
+
+    template <class ...Args>
+    constexpr void get_shape(const tensor_model::ProcessUnit& arg,
+                             std::vector<size_t, Args...>& output_vec)
+    {
+        output_vec.push_back(tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ);
+    }
 }
 
 #endif

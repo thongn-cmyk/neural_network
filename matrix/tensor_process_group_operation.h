@@ -275,6 +275,16 @@ namespace tensor_process_group_operation
             tensor_process_unit_operation::flatten(e, output_vec);
         }
     }
+
+    template <class ...Args>
+    constexpr void get_shape(const std::shared_ptr<tensor_model::ProcessGroup>& arg,
+                             std::vector<size_t, Args...>& output_vec)
+    {
+        stdx::safe_ptr_access(arg.get());
+
+        output_vec.push_back(tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ);
+        tensor_process_unit_operation::get_shape(arg->process_vec[0], output_vec);
+    }
 }
 
 #endif
