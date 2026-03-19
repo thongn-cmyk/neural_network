@@ -137,7 +137,7 @@ namespace concurrency_base
     {
         auto ptr = SingletonObject::get().thrid_to_idx_map.find(std::this_thread::get_id());
     
-        if (ptr != SingletonObject::get().thrid_to_idx_map.end())
+        if (ptr == SingletonObject::get().thrid_to_idx_map.end())
         {
             std::abort();
         }

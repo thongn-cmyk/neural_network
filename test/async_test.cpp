@@ -1,4 +1,5 @@
 #define STRONG_MEMORY_ORDERING_FLAG true
+#define DEBUG_MODE_FLAG true
 
 #include <seqpar_async/async_x.h>
 #include <random>
@@ -8,6 +9,25 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <chrono>
+
+void initialize_concurrency_base()
+{
+    using namespace concurrency_base;
+
+    std::cout << "initializing concurrency base\n";
+    std::vector<WorkerInformation> worker_info_vec{};
+
+    for (size_t i = 0u; i < size_t{1} << 8; ++i)
+    {
+        worker_info_vec.push_back(WorkerInformation
+        {
+            .cpu_id = std::nullopt,
+            .daemon = ASYNC_SEQPAR_DAEMON
+        });
+    }
+
+    init(Config{worker_info_vec});
+}
 
 void test_one_async()
 {
@@ -81,5 +101,6 @@ void test_async()
 
 int main()
 {
+    initialize_concurrency_base();
     test_async();
 }

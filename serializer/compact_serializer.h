@@ -20,6 +20,7 @@
 #include <variant>
 #include <chrono>
 #include <expected>
+#include <cmath>
 
 //I was thinking of making the trivial serializer an internal dependency to solve the VERSION_CONTROL problems
 // 

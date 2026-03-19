@@ -1,4 +1,5 @@
 #define STRONG_MEMORY_ORDERING_FLAG true
+#define DEBUG_MODE_FLAG true
 
 #include <iostream>
 // #include "coroutine_x.h"
@@ -237,7 +238,46 @@ void run_test()
     test_coroutine_mixed();
 }
 
+void initialize_concurrency()
+{
+    using namespace concurrency_base;
+
+    std::cout << "initializing concurrency\n";
+
+    std::vector<WorkerInformation> worker_info_vec{};
+
+    for (size_t i = 0u; i < 3; ++i)
+    {
+        worker_info_vec.push_back(WorkerInformation
+        {
+            .cpu_id = std::nullopt,
+            .daemon = COROUTINE_DAEMON
+        });
+    }
+
+    for (size_t i = 0u; i < 1; ++i)
+    {
+        worker_info_vec.push_back(WorkerInformation
+        {
+            .cpu_id = std::nullopt,
+            .daemon = CRON_TICK_DAEMON
+        });
+    }
+
+    for (size_t i = 0u; i < 1; ++i)
+    {
+        worker_info_vec.push_back(WorkerInformation
+        {
+            .cpu_id = std::nullopt,
+            .daemon = CRON_WORK_DAEMON
+        });
+    }
+
+    init(Config{worker_info_vec});
+}
+
 int main()
 {
+    initialize_concurrency();
     run_test();
 }

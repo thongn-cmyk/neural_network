@@ -89,82 +89,81 @@ namespace deviation_projection_server
         private:
 
             std::unique_ptr<connectivity_subsystem::ConnectionInterface> connection;
-            ClientBox base;
-            bool was_explicitly_destroyed;
+            std::unique_ptr<ClientBox> base;
+            std::unique_ptr<std::atomic<bool>> was_explicitly_destroyed;
             std::unique_ptr<fair_mutex::fair_atomic_flag> mtx;
 
         public:
 
-            ConnectionBoundClientBox(const connectivity_subsystem::SlaveConfiguration& connection_config): connection(std::make_unique<connectivity_subsystem::SlaveConnection>(connection_config)),
-                                                                                                           base(),
-                                                                                                           was_explicitly_destroyed(false),
+            ConnectionBoundClientBox(const connectivity_subsystem::SlaveConfiguration& connection_config): connection(std::make_unique<connectivity_subsystem::ThreadSafeSlaveConnection>(connection_config)),
+                                                                                                           base(std::make_unique<ClientBox>()),
+                                                                                                           was_explicitly_destroyed(std::make_unique<std::atomic<bool>>(false)),
                                                                                                            mtx(fair_mutex::make_unique_fair_atomic_flag()){}
 
             void add_training_data(const std::shared_ptr<std::string>& inp, const std::shared_ptr<std::string>& out)
             {
                 fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*this->mtx);
 
-                if (this->was_explicitly_destroyed)
+                if (this->was_explicitly_destroyed->load(std::memory_order_relaxed))
                 {
                     throw std::runtime_error("invalid operation, closed client box");
                 }
 
-                this->base.add_training_data(inp, out);
+                this->base->add_training_data(inp, out);
             }
 
             void clear_training_data()
             {
                 fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*this->mtx);
 
-                if (this->was_explicitly_destroyed)
+                if (this->was_explicitly_destroyed->load(std::memory_order_relaxed))
                 {
                     throw std::runtime_error("invalid operation, closed client box");
                 }
 
-                this->base.clear_training_data();
+                this->base->clear_training_data();
             }
 
             void set_matrix_resource(const std::vector<deviation_projector::GenericMatrixDeviationCalculatorResource>& matrix_resource_vec)
             {
                 fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*this->mtx);
 
-                if (this->was_explicitly_destroyed)
+                if (this->was_explicitly_destroyed->load(std::memory_order_relaxed))
                 {
                     throw std::runtime_error("invalid operation, closed client box");
                 }
 
-                this->base.set_matrix_resource(matrix_resource_vec);
+                this->base->get_matrix_resource(matrix_resource_vec);
             }
 
             auto get() -> std::vector<mdc_float_t>
             {
                 fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*this->mtx);
 
-                if (this->was_explicitly_destroyed)
+                if (this->was_explicitly_destroyed->load(std::memory_order_relaxed))
                 {
                     throw std::runtime_error("invalid operation, closed client box");
                 }
 
-                return this->base.get();
+                return this->base->get();
             }
 
             void close() noexcept
             {
                 fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*this->mtx);
 
-                if (std::exchange(this->was_explicitly_destroyed, true))
+                if (this->was_explicitly_destroyed->exchange(true, std::memory_order_relaxed))
                 {
                     return;
                 }
 
                 this->connection->close();
+                this->base = nullptr;
             }
 
             auto is_alive() -> bool
             {
-                fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*this->mtx);
-
-                return !this->was_explicitly_destroyed && this->connection->is_alive();
+                return !this->was_explicitly_destroyed->load(std::memory_order_relaxed) && this->connection->is_alive();
             }
     };
 

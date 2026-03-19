@@ -853,6 +853,40 @@ namespace connectivity_subsystem
             };
     };
 
+    class ThreadSafeMasterConnection: private MasterConnection
+    {
+        private:
+
+            std::unique_ptr<fair_mutex::fair_atomic_flag> mtx;
+
+        public:
+
+            ThreadSafeMasterConnection(const MasterConfiguration& config,
+                                       std::shared_ptr<ConnectionControllerInterface> controller = ConnectionControllerSingleton::get()): MasterConnection(config, controller),
+                                                                                                                                          mtx(fair_mutex::make_unique_fair_atomic_flag()){}
+
+            auto get_slave_configuration() -> SlaveConfiguration
+            {
+                fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*this->mtx);
+
+                return MasterConnection::get_slave_configuration();
+            }
+
+            void close() noexcept
+            {
+                fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*this->mtx);
+
+                MasterConnection::close();
+            }
+
+            auto is_alive() -> bool
+            {
+                fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*this->mtx);
+
+                return MasterConnection::is_alive();
+            }
+    };
+
     class SlaveConnection: public virtual ConnectionInterface
     {
         private:
@@ -1069,6 +1103,32 @@ namespace connectivity_subsystem
                         }
                     }
             };
+    };
+
+    class ThreadSafeSlaveConnection: private SlaveConnection
+    {
+        private:
+
+            std::unique_ptr<fair_mutex::fair_atomic_flag> mtx;
+
+        public:
+
+            ThreadSafeSlaveConnection(const SlaveConfiguration& config): SlaveConnection(config),
+                                                                         mtx(fair_mutex::make_unique_fair_atomic_flag()){}
+
+            void close() noexcept
+            {
+                fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*this->mtx);
+
+                SlaveConnection::close();
+            }
+
+            auto is_alive() -> bool
+            {
+                fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*this->mtx);
+
+                return SlaveConnection::is_alive();
+            }
     };
 }
 

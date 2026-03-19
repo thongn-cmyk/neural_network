@@ -1,4 +1,5 @@
 #define STRONG_MEMORY_ORDERING_FLAG true
+#define DEBUG_MODE_FLAG true
 
 #include <stdint.h>
 #include <stdlib.h>
