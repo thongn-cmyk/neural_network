@@ -205,6 +205,11 @@ namespace logging_subsystem
                 return *this;
             }
 
+            operator GenericLogMessage()
+            {
+                return this->get();
+            }
+
             auto get() -> GenericLogMessage
             {
                 return GenericLogMessage

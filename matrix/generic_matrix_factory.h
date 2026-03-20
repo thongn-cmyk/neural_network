@@ -435,6 +435,27 @@ namespace generic_matrix_factory
                     }
             };
     };
+
+    using ExternalGenericMatrixResource = std::string;
+
+    class ExternalGenericMatrixLoader
+    {
+        private:
+
+            static inline constexpr uint32_t SECRET = 825715422UL;
+
+        public:
+
+            auto virtualize_resource(const GenericMatrixResource& resource) -> ExternalGenericMatrixResource
+            {
+                return dg::network_compact_serializer::dgstd_serialize<ExternalGenericMatrixResource>(resource, SECRET);
+            }
+
+            auto load_resource(const ExternalGenericMatrixResource& resource) -> std::unique_ptr<the_matrix::MatrixInterface>
+            {
+                return GenericMatrixLoader{}.load_resource(dg::network_compact_serializer::dgstd_deserialize<GenericMatrixResource>(resource, SECRET));
+            }
+    };
 }
 
 #endif
