@@ -1087,7 +1087,7 @@ namespace allocation_base::global_allocator
         get_allocator_instance()->free(org_ptr); 
     }
 
-    extern auto dg_xaligned_blk_size(void * ptr) noexcept -> size_t
+    extern auto dg_xaligned_blk_size(const void * ptr) noexcept -> size_t
     {
         if (ptr == nullptr)
         {
@@ -1096,8 +1096,8 @@ namespace allocation_base::global_allocator
 
         constexpr size_t METADATA_SZ    = trivial_serializer::size(XAlignMetadata{});
 
-        void * metadata_header_addr     = std::prev(static_cast<char *>(ptr), METADATA_SZ);
-        auto metadata                   = XAlignMetadata{};
+        const void * metadata_header_addr   = std::prev(static_cast<const char *>(ptr), METADATA_SZ);
+        auto metadata                       = XAlignMetadata{};
         trivial_serializer::deserialize_into(metadata, static_cast<const char *>(metadata_header_addr));
 
         return metadata.blk_sz;

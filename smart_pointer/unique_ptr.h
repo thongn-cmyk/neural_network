@@ -11,14 +11,20 @@
 #include <memory>
 #include <stl_extension/stdx.h>
 #include <type_traits>
+#include <optional>
 
 namespace smart_pointer::unique_ptr_implementation
 {
-    template <class Child, class Parent>
-    struct is_unique_ptr_convertible_child: std::conjunction<std::is_base_of<Parent, Child>, std::negation<std::is_base_of<Child, Parent>>>{};
+    //OK
 
-    template <class Child, class Parent>
-    static inline constexpr bool is_unique_ptr_convertible_child_v = is_unique_ptr_convertible_child<Child, Parent>::value;
+    template <class T, class = void>
+    struct has_star_operator: std::false_type{};
+
+    template <class T>
+    struct has_star_operator<T, std::void_t<decltype(*std::declval<T&>())>>: std::true_type{};
+
+    template <class T>
+    static inline constexpr bool has_star_operator_v = has_star_operator<T>::value;
 
     template <class T, class CharMemoryDeallocator>
     class unique_ptr
@@ -33,7 +39,7 @@ namespace smart_pointer::unique_ptr_implementation
 
             T * obj;
             polymorphic_offset_t org_byte_offset;
-            CharMemoryDeallocator deallocator;
+            std::optional<CharMemoryDeallocator> deallocator;
 
         public:
 
@@ -41,33 +47,18 @@ namespace smart_pointer::unique_ptr_implementation
             using element_type  = T;
             using deleter_type  = CharMemoryDeallocator;
 
-            template <class Tmp = CharMemoryDeallocator, std::enable_if_t<std::is_default_constructible_v<Tmp>, bool> = true>
             constexpr unique_ptr(): obj(nullptr),
                                     org_byte_offset(0),
-                                    deallocator(){}
+                                    deallocator(std::nullopt){}
 
-            template <class Tmp = self, std::enable_if_t<std::is_default_constructible_v<Tmp>, bool> = true>
             constexpr unique_ptr(std::nullptr_t): unique_ptr(){}
 
-            template <class T1, class Tmp = CharMemoryDeallocator, std::enable_if_t<std::conjunction_v<std::is_default_constructible<Tmp>,
-                                                                                                       std::is_same<T1, T>>, bool> = true>
-            constexpr explicit unique_ptr(T1 * obj_arg): obj(obj_arg),
-                                                         org_byte_offset(0),
-                                                         deallocator(){}
-
-            template <class T1, class Tmp = CharMemoryDeallocator, std::enable_if_t<std::conjunction_v<std::is_default_constructible<Tmp>,
-                                                                                                       is_unique_ptr_convertible_child<T1, T>>, bool> = true>
+            template <class T1, class Tmp = CharMemoryDeallocator, std::enable_if_t<std::is_default_constructible_v<Tmp>, bool> = true>
             constexpr explicit unique_ptr(T1 * obj_arg): obj(obj_arg),
                                                          org_byte_offset(calculate_offset<T>(obj_arg)),
-                                                         deallocator(){}
+                                                         deallocator(CharMemoryDeallocator{}){}
 
-            template <class T1, class CharMemoryDeallocatorLike, std::enable_if_t<std::is_same_v<T, T1>, bool> = true>
-            constexpr unique_ptr(T1 * obj_arg,
-                                 CharMemoryDeallocatorLike&& deallocator_arg): obj(obj_arg),
-                                                                               org_byte_offset(0),
-                                                                               deallocator(std::forward<CharMemoryDeallocatorLike>(deallocator_arg)){}
-
-            template <class T1, class CharMemoryDeallocatorLike, std::enable_if_t<is_unique_ptr_convertible_child_v<T1, T>, bool> = true>
+            template <class T1, class CharMemoryDeallocatorLike>
             constexpr unique_ptr(T1 * obj_arg,
                                  CharMemoryDeallocatorLike&& deallocator_arg): obj(obj_arg),
                                                                                org_byte_offset(calculate_offset<T>(obj_arg)),
@@ -151,7 +142,7 @@ namespace smart_pointer::unique_ptr_implementation
 
             constexpr void swap(self& other) noexcept
             {
-                std::swap(this->obj, other.obj)
+                std::swap(this->obj, other.obj);
                 std::swap(this->org_byte_offset, other.org_byte_offset);;
                 std::swap(this->deallocator, other.deallocator);
             }
@@ -166,19 +157,20 @@ namespace smart_pointer::unique_ptr_implementation
                 return this->get();
             }
 
-            constexpr auto operator *() const noexcept -> T&
+            template <class Tmp = self, std::enable_if_t<has_star_operator_v<Tmp>, bool> = true>
+            constexpr auto operator *() const noexcept -> typename Tmp::element_type&
             {
                 return *this->get();
             }
 
-            constexpr auto get_deleter() const noexcept -> const CharMemoryDeallocator&
+            constexpr auto get_deleter() const noexcept -> const std::optional<CharMemoryDeallocator>&
             {
                 return this->deallocator;
             }
 
-            constexpr auto get_deleter() && noexcept -> CharMemoryDeallocator&&
+            constexpr auto get_deleter() && noexcept -> std::optional<CharMemoryDeallocator>&&
             {
-                return static_cast<CharMemoryDeallocator&&>(this->deallocator);
+                return static_cast<std::optional<CharMemoryDeallocator>&&>(this->deallocator);
             }
 
             constexpr operator bool() const noexcept
@@ -199,7 +191,7 @@ namespace smart_pointer::unique_ptr_implementation
 
             __attribute__((noinline, noipa)) constexpr void dellocate_memory(void * memblk) noexcept
             {
-                this->deallocator.deallocate(memblk);
+                this->deallocator->deallocate_one(memblk);
             }
 
             constexpr void clean_resource() noexcept
@@ -228,7 +220,7 @@ namespace smart_pointer::unique_ptr_implementation
             using self  = unique_ptr;
 
             T * obj;
-            CharMemoryDeallocator deallocator;
+            std::optional<CharMemoryDeallocator> deallocator;
 
         public:
 
@@ -236,19 +228,17 @@ namespace smart_pointer::unique_ptr_implementation
             using element_type  = T;
             using deleter_type  = CharMemoryDeallocator;
 
-            template <class Tmp = CharMemoryDeallocator, std::enable_if_t<std::is_default_constructible_v<Tmp>, bool> = true>
             constexpr unique_ptr(): obj(nullptr),
-                                    deallocator(){}
+                                    deallocator(std::nullopt){}
 
-            template <class Tmp = self, std::enable_if_t<std::is_default_constructible_v<Tmp>, bool> = true>
             constexpr unique_ptr(std::nullptr_t): unique_ptr(){}
 
             template <class T1, class Tmp = CharMemoryDeallocator, std::enable_if_t<std::conjunction_v<std::is_default_constructible<Tmp>,
-                                                                                                       std::is_same<T, T1>>, bool> = true>
+                                                                                                       std::is_same<std::decay_t<T>, std::decay_t<T1>>>, bool> = true>
             constexpr explicit unique_ptr(T1 * obj_arg): obj(obj_arg),
-                                                         deallocator(){}
+                                                         deallocator(CharMemoryDeallocator{}){}
 
-            template <class T1, class CharMemoryDeallocatorLike, std::enable_if_t<std::is_same_v<T, T1>, bool> = true>
+            template <class T1, class CharMemoryDeallocatorLike, std::enable_if_t<std::is_same_v<std::decay_t<T>, std::decay_t<T1>>, bool> = true>
             constexpr unique_ptr(T1 * obj_arg,
                                  CharMemoryDeallocatorLike&& deallocator_arg): obj(obj_arg),
                                                                                deallocator(std::forward<CharMemoryDeallocatorLike>(deallocator_arg)){}
@@ -330,26 +320,31 @@ namespace smart_pointer::unique_ptr_implementation
                 return this->obj[idx];
             }
 
-            constexpr auto get_deleter() const noexcept -> const CharMemoryDeallocator&
+            constexpr auto get_deleter() const noexcept -> const std::optional<CharMemoryDeallocator>&
             {
                 return this->deallocator;
             }
 
-            constexpr auto get_deleter() && noexcept -> CharMemoryDeallocator&&
+            constexpr auto get_deleter() && noexcept -> std::optional<CharMemoryDeallocator>&&
             {
-                return static_cast<CharMemoryDeallocator&&>(this->deallocator);
+                return static_cast<std::optional<CharMemoryDeallocator>&&>(this->deallocator);
+            }
+
+            constexpr operator bool() const noexcept
+            {
+                return this->get() != nullptr;
             }
 
         private:
 
             __attribute__((noinline, noipa)) constexpr auto get_allocation_size(const void * mem) const noexcept -> size_t
             {
-                return this->deallocator.size(mem);
+                return this->deallocator->size(mem) / sizeof(T);
             }
 
             __attribute__((noinline, noipa)) constexpr void deallocate_memory(void * mem) noexcept
             {
-                this->deallocator.deallocate(mem);
+                this->deallocator->deallocate(mem);
             }
 
             constexpr void clean_resource() noexcept
@@ -368,9 +363,9 @@ namespace smart_pointer::unique_ptr_implementation
     };
 
     template <class T, class CharMemoryManager, class ...Args, std::enable_if_t<std::negation_v<std::is_array<T>>, bool> = true>
-    constexpr auto make_unique(CharMemoryManager&& mem_manager, Args&& ...args) -> unique_ptr<T, std::decay_t<CharMemoryManager>>
+    constexpr auto allocate_unique(CharMemoryManager&& mem_manager, Args&& ...args) -> unique_ptr<T, std::decay_t<CharMemoryManager>>
     {
-        void * memblk = mem_manager.template allocate<T>(1u);
+        void * memblk = mem_manager.template allocate_one<T>();
         T * obj;
 
         try
@@ -394,7 +389,7 @@ namespace smart_pointer::unique_ptr_implementation
     }
 
     template <class T, class CharMemoryManager, std::enable_if_t<std::is_unbounded_array_v<T>, bool> = true>
-    constexpr auto make_unique(CharMemoryManager&& mem_manager, size_t sz) -> unique_ptr<T, std::decay_t<CharMemoryManager>>
+    constexpr auto allocate_unique(CharMemoryManager&& mem_manager, size_t sz) -> unique_ptr<T, std::decay_t<CharMemoryManager>>
     {
         using base_type = std::remove_extent_t<T>;
 

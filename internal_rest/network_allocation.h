@@ -31,4 +31,61 @@ namespace dg_sock
     }
 }
 
+// namespace dg_sock
+// {
+//     class CustomAllocator
+//     {
+//         public:
+
+//             template <class T>
+//             constexpr auto allocate_one() -> void *
+//             {
+//                 static_assert(sizeof(T) != 0u);
+
+//                 return dg_sock::network_allocation::dg_aligned_alloc(alignof(T), sizeof(T));
+//             }
+
+//             constexpr void deallocate_one(void * memblk) noexcept
+//             {
+//                 dg_sock::network_allocation::dg_aligned_free(memblk);
+//             }
+
+//             template <class T>
+//             constexpr auto allocate(size_t sz) -> void *
+//             {
+//                 static_assert(sizeof(T) != 0u);
+
+//                 return dg_sock::network_allocation::dg_xaligned_alloc(alignof(T), sz * sizeof(T));
+//             }
+
+//             constexpr void deallocate(void * memblk) noexcept
+//             {
+//                 dg_sock::network_allocation::dg_xaligned_free(memblk);
+//             }
+
+//             constexpr auto size(const void * memblk) noexcept -> size_t
+//             {
+//                 return dg_sock::network_allocation::dg_xaligned_blk_size(memblk);
+//             }
+//     };
+
+//     template <class T>
+//     using unique_ptr = smart_pointer::unique_ptr_implementation::unique_ptr<T, CustomAllocator>;
+
+//     template <class T>
+//     using shared_ptr = smart_pointer::shared_ptr_implementation::shared_ptr<T, CustomAllocator>;
+
+//     template <class T, class ...Args>
+//     auto make_unique(Args&& ...args) -> unique_ptr<T>
+//     {
+//         return smart_pointer::unique_ptr_implementation::allocate_unique(CustomAllocator{}, std::forward<Args>(args)...);
+//     }
+
+//     template <class T, class ...Args>
+//     auto make_shared(Args&& ...args) -> shared_ptr<T>
+//     {
+//         return smart_pointer::shared_ptr_implementation::allocate_shared(CustomAllocator{}, std::forward<Args>(args)...);
+//     }
+// }
+
 #endif

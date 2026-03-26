@@ -12,6 +12,15 @@ namespace smart_pointer::shared_ptr_implementation
 {
     //this should suffice for our use cases, because we are very very very memory-ordering sensitive
 
+    template <class T, class = void>
+    struct has_star_operator: std::false_type{};
+
+    template <class T>
+    struct has_star_operator<T, std::void_t<decltype(*std::declval<T&>())>>: std::true_type{};
+
+    template <class T>
+    static inline constexpr bool has_star_operator_v = has_star_operator<T>::value;
+
     class PolymorphicDestructor
     {
         public:
@@ -19,13 +28,12 @@ namespace smart_pointer::shared_ptr_implementation
             virtual ~PolymorphicDestructor() noexcept = default;
     };
 
-    template <class T, class CharMemoryManager>
-    using unique_ptr = smart_pointer::unique_ptr_implementation::unique_ptr<T, CharMemoryManager>;
+    template <class ...Args>
+    using unique_ptr = smart_pointer::unique_ptr_implementation::unique_ptr<Args...>;
 
     template <class CharMemoryManager>
     struct ControlBlock
     {
-        // T obj; //I forgot !!!
         std::atomic<size_t> counter;
         unique_ptr<PolymorphicDestructor, CharMemoryManager> destructor;
     };
@@ -41,37 +49,45 @@ namespace smart_pointer::shared_ptr_implementation
 
             UniquePtrDestructor(unique_ptr<Args...>&& resource): resource{std::move(resource)}{}
 
-            ~UniquePtrDestructor() noexcept
-            {
-                this->resource = nullptr;
-            }
-
             auto get() && noexcept -> unique_ptr<Args...>&&
             {
                 return static_cast<unique_ptr<Args...>&&>(this->resource);
             }
     };
 
-    template <class Child, class Parent>
-    struct is_shared_ptr_polymorphic_convertible_child: std::conjunction<std::is_base_of<Parent, Child>, std::negation<Child, Parent>>{};
-
-    template <class Child, class Parent>
-    static inline constexpr bool is_shared_ptr_polymorphic_convertible_child_v = is_unique_ptr_convertible_child<Child, Parent>::value;
-
-    template <class Child, class Parent, class = void>
-    struct is_shared_ptr_staticastable_child: std::false_type{};
-
-    template <class Child, class Parent>
-    struct is_shared_ptr_staticastable_child<Child, Parent, std::void_t<decltype(static_cast<Parent *>(std::declval<Child *>()))>>: std::true_type{};
-
-    template <class Child, class Parent>
-    static inline constexpr bool is_shared_ptr_staticastable_child_v = is_shared_ptr_staticastable_child<Child, Parent>::value;
-
     template <class T>
     struct is_unique_ptr: std::false_type{};
 
     template <class ...Args>
     struct is_unique_ptr<smart_pointer::unique_ptr_implementation::unique_ptr<Args...>>: std::true_type{};
+
+    template <class T>
+    static inline constexpr bool is_unique_ptr_v = is_unique_ptr<T>::value;
+
+    template <class T, class T1>
+    struct shared_ptr_allocation
+    {
+        T ctrl_blk;
+        T1 polymorphic_destructor;
+    };
+
+    template <class T, class T1, class T2>
+    struct shared_ptr_allocation_2
+    {
+        T ctrl_blk;
+        T1 polymorphic_destructor;
+        T2 obj;
+    };
+
+    struct NoActionCharMemoryDeallocator
+    {
+        constexpr void deallocate_one(void * memblk) noexcept
+        {
+            (void) memblk;
+        }
+    };
+
+    struct one_block_init_tag{};
 
     template <class T, class CharMemoryManager>
     class shared_ptr
@@ -84,26 +100,28 @@ namespace smart_pointer::shared_ptr_implementation
             using self                  = shared_ptr;
 
             T * obj;
-            ControlBlock<CharMemoryManager> * ctrl_blk;
+            ControlBlock<NoActionCharMemoryDeallocator> * ctrl_blk;
             CharMemoryManager deallocator;
 
             struct unique_ptr_init_tag{};
 
             template <class ...Args, class ResourceManagerLike>
-            static constexpr auto make_control_block(UniquePtrDestructor<Args...>&& destructor,
+            static constexpr auto make_control_block(unique_ptr<Args...>&& destructor,
                                                      ResourceManagerLike&& resource_manager_like,
-                                                     size_t initial_count = 0u) -> ControlBlock<CharMemoryManager> *
+                                                     size_t initial_count) -> ControlBlock<NoActionCharMemoryDeallocator> *
             {
-                size_t memblk_1_sz      = resource_manager_like.template allocation_size<ControlBlock<CharMemoryManager>>(1u);
-                size_t memblk_2_sz      = resource_manager_like.template allocation_size<UniquePtrDestructor<Args...>>(1u);
-                size_t total_memblk_sz  = memblk_1_sz + memblk_2_sz;
-                char * mem              = resource_manager_like.template allocate<char>(total_memblk_sz); //
-                char * nxt_mem          = std::next(mem, memblk_1_sz); //
+                using allocation_t      = shared_ptr_allocation<ControlBlock<NoActionCharMemoryDeallocator>, UniquePtrDestructor<Args...>>;
 
-                ControlBlock<CharMemoryManager> * tmp_ctrl_blk = new (mem) ControlBlock<CharMemoryManager>
+                void * mem              = resource_manager_like.template allocate_one<allocation_t>();
+                void * ctrl_blk_mem     = static_cast<void *>(mem);
+                void * destructor_mem   = static_cast<void *>(&reinterpret_cast<allocation_t *>(mem)->polymorphic_destructor);
+
+                auto destructor_arg     = unique_ptr<UniquePtrDestructor<Args...>, NoActionCharMemoryDeallocator>(new (destructor_mem) UniquePtrDestructor<Args...>(std::move(destructor)), NoActionCharMemoryDeallocator{});
+
+                ControlBlock<NoActionCharMemoryDeallocator> * tmp_ctrl_blk = new (ctrl_blk_mem) ControlBlock<NoActionCharMemoryDeallocator>
                 {
                     .counter    = std::atomic<size_t>(initial_count),
-                    .destructor = unique_ptr<UniquePtrDestructor<Args...>, CharMemoryManager>(new (nxt_mem) UniquePtrDestructor<Args...>(std::move(destructor)), std::forward<ResourceManagerLike>(resource_manager_like))
+                    .destructor = std::move(destructor_arg)
                 };
 
                 return tmp_ctrl_blk;
@@ -116,28 +134,15 @@ namespace smart_pointer::shared_ptr_implementation
                 {
                     this->obj           = nullptr;
                     this->ctrl_blk      = nullptr;
-                    this->deallocator   = {};
 
                     return;
                 }
 
                 auto resource_ptr       = other.get();
                 auto resource_manager   = other.get_deleter();
-
-                UniquePtrDestructor destructor(std::move(other));
-
-                try
-                {
-                    this->ctrl_blk = this->make_control_block(std::move(destructor), resource_manager, 1u);
-                }
-                catch (...)
-                {
-                    other = std::move(destructor).get();
-                    throw;
-                }
-
-                this->obj           = resource_ptr;
-                this->deallocator   = std::move(resource_manager);
+                this->ctrl_blk          = this->make_control_block(std::move(other), resource_manager.value(), 1);
+                this->obj               = resource_ptr;
+                this->deallocator       = std::move(resource_manager.value());
             }
 
             template <class T1, class CharMemoryManagerLike = CharMemoryManager>
@@ -165,57 +170,27 @@ namespace smart_pointer::shared_ptr_implementation
 
         public:
 
+            using pointer       = T *;
+            using element_type  = T;
+
             constexpr shared_ptr(): obj(nullptr),
                                     ctrl_blk(nullptr),
                                     deallocator(){}
 
             constexpr shared_ptr(std::nullptr_t): shared_ptr(){}
 
-            template <class T1, std::enable_if_t<std::conjunction_v<std::is_same<T, T1>>, bool> = true>
+            template <class T1>
             constexpr explicit shared_ptr(T1 * obj_arg)
             {
                 this->raw_unique_initialize(obj_arg);
             }
 
-            template <class T1, std::enable_if_t<std::conjunction_v<is_shared_ptr_polymorphic_convertible_child<T1, T>,
-                                                                    std::negation<std::is_same<T, T1>>>, bool> = true>
-            constexpr explicit shared_ptr(T1 * obj_arg)
-            {
-                this->raw_unique_initialize(obj_arg);
-            }
-
-            template <class T1, std::enable_if_t<std::conjunction_v<is_shared_ptr_staticastable_child<T1, T>,
-                                                                    std::negation<is_shared_ptr_polymorphic_convertible_child<T, T1>>,
-                                                                    std::negation<is_shared_ptr_polymorphic_convertible_child<T1, T>>,
-                                                                    std::negation<std::is_same<T, T1>>>, bool> = true>
-            constexpr explicit shared_ptr(T1 * obj_arg)
-            {
-                this->raw_unique_initialize(obj_arg);
-            }
-
-            template <class T1, class CharMemoryManagerLike, std::enable_if_t<std::is_same_v<T, T1>, bool> = true>
+            template <class T1, class CharMemoryManagerLike>
             constexpr shared_ptr(T1 * obj_arg,
                                  CharMemoryManagerLike&& deallocator_arg)
             {
-                this->raw_unique_initialize(obj_arg, std::forward<CharMemoryManagerLike>(deallocator_arg));
-            }
-
-            template <class T1, class CharMemoryManagerLike, std::enable_if_t<std::conjunction_v<is_shared_ptr_polymorphic_convertible_child<T1, T>,
-                                                                                                 std::negation<std::is_same<T, T1>>>, bool> = true>
-            constexpr shared_ptr(T1 * obj_arg,
-                                 CharMemoryManagerLike&& deallocator_arg)
-            {
-                this->raw_unique_initialize(obj_arg, std::forward<CharMemoryManagerLike>(deallocator_arg));
-            }
-
-            template <class T1, class CharMemoryManagerLike, std::enable_if_t<std::conjunction_v<is_shared_ptr_staticastable_child<T1, T>,
-                                                                                                 std::negation<is_shared_ptr_polymorphic_convertible_child<T, T1>>,
-                                                                                                 std::negation<is_shared_ptr_polymorphic_convertible_child<T1, T>>,
-                                                                                                 std::negation<std::is_same<T, T1>>>, bool> = true>
-            constexpr shared_ptr(T1 * obj_arg,
-                                 CharMemoryManagerLike&& deallocator_arg)
-            {
-                this->raw_unique_initialize(obj_arg, std::forward<CharMemoryManagerLike>(deallocator_arg));
+                this->raw_unique_initialize(obj_arg,
+                                            std::forward<CharMemoryManagerLike>(deallocator_arg));
             }
 
             template <class T1, std::enable_if_t<is_unique_ptr_v<std::decay_t<T1>>, bool> = true>
@@ -225,9 +200,9 @@ namespace smart_pointer::shared_ptr_implementation
                                                                                                   std::negation<std::is_same<CharMemoryManager, OtherCharMemoryManager>>>, bool> = true>
             constexpr shared_ptr(shared_ptr<T1, OtherCharMemoryManager> other): obj(std::exchange(other.obj, nullptr)),
                                                                                 ctrl_blk(std::exchange(other.ctrl_blk, nullptr)),
-                                                                                deallocator(std::move(other.deallocator)){}{}
+                                                                                deallocator(std::move(other.deallocator)){}
 
-            constexpr shared_ptr(const self& other): obj(other.obj)
+            constexpr shared_ptr(const self& other): obj(other.obj),
                                                      ctrl_blk(other.ctrl_blk),
                                                      deallocator(other.deallocator)
             {
@@ -248,6 +223,42 @@ namespace smart_pointer::shared_ptr_implementation
             constexpr shared_ptr(self&& other) noexcept: obj(std::exchange(other.obj, nullptr)),
                                                          ctrl_blk(std::exchange(other.ctrl_blk, nullptr)),
                                                          deallocator(std::move(other.deallocator)){}
+
+            template <class ResourceManagerLike, class ...Args>
+            constexpr shared_ptr(one_block_init_tag, ResourceManagerLike&& resource_manager_like, Args&& ...args)
+            {
+                using allocation_t      = shared_ptr_allocation_2<ControlBlock<NoActionCharMemoryDeallocator>, UniquePtrDestructor<T, NoActionCharMemoryDeallocator>, T>;
+
+                void * mem              = resource_manager_like.template allocate_one<allocation_t>();
+                void * ctrl_blk_mem     = static_cast<void *>(mem);
+                void * destructor_mem   = static_cast<void *>(&reinterpret_cast<allocation_t *>(mem)->polymorphic_destructor);
+                void * obj_mem          = static_cast<void *>(&reinterpret_cast<allocation_t *>(mem)->obj);
+
+                T * obj;
+
+                try
+                {
+                    obj = new (obj_mem) T(std::forward<Args>(args)...);
+                }
+                catch (...)
+                {
+                    resource_manager_like.deallocate_one(mem);
+                    throw;
+                }
+
+                auto destructor         = unique_ptr<T, NoActionCharMemoryDeallocator>(obj);
+                auto destructor_arg     = unique_ptr<PolymorphicDestructor, NoActionCharMemoryDeallocator>(new (destructor_mem) UniquePtrDestructor<T, NoActionCharMemoryDeallocator>(std::move(destructor)), NoActionCharMemoryDeallocator{});
+
+                ControlBlock<NoActionCharMemoryDeallocator> * tmp_ctrl_blk = new (ctrl_blk_mem) ControlBlock<NoActionCharMemoryDeallocator>
+                {
+                    .counter    = std::atomic<size_t>(1u),
+                    .destructor = std::move(destructor_arg)
+                };
+
+                this->ctrl_blk          = tmp_ctrl_blk;
+                this->obj               = obj;
+                this->deallocator       = std::forward<ResourceManagerLike>(resource_manager_like);
+            }
 
             ~shared_ptr() noexcept
             {
@@ -277,7 +288,7 @@ namespace smart_pointer::shared_ptr_implementation
                         }
                     }
 
-                    this->ctr_blk->counter.fetch_add(1u, std::memory_order_relaxed);
+                    this->ctrl_blk->counter.fetch_add(1u, std::memory_order_relaxed);
                 }
 
                 return *this;
@@ -346,7 +357,8 @@ namespace smart_pointer::shared_ptr_implementation
                 return this->get();
             }
 
-            constexpr auto operator *() const noexcept -> T&
+            template <class Tmp = self, std::enable_if_t<has_star_operator_v<Tmp>, bool> = true>
+            constexpr auto operator *() const noexcept -> typename Tmp::element_type&
             {
                 return *this->get();
             }
@@ -370,10 +382,10 @@ namespace smart_pointer::shared_ptr_implementation
 
             __attribute__((noinline, noipa)) constexpr void deallocate_memory(void * memblk) noexcept
             {
-                this->deallocator.deallocate(memblk);
+                this->deallocator.deallocate_one(memblk);
             }
 
-            __attribute__((noinline)) constexpr void release_control_block(ControlBlock<CharMemoryManager> * ctrl_blk_arg) noexcept
+            __attribute__((noinline)) constexpr void release_control_block(ControlBlock<NoActionCharMemoryDeallocator> * ctrl_blk_arg) noexcept
             {
                 if constexpr(DEBUG_MODE_FLAG)
                 {
@@ -394,7 +406,7 @@ namespace smart_pointer::shared_ptr_implementation
                 }
                 else
                 {
-                    std::atomic_thread_fence(std::mmeory_order_acquire);
+                    std::atomic_thread_fence(std::memory_order_acquire);
                 }
 
                 std::destroy_at(ctrl_blk_arg); //sync pointing memory
@@ -425,107 +437,140 @@ namespace smart_pointer::shared_ptr_implementation
 
                 this->ctrl_blk      = nullptr;
                 this->obj           = nullptr;
-                this->deallocator   = {};
             }
     };
 
-    template <class T, class CharMemoryManager>
-    class shared_ptr<T[], CharMemoryManager>: private shared_ptr<T, CharMemoryManager>
+    template <class T, class CharMemoryManagerLike, class ...Args, std::enable_if_t<std::negation_v<std::is_array<T>>, bool> = true>
+    constexpr auto allocate_shared(CharMemoryManagerLike&& mem_manager, Args&& ...args)
     {
-        private:
+        using shared_ptr_t = shared_ptr<T, std::decay_t<CharMemoryManagerLike>>;
 
-            using self  = shared_ptr<T[], CharMemoryManager>;
-            using base  = shared_ptr<T, CharMemoryManager>;
+        return shared_ptr_t(one_block_init_tag{},
+                            std::forward<CharMemoryManagerLike>(mem_manager),
+                            std::forward<Args>(args)...);
+    }
 
-        public:
+    template <class T>
+    struct is_bounded_array_unique_ptr: std::false_type{};
 
-            constexpr shared_ptr(): base(){}
+    template <class T, class T1>
+    struct is_bounded_array_unique_ptr<unique_ptr<T[], T1>>: std::true_type{};
 
-            constexpr shared_ptr(std::nullptr_t): shared_ptr(){}
+//     template <class T, class CharMemoryManager>
+//     class shared_ptr<T[], CharMemoryManager>: private shared_ptr<T, CharMemoryManager>
+//     {
+//         private:
 
-            template <class T1, std::enable_if_t<std::is_same_v<T1, T>, bool> = true>
-            constexpr explicit shared_ptr(T1 * obj): base(obj){}
+//             template <class U, class U1>
+//             friend class shared_ptr;
 
-            template <class T1, class CharMemoryManagerLike, std::enable_if_t<std::is_same_v<T1, T>, bool> = true>
-            constexpr shared_ptr(T1 * obj,
-                                 CharMemoryManagerLike&& deallocator_arg): base(obj, std::forward<CharMemoryManagerLike>(deallocator_arg)){}
+//             using self  = shared_ptr<T[], CharMemoryManager>;
+//             using base  = shared_ptr<T, CharMemoryManager>;
 
-            template <class T1, std::enable_if_t<std::conjunction_v<is_bounded_array_unique_ptr<std::decay_t<T1>>,
-                                                                    std::is_same<T, typename std::decay_t<T1>::element_type>>, bool> = true>
-            constexpr shared_ptr(T1&& value): base(std::forward<T1>(value)){}
+//         public:
 
-            template <class OtherCharMemoryManager, std::enable_if_t<std::negation_v<std::is_same<CharMemoryManager, OtherCharMemoryManager>>, bool> = true>
-            constexpr shared_ptr(std::shared_ptr<T[], OtherCharMemoryManager> other): base(static_cast<shared_ptr<T, OtherCharMemoryManager>&&>(other)){}
+//             using pointer       = T *;
+//             using element_type  = T;
 
-            constexpr shared_ptr(const self& other): base(static_cast<base&>(other)){}
+//             constexpr shared_ptr(): base(){}
 
-            constexpr shared_ptr(self&& other) noexcept: base(static_cast<base&&>(other)){}
+//             constexpr shared_ptr(std::nullptr_t): shared_ptr(){}
 
-            constexpr auto operator =(const self& other) -> self&
-            {
-                return static_cast<self&>(static_cast<base&>(*this) = other);
-            }
+//             template <class T1, std::enable_if_t<std::is_same_v<std::decay_t<T1>, std::decay_t<T>>, bool> = true>
+//             constexpr explicit shared_ptr(T1 * obj): base(obj){}
 
-            constexpr auto operator =(self&& other) noexcept -> self&
-            {
-                return static_cast<self&>(static_cast<self&>(*this) = static_cast<base&&>(other));
-            }
+//             template <class T1, class CharMemoryManagerLike, std::enable_if_t<std::is_same_v<std::decay_t<T1>, std::decay_t<T>>, bool> = true>
+//             constexpr shared_ptr(T1 * obj,
+//                                  CharMemoryManagerLike&& deallocator_arg): base(obj, std::forward<CharMemoryManagerLike>(deallocator_arg)){}
 
-            constexpr auto operator ==(const self& other) const noexcept -> bool
-            {
-                return static_cast<const self&>(*this) == other;
-            }
+//             template <class T1, std::enable_if_t<std::conjunction_v<is_bounded_array_unique_ptr<std::decay_t<T1>>,
+//                                                                     std::is_same<std::decay_t<T>, std::decay_t<typename std::decay_t<T1>::element_type>>>, bool> = true>
+//             constexpr shared_ptr(T1&& value): base(std::forward<T1>(value)){}
 
-            constexpr auto operator !=(const self& other) const noexcept -> bool
-            {
-                return static_cast<const self&>(*this) != other;
-            }
+//             template <class OtherCharMemoryManager, std::enable_if_t<std::negation_v<std::is_same<CharMemoryManager, OtherCharMemoryManager>>, bool> = true>
+//             constexpr shared_ptr(shared_ptr<T[], OtherCharMemoryManager> other): base(static_cast<shared_ptr<T, OtherCharMemoryManager>&&>(other)){}
 
-            constexpr auto operator >(const self& other) const noexcept -> bool
-            {
-                return static_cast<const self&>(*this) > other;
-            }
+//             constexpr shared_ptr(const self& other): base(static_cast<base&>(other)){}
 
-            constexpr auto operator >=(const self& other) const noexcept -> bool
-            {
-                return static_cast<const self&>(*this) >= other;
-            }
+//             constexpr shared_ptr(self&& other) noexcept: base(static_cast<base&&>(other)){}
 
-            constexpr auto operator <(const self& other) const noexcept -> bool
-            {
-                return static_cast<const self&>(*this) < other;
-            }
+//             constexpr auto operator =(const self& other) -> self&
+//             {
+//                 return static_cast<self&>(static_cast<base&>(*this) = other);
+//             }
 
-            constexpr auto operator <=(const self& other) const noexcept -> bool
-            {
-                return static_cast<const self&>(*this) <= other;
-            }
+//             constexpr auto operator =(self&& other) noexcept -> self&
+//             {
+//                 return static_cast<self&>(static_cast<base&>(*this) = static_cast<base&&>(other));
+//             }
 
-            constexpr void swap(self& other) noexcept
-            {
-                base::swap(other);
-            }
+//             constexpr auto operator ==(const self& other) const noexcept -> bool
+//             {
+//                 return static_cast<const base&>(*this) == other;
+//             }
 
-            constexpr auto get() const noexcept -> T *
-            {
-                return base::get();
-            }
+//             constexpr auto operator !=(const self& other) const noexcept -> bool
+//             {
+//                 return static_cast<const base&>(*this) != other;
+//             }
 
-            constexpr auto operator[](size_t idx) const noexcept -> T&
-            {
-                return base::get()[idx];
-            }
+//             constexpr auto operator >(const self& other) const noexcept -> bool
+//             {
+//                 return static_cast<const base&>(*this) > other;
+//             }
 
-            constexpr auto get_count() const noexcept -> size_t
-            {
-                return base::get_count();
-            }
+//             constexpr auto operator >=(const self& other) const noexcept -> bool
+//             {
+//                 return static_cast<const base&>(*this) >= other;
+//             }
 
-            constexpr operator bool() const noexcept
-            {
-                return static_cast<bool>(static_cast<const self&>(*this));
-            }
-    };
-}
+//             constexpr auto operator <(const self& other) const noexcept -> bool
+//             {
+//                 return static_cast<const base&>(*this) < other;
+//             }
+
+//             constexpr auto operator <=(const self& other) const noexcept -> bool
+//             {
+//                 return static_cast<const base&>(*this) <= other;
+//             }
+
+//             constexpr void swap(self& other) noexcept
+//             {
+//                 base::swap(other);
+//             }
+
+//             constexpr auto get() const noexcept -> T *
+//             {
+//                 return base::get();
+//             }
+
+//             constexpr auto operator[](size_t idx) const noexcept -> T&
+//             {
+//                 return base::get()[idx];
+//             }
+
+//             constexpr auto get_count() const noexcept -> size_t
+//             {
+//                 return base::get_count();
+//             }
+
+//             constexpr operator bool() const noexcept
+//             {
+//                 return static_cast<bool>(static_cast<const self&>(*this));
+//             }
+//     };
+
+//     template <class T, class CharMemoryManagerLike, std::enable_if_t<std::is_array_v<T>, bool> = true>
+//     constexpr auto allocate_shared(CharMemoryManagerLike&& mem_manager, size_t sz)
+//     {
+//         static_assert(std::is_unbounded_array_v<T>);
+
+//         using shared_ptr_t = shared_ptr<T, std::decay_t<CharMemoryManagerLike>>;
+
+//         return shared_ptr_t(one_block_init_tag{},
+//                             std::forward<CharMemoryManagerLike>(mem_manager),
+//                             size_t sz);
+//     }
+// }
 
 #endif
