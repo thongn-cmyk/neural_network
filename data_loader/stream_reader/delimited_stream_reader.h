@@ -1,5 +1,5 @@
-#ifndef __STREAM_DELIMITOR_H__
-#define __STREAM_DELIMITOR_H__
+#ifndef __DATA_LOADER_DELIMITED_STREAM_READER_H__
+#define __DATA_LOADER_DELIMITED_STREAM_READER_H__
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -9,7 +9,7 @@
 #include <optional>
 #include "stream_delimitor_interface.h"
 
-namespace datasource::delimitor::stream_delimitor
+namespace data_loader::stream_reader
 {
     struct token_overflow_error: std::runtime_error
     {
@@ -35,7 +35,7 @@ namespace datasource::delimitor::stream_delimitor
         }
     };
 
-    class DelimitedStreamLoader: public virtual DelimitedStreamReaderInterface
+    class DelimitedStreamReader: public virtual DelimitedStreamReaderInterface
     {
         private:
 
@@ -46,7 +46,7 @@ namespace datasource::delimitor::stream_delimitor
 
         public:
 
-            DelimitedStreamLoader(Configuration config): stream(),
+            DelimitedStreamReader(Configuration config): stream(),
                                                          delim_char(config.delim_char),
                                                          eor_char(config.eor_char),
                                                          max_token_sz(config.max_token_sz){}

@@ -130,7 +130,7 @@ namespace matrix_optimizer_server
                 this->interruption_pill->exchange(true, std::memory_order_relaxed);
             }
 
-            void wait() -> generic_matrix_factory::ExternalGenericMatrixResource
+            auto wait() -> generic_matrix_factory::ExternalGenericMatrixResource
             {
                 if (this->was_explicitly_destroyed)
                 {

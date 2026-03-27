@@ -1,19 +1,19 @@
-#ifndef __FILE_SOURCE_H__
-#define __FILE_SOURCE_H__
+#ifndef __DATA_LOADER_FILE_SOURCE_H__
+#define __DATA_LOADER_FILE_SOURCE_H__
 
-#include "../source_interface.h"
-#include "../../delimitor/stream_delimitor.h"
+#include <data_loader/source/source_interface.h>
+#include <data_loader/stream_reader/delimited_stream_reader_interface.h>
 
-namespace datasource::file_source
+namespace data_loader::file_source
 {
     struct bad_state_error: std::runtime_error
     {
-        bad_state_error(): std::runtime_error("stream delimitor is in incorrect state"){}
+        bad_state_error(): std::runtime_error("Loader is in corrupted state"){}
     };
 
     struct Configuration
     {
-        datasource::delimitor::stream_delimitor::Configuration delim_config;
+        data_loader::stream_reader::Configuration delim_config;
         std::string local_file_path;
         std::optional<uint64_t> read_ahead_buffer_sz_hint;
         std::optional<uint64_t> unit_byte_sz_hint;
@@ -37,11 +37,11 @@ namespace datasource::file_source
         }
     };
 
-    class FileLoader: public virtual SourceInterface
+    class FileLoader: public virtual data_loader::SourceLoaderInterface
     {
         private:
 
-            std::unique_ptr<datasource::delimitor::stream_delimitor::StreamDelimitorInterface> delim_streamer;
+            std::unique_ptr<data_loader::stream_reader::DelimitedStreamReaderInterface> delim_streamer;
             std::fstream f_stream;
             std::optional<std::vector<char>> buf;
             size_t tx_unit_sz;
@@ -56,7 +56,7 @@ namespace datasource::file_source
 
             FileLoader(Configuration config)
             {
-                this->delim_streamer    = std::make_unique<datasource::delimitor::stream_delimitor::DelimitedStreamLoader>(config.delim_config);
+                this->delim_streamer    = std::make_unique<data_loader::stream_reader::DelimitedStreamReader>(config.delim_config);
                 this->f_stream          = std::fstream(config.local_file_path, std::ios::in | std::ios::binary);
                 this->tx_unit_sz        = 1u;
 
@@ -67,7 +67,9 @@ namespace datasource::file_source
 
                 if (config.read_ahead_buffer_sz_hint.has_value())
                 {
-                    this->buf = std::vector<char>(std::clamp(config.read_ahead_buffer_sz_hint.value(), MIN_BUFFER_SZ, MAX_BUFFER_SZ), ' ');
+                    size_t buf_sz   = std::clamp(config.read_ahead_buffer_sz_hint.value(), MIN_BUFFER_SZ, MAX_BUFFER_SZ);
+                    this->buf       = std::vector<char>(buf_sz, ' ');
+
                     this->f_stream.rdbuf()->pubsetbuf(this->buf->data(), this->buf->size());
                 }
 

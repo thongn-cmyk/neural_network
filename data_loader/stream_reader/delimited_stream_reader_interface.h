@@ -1,5 +1,5 @@
-#ifndef __STREAM_DELIMITOR_INTERFACE_H__
-#define __STREAM_DELIMITOR_INTERFACE_H__
+#ifndef __DATA_LOADER_DELIMITED_STREAM_READER_INTERFACE_H__
+#define __DATA_LOADER_DELIMITED_STREAM_READER_INTERFACE_H__
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -7,7 +7,7 @@
 #include <string>
 #include <string_view>
 
-namespace datasource::delimitor::stream_delimitor
+namespace data_loader::stream_reader
 {
     class DelimitedStreamReaderInterface
     {
