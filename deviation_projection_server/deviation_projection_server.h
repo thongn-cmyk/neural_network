@@ -41,7 +41,7 @@ namespace deviation_projection_server
             ClientBox(): training_data(),
                          deviation_calculator_vec(){}
 
-            void add_training_data(const std::shared_ptr<std::string>& inp, const std::shared_ptr<std::string>& out)
+            void add_training_data(const std::shared_ptr<std::string>& inp, const std::shared_ptr<std::string>& out) //I just think that it's just better if this is a generic std::string payload, just to reduce the complexity
             {
                 if (inp == nullptr)
                 {

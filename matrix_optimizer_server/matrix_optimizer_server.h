@@ -49,7 +49,7 @@ namespace matrix_optimizer_server
                          interruption_pill(std::make_shared<std::atomic<bool>>(false)),
                          deliverable(std::make_shared<Deliverable>(Deliverable{.matrix_resource = {}, .exception = nullptr})){}
 
-            ~ClientBox()
+            ~ClientBox() noexcept
             {
                 this->close();
             }
@@ -115,7 +115,7 @@ namespace matrix_optimizer_server
                 this->was_run_broke = true;
             }
 
-            auto is_completed() noexcept -> bool
+            auto is_completed() -> bool
             {
                 if (this->was_explicitly_destroyed)
                 {
@@ -235,11 +235,19 @@ namespace matrix_optimizer_server
                         try
                         {
                             this->internal_run(cancellation_token);
+
+                            this->deliverable->exception = nullptr;
                         }
                         catch (...)
                         {
                             this->deliverable->exception = std::current_exception();
-                            this->is_completed_var->exchange(true, std::memory_order_release);
+                        }
+
+                        this->is_completed_var->exchange(true, std::memory_order_release);
+
+                        if constexpr(STRONG_MEMORY_ORDERING_FLAG)
+                        {
+                            std::atomic_thread_fence(std::memory_order_seq_cst);
                         }
                     }
 
@@ -273,9 +281,6 @@ namespace matrix_optimizer_server
                                                                                                      .with_cancellation_token(cancellation_token_obj)
                                                                                                      .set_optimization_config(this->resource.optimizer_config.value())
                                                                                                      .optimize();
-
-                        this->deliverable->exception = nullptr;
-                        this->is_completed_var->exchange(true, std::memory_order_release);
                     }
             };
     };
@@ -356,7 +361,7 @@ namespace matrix_optimizer_server
                 this->base->run();
             }
 
-            auto is_completed() noexcept -> bool
+            auto is_completed() -> bool
             {
                 return this->base->is_completed();
             }
@@ -369,6 +374,11 @@ namespace matrix_optimizer_server
             auto wait() -> generic_matrix_factory::ExternalGenericMatrixResource
             {
                 fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*this->mtx);
+
+                if (this->was_explicitly_destroyed->load(std::memory_order_relaxed))
+                {
+                    throw destroyed_client_box_error{};
+                }
 
                 return this->base->wait();
             }
