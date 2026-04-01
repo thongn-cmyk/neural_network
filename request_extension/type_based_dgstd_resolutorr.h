@@ -13,7 +13,6 @@
 
 namespace request_extension::resolutor
 {
-
     template <class T_In, class T_Out>
     class DgstdResolutor: public virtual dg_sock::network_rest_frame::server::OneRequestHandlerInterface
     {
@@ -23,7 +22,15 @@ namespace request_extension::resolutor
 
         public:
 
-            DgstdResolutor(std::unique_ptr<TypeBasedResolutorInterface<T_In, T_Out>> base) noexcept: base(std::move(base)){}
+            DgstdResolutor(std::unique_ptr<TypeBasedResolutorInterface<T_In, T_Out>>&& base)
+            {
+                if (base == nullptr)
+                {
+                    throw std::invalid_argument("bad base, null");
+                }
+
+                this->base = std::move(base);
+            }
 
             auto handle(const dg_sock::network_rest_frame::model::Request& request) -> dg_sock::network_rest_frame::model::Response
             {
@@ -42,6 +49,12 @@ namespace request_extension::resolutor
                     .err_code = dg_sock::network_exception::SUCCESS
                 }
             }
+    };
+
+    template <class T_In, class T_Out>
+    auto wrap(std::unique_ptr<TypeBasedResolutorInterface<T_In, T_Out>>&& obj) -> std::unique_ptr<dg_sock::network_rest_frame::server::OneRequestHandlerInterface>
+    {
+        return std::make_unique<request_extension::resolutor::DgstdResolutor<T_In, T_Out>>(std::move(obj));
     };
 }
 

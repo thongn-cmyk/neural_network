@@ -43,7 +43,7 @@ namespace data_loader::file_source
 
             std::unique_ptr<data_loader::stream_reader::DelimitedStreamReaderInterface> delim_streamer;
             std::fstream f_stream;
-            std::optional<std::vector<char>> buf;
+            std::unique_ptr<char[]> buf;
             size_t tx_unit_sz;
             bool was_completed;
             bool is_bad_state;
@@ -68,9 +68,9 @@ namespace data_loader::file_source
                 if (config.read_ahead_buffer_sz_hint.has_value())
                 {
                     size_t buf_sz   = std::clamp(config.read_ahead_buffer_sz_hint.value(), MIN_BUFFER_SZ, MAX_BUFFER_SZ);
-                    this->buf       = std::vector<char>(buf_sz, ' ');
+                    this->buf       = std::make_unique<char[]>(buf_sz);
 
-                    this->f_stream.rdbuf()->pubsetbuf(this->buf->data(), this->buf->size());
+                    this->f_stream.rdbuf()->pubsetbuf(this->buf.get(), buf_sz);
                 }
 
                 this->was_completed     = false;
@@ -80,7 +80,7 @@ namespace data_loader::file_source
             ~FileLoader() noexcept
             {
                 this->f_stream.close();
-                this->buf = std::nullopt;
+                this->buf = nullptr;
             }
 
             auto get(size_t tx_hint_sz) -> std::optional<std::vector<std::string>>
@@ -106,7 +106,14 @@ namespace data_loader::file_source
                 auto buf            = std::string(tx_byte_sz, ' ');
 
                 this->f_stream.read(buf.data(), tx_byte_sz);
-                buf.resize(this->f_stream.gcount());
+                auto read_bytes     = this->f_stream.gcount();
+
+                if (read_bytes < 0)
+                {
+                    throw std::runtime_error("file read went wrong, negative read byte");
+                }
+
+                buf.resize(read_bytes);
 
                 if (buf.size() == 0u)
                 {

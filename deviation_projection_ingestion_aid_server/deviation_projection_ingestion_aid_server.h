@@ -6,10 +6,17 @@
 #include <main_broker/main_service.h>
 #include <concurrency_base/concurrency_base.h>
 #include <request_extension/type_based_resolutor_interface.h>
+#include <request_extension/type_based_dgstd_resolutor.h>
 #include <deviation_projection_client/deviation_projection_client.h>
 
 namespace deviation_projection_ingestion_aid_server
 {
+    using local_exception_t = uint8_t;
+
+    //today, we'd have to have thread_local variable to store certain concurrency data, in conjunction with on-fly thread instances by leveraging main_service
+    //today, we'd work on the construction of unbreakable encoding method for security
+    //it's gonna be a tough day
+
     struct ServerSink
     {
         dg_sock::network_rest_frame::model::Url url;

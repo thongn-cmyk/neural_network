@@ -347,6 +347,7 @@ namespace dg::network_compact_serializer::constants{
     static constexpr auto endianness                                = std::endian::little;
     static constexpr bool IS_SAFE_INTEGER_CONVERSION_ENABLED        = true;
     static constexpr bool DESERIALIZATION_HAS_CLEAR_CONTAINER_RIGHT = true;
+    static constexpr bool HAS_CONTAINER_RESERVATION                 = false;
     static constexpr uint8_t SERIALIZATION_VERSION_CONTROL          = 1;
 }
 
@@ -856,6 +857,14 @@ namespace dg::network_compact_serializer::utility{
 
     template <class T>
     constexpr void reserve_if_possible(T&& container, size_t sz){
+
+        if constexpr(types_space::can_reserve_v<T&&> && constants::HAS_CONTAINER_RESERVATION){
+            container.reserve(sz);
+        }
+    }
+
+    template <class T>
+    constexpr void loose_reserve_if_possible(T&& container, size_t sz){
 
         if constexpr(types_space::can_reserve_v<T&&>){
             container.reserve(sz);
@@ -1424,7 +1433,7 @@ namespace dg::network_compact_serializer::archive{
             }
 
             // data.reserve(sz);
-            dg::network_compact_serializer::utility::reserve_if_possible(data, sz);
+            dg::network_compact_serializer::utility::loose_reserve_if_possible(data, sz);
 
             for (size_t i = 0; i < sz; ++i){
                 elem_type e;
@@ -1633,15 +1642,17 @@ namespace dg::network_compact_serializer::archive{
             
             auto sz = types::size_type{};
             this->put(buf, buf_sz, sz);
-            data.resize(sz);
 
-            void * dst          = data.data();
-            const void * src    = buf;
             size_t cpy_sz       = sz * sizeof(elem_type); 
 
             if (buf_sz < cpy_sz){
                 throw dg::network_compact_serializer::exception_space::corrupted_format();
             }
+
+            data.resize(sz);
+
+            void * dst          = data.data();
+            const void * src    = buf;
 
             std::memcpy(dst, src, cpy_sz);
             std::advance(buf, cpy_sz);
@@ -2398,15 +2409,17 @@ namespace dg::network_compact_serializer::archive{
 
             auto sz = types::size_type{};
             this->put(buf, buf_sz, sz);
-            data.resize(sz);
 
-            void * dst          = data.data();
-            const void * src    = buf;
             size_t cpy_sz       = sz * sizeof(elem_type); 
 
             if (buf_sz < cpy_sz){
                 throw dg::network_compact_serializer::exception_space::corrupted_format();
             }
+
+            data.resize(sz);
+
+            void * dst          = data.data();
+            const void * src    = buf;
 
             std::memcpy(dst, src, cpy_sz);
             std::advance(buf, cpy_sz);

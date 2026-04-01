@@ -4,6 +4,8 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <matrix/generic_matrix_factory.h>
+#include <request_extension/type_based_resolutor_interface.h>
+#include <request_extension/type_based_dgstd_resolutor.h>
 
 namespace matrix_projection_server
 {
@@ -279,62 +281,46 @@ namespace matrix_projection_server
         }
     };
 
-    class GetVersionResolver: public virtual dg_sock::network_rest_frame::server::OneRequestHandlerInterface
+    template <class T_In, class T_Out>
+    using TypeBasedResolutorInterface = request_extension::resolutor::TypeBasedResolutorInterface<T_In, T_Out>;
+
+    class GetVersionResolver: public virtual TypeBasedResolutorInterface<GetVersionRequest, GetVersionResponse>
     {
         public:
 
             static inline constexpr std::string_view RESOLVABLE_PATH = "matrix_projection_server/get_version";
 
-            auto handle(const dg_sock::network_rest_frame::model::Request& request) -> dg_sock::network_rest_frame::model::Response
+            auto handle(const GetVersionRequest& request) -> GetVersionResponse
             {
-                if (std::string_view(request.payload_serialization_format) != dg::network_compact_serializer::get_dgstd_serialization_identifier())
-                {
-                    throw std::invalid_argument("unexpected request, bad serialization method");
-                }
+                (void) request;
 
-                GetVersionRequest semantic_request      = dg::network_compact_serializer::dgstd_deserialize<GetVersionRequest>(request.payload);
-                GetVersionResponse semantic_response    =
+                return GetVersionResponse
                 {
                     .response = std::string(MATRIX_PROJECTION_SERVER_VERSION_CONTROL),
                     .err_verbal_description = {}
                 };
-
-                return dg_sock::network_rest_frame::model::Response
-                {
-                    .response = dg_sock::network_compact_serializer::dgstd_serialize<dg_sock::string>(semantic_response),
-                    .response_serialization_format = dg_sock::string(dg::network_compact_serializer::get_dgstd_serialization_identifier()),
-                    .err_code = dg_sock::network_exception::SUCCESS
-                };
             }
     };
 
-    class OpenClientResolver: public virtual dg_sock::network_rest_frame::server::OneRequestHandlerInterface
+    class OpenClientResolver: public virtual TypeBasedResolutorInterface<OpenClientRequest, OpenClientResponse>
     {
         private:
 
             std::shared_ptr<ClientBoxManager> client_box_manager;
-        
+
         public:
 
             static inline constexpr std::string_view RESOLVABLE_PATH = "matrix_projection_server/open_client";
 
             OpenClientResolver(std::shared_ptr<ClientBoxManager> client_box_manager) noexcept: client_box_manager(std::move(client_box_manager)){}
 
-            auto handle(const dg_sock::network_rest_frame::model::Request& request) -> dg_sock::network_rest_frame::model::Response
+            auto handle(const OpenClientRequest& request) -> OpenClientResponse
             {
-                if (std::string_view(request.payload_serialization_format) != dg::network_compact_serializer::get_dgstd_serialization_identifier())
-                {
-                    throw std::invalid_argument("unexpected request, bad serialization method");
-                }
-
-                OpenClientRequest semantic_request      = dg::network_compact_serializer::dgstd_deserialize<OpenClientRequest>(request.payload);
-                OpenClientResponse semantic_response;
-
                 try
                 {
-                    uint64_t client_box_id = this->client_box_manager->open_client_box(semantic_request.connection_config);
+                    uint64_t client_box_id = this->client_box_manager->open_client_box(request.connection_config);
 
-                    semantic_response = OpenClientResponse
+                    return OpenClientResponse
                     {
                         .result = client_box_id,
                         .err_verbal_description = ""
@@ -342,49 +328,34 @@ namespace matrix_projection_server
                 }
                 catch (...)
                 {
-                    semantic_response = OpenClientResponse
+                    return OpenClientResponse
                     {
                         .result = matrix_projection_server::to_local_exception_error_code(std::current_exception()),
                         .err_verbal_description = matrix_projection_server::verbose_local_exception(matrix_projection_server::to_local_exception_error_code(std::current_exception()))
                     };
                 }
-
-                return dg_sock::network_rest_frame::model::Response
-                {
-                    .response = dg::network_compact_serializer::dgstd_serialize<dg_sock::string>(semantic_response),
-                    .response_serialization_format = dg_sock::string(dg::network_compact_serializer::get_dgstd_serialization_identifier()),
-                    .err_code = dg_sock::network_exception::SUCCESS
-                };
             }
     };
 
-    class CloseClientResolver: public virtual dg_sock::network_rest_frame::server::OneRequestHandlerInterface
+    class CloseClientResolver: public virtual TypeBasedResolutorInterface<CloseClientRequest, CloseClientResponse>
     {
         private:
 
             std::shared_ptr<ClientBoxManager> client_box_manager;
-        
+
         public:
 
             static inline constexpr std::string_view RESOLVABLE_PATH = "matrix_projection_server/close_client";
 
             CloseClientResolver(std::shared_ptr<ClientBoxManager> client_box_manager) noexcept: client_box_manager(std::move(client_box_manager)){}
 
-            auto handle(const dg_sock::network_rest_frame::model::Request& request) -> dg_sock::network_rest_frame::model::Response
+            auto handle(const CloseClientRequest& request) -> CloseClientResponse
             {
-                if (std::string_view(request.payload_serialization_format) != dg::network_compact_serializer::get_dgstd_serialization_identifier())
-                {
-                    throw std::invalid_argument("unexpected request, bad serialization method");
-                }
-
-                CloseClientRequest semantic_request     = dg::network_compact_serializer::dgstd_deserialize<CloseClientRequest>(request.payload);
-                CloseClientResponse semantic_response;
-
                 try
                 {
-                    this->client_box_manager->close_client_box(semantic_request.client_box_id);
+                    this->client_box_manager->close_client_box(request.client_box_id);
 
-                    semantic_response = CloseClientResponse
+                    return CloseClientResponse
                     {
                         .result = SUCCESS,
                         .err_verbal_description = ""
@@ -392,23 +363,16 @@ namespace matrix_projection_server
                 }
                 catch (...)
                 {
-                    semantic_response = CloseClientResponse
+                    return CloseClientResponse
                     {
                         .result = matrix_projection_server::to_local_exception_error_code(std::current_exception()),
                         .err_verbal_description = matrix_projection_server::verbose_error_code(matrix_projection_server::to_local_exception_error_code(std::current_exception()))
                     };
                 }
-
-                return dg_sock::network_rest_frame::model::Response
-                {
-                    .response = dg::network_compact_serializer::dgstd_serialize<dg_sock::string>(semantic_response),
-                    .response_serialization_format = dg_sock::string(dg::network_compact_serializer::get_dgstd_serialization_identifier()),
-                    .err_code = dg_sock::network_exception::SUCCESS
-                };
             }
     };
 
-    class SetMatrixResolver: public virtual dg_sock::network_rest_frame::server::OneRequestHandlerInterface
+    class SetMatrixResolver: public virtual TypeBasedResolutorInterface<SetMatrixRequest, SetMatrixResponse>
     {
         private:
 
@@ -420,19 +384,11 @@ namespace matrix_projection_server
 
             SetMatrixResolver(std::shared_ptr<ClientBoxManager> client_box_manager) noexcept: client_box_manager(std::move(client_box_manager)){}
 
-            auto handle(const dg_sock::network_rest_frame::model::Request& request) -> dg_sock::network_rest_frame::model::Response
+            auto handle(const SetMatrixRequest& request) -> SetMatrixResponse
             {
-                if (std::string_view(request.payload_serialization_format) != dg::network_compact_serializer::get_dgstd_serialization_identifier())
-                {
-                    throw std::invalid_argument("unexpected request, bad serialization method");
-                }
-
-                SetMatrixRequest semantic_request       = dg::network_compact_serializer::dgstd_deserialize<SetMatrixRequest>(request.payload);
-                SetMatrixResponse semantic_response;
-
                 try
                 {
-                    std::shared_ptr<ConnectionBoundClientBox> client_box = this->client_box_manager->get_client_box(semantic_request.client_box_id);
+                    std::shared_ptr<ConnectionBoundClientBox> client_box = this->client_box_manager->get_client_box(request.client_box_id);
 
                     if (client_box == nullptr)
                     {
@@ -441,7 +397,7 @@ namespace matrix_projection_server
 
                     client_box->set_matrix(semantic_request.matrix_resource);
 
-                    semantic_response = SetMatrixResponse
+                    return SetMatrixResponse
                     {
                         .result = SUCCESS,
                         .err_verbal_description = ""
@@ -449,55 +405,40 @@ namespace matrix_projection_server
                 }
                 catch (...)
                 {
-                    semantic_response = SetMatrixResponse
+                    return SetMatrixResponse
                     {
                         .result = matrix_projection_server::to_local_exception_error_code(std::current_exception()),
                         .err_verbal_description = matrix_projection_server::verbose_error_code(matrix_projection_server::to_local_exception_error_code(std::current_exception()))
                     };
                 }
-
-                return dg_sock::network_rest_frame::model::Response
-                {
-                    .response = dg::network_compact_serializer::dgstd_serialize<dg_sock::string>(semantic_response),
-                    .response_serialization_format = dg_sock::string(dg::network_compact_serializer::get_dgstd_serialization_identifier()),
-                    .err_code = dg_sock::network_exception::SUCCESS
-                };
             }
     };
 
-    class ProjectMatrixResolver: public virtual dg_sock::network_rest_frame::server::OneRequestHandlerInterface
+    class ProjectMatrixResolver: public virtual TypeBasedResolutorInterface<ProjectMatrixRequest, ProjectMatrixResponse>
     {
         private:
 
             std::shared_ptr<ClientBoxManager> client_box_manager;
-        
+
         public:
 
             static inline constexpr std::string_view RESOLVABLE_PATH = "matrix_projection_server/project_matrix";
 
             ProjectMatrixResolver(std::shared_ptr<ClientBoxManager> client_box_manager) noexcept: client_box_manager(std::move(client_box_manager)){}
 
-            auto handle(const dg_sock::network_rest_frame::model::Request& request) -> dg_sock::network_rest_frame::model::Response
+            auto handle(const ProjectMatrixRequest& request) -> ProjectMatrixResponse
             {
-                if (std::string_view(request.payload_serialization_format) != dg::network_compact_serializer::get_dgstd_serialization_identifier())
-                {
-                    throw std::invalid_argument("unexpected request, bad serialization method");
-                }
-
-                ProjectMatrixRequest semantic_request       = dg::network_compact_serializer::dgstd_deserialize<ProjectMatrixRequest>(request.payload);
-                ProjectMatrixResponse semantic_response;
-
                 try
                 {
-                    std::shared_ptr<ConnectionBoundClientBox> client_box = this->client_box_manager->get_client_box(semantic_request.client_box_id);
+                    std::shared_ptr<ConnectionBoundClientBox> client_box = this->client_box_manager->get_client_box(request.client_box_id);
 
                     if (client_box == nullptr)
                     {
                         throw client_box_not_found_error{};
                     }
 
-                    matrix_serializer::GenericMatrix result = client_box->project(semantic_request.generic_matrix);
-                    semantic_response = ProjectMatrixResponse
+                    matrix_serializer::GenericMatrix result = client_box->project(request.generic_matrix);
+                    return ProjectMatrixResponse
                     {
                         .result = std::move(result),
                         .err_verbal_description = matrix_projection_server::verbose_error_code(matrix_projection_server::to_local_exception_error_code(std::current_exception()))
@@ -505,31 +446,26 @@ namespace matrix_projection_server
                 }
                 catch (...)
                 {
-                    semantic_response = ProjectMatrixResponse
+                    return ProjectMatrixResponse
                     {
                         .result = std::unexpected(matrix_projection_server::to_local_exception_error_code(std::current_exception())),
                         .err_verbal_description = matrix_projection_server::verbose_error_code(matrix_projection_server::to_local_exception_error_code(std::current_exception()))
                     };
                 }
-
-                return dg_sock::network_rest_frame::model::Response
-                {
-                    .response = dg::network_compact_serializer::dgstd_serialize<dg_sock::string>(semantic_response),
-                    .response_serialization_format = dg_sock::string(dg::network_compact_serializer::get_dgstd_serialization_identifier()),
-                    .err_code = dg_sock::network_exception::SUCCESS
-                };
             }
     };
 
     void init()
     {
+        using namespace request_extension::resolutor;
+
         std::shared_ptr<ClientBoxManager> client_box_manager = std::make_shared<ClientBoxManager>();
 
-        dg_sock::network_rest_frame::server_instance::hook(GetVersionResolver::RESOLVABLE_PATH, std::make_unique<GetVersionResolver>());
-        dg_sock::network_rest_frame::server_instance::hook(OpenClientResolver::RESOLVABLE_PATH, std::make_unique<OpenClientResolver>(client_box_manager));
-        dg_sock::network_rest_frame::server_instance::hook(CloseClientResolver::RESOLVABLE_PATH, std::make_unique<CloseClientResolver>(client_box_manager));
-        dg_sock::network_rest_frame::server_instance::hook(SetMatrixResolver::RESOLVABLE_PATH, std::make_unique<SetMatrixResolver>(client_box_manager));
-        dg_sock::network_rest_frame::server_instance::hook(ProjectMatrixResolver::RESOLVABLE_PATH, std::make_unique<ProjectMatrixResolver>(client_box_manager));
+        dg_sock::network_rest_frame::server_instance::hook(GetVersionResolver::RESOLVABLE_PATH, wrap(std::make_unique<GetVersionResolver>()));
+        dg_sock::network_rest_frame::server_instance::hook(OpenClientResolver::RESOLVABLE_PATH, wrap(std::make_unique<OpenClientResolver>(client_box_manager)));
+        dg_sock::network_rest_frame::server_instance::hook(CloseClientResolver::RESOLVABLE_PATH, wrap(std::make_unique<CloseClientResolver>(client_box_manager)));
+        dg_sock::network_rest_frame::server_instance::hook(SetMatrixResolver::RESOLVABLE_PATH, wrap(std::make_unique<SetMatrixResolver>(client_box_manager)));
+        dg_sock::network_rest_frame::server_instance::hook(ProjectMatrixResolver::RESOLVABLE_PATH, wrap(std::make_unique<ProjectMatrixResolver>(client_box_manager)));
     }
 
     void deinit() noexcept

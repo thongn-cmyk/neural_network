@@ -14,7 +14,6 @@
 
 namespace deviation_projector::host_wrapper
 {
-    static inline constexpr uint32_t SERIALIZATION_SECRET = 3871831494UL;
     using tensor_std_float_t = tensor_model::tensor_std_float_t;
 
     struct GenericResource
@@ -53,29 +52,77 @@ namespace deviation_projector::host_wrapper
         }
     };
 
-    auto serialize_matrix(const std::shared_ptr<tensor_model::Matrix>& matrix) -> std::string
+    struct TrainingToken
     {
-        std::vector<tensor_std_float_t> rs{};
-        std::vector<size_t> shape{};
+        MatrixSerializable inp;
+        MatrixSerializable out;
 
-        tensor_matrix_operation::flatten(matrix, rs);
-        tensor_matrix_operation::get_shape(matrix, shape);
-
-        auto serializable = MatrixSerializable
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector) const
         {
-            .logit_vec  = std::move(rs),
-            .shape      = stdx::to_castable_vector_initializer(shape)
+            reflector(inp, out);
+        }
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector)
+        {
+            reflector(inp, out);
+        }
+    };
+
+    auto encode_training_token(const std::shared_ptr<tensor_model::Matrix>& inp,
+                               const std::shared_ptr<tensor_model::Matrix>& out) -> std::string
+    {
+
+        MatrixSerializable serializable_inp;
+        MatrixSerializable serializable_out;
+
+        {
+            std::vector<tensor_std_float_t> rs{};
+            std::vector<size_t> shape{};
+
+            tensor_matrix_operation::flatten(inp, rs);
+            tensor_matrix_operation::get_shape(inp, shape);
+
+            serializable_inp = MatrixSerializable
+            {
+                .logit_vec  = std::move(rs),
+                .shape      = stdx::to_castable_vector_initializer(shape)
+            };
+        }
+
+        {
+            std::vector<tensor_std_float_t> rs{};
+            std::vector<size_t> shape{};
+
+            tensor_matrix_operation::flatten(out, rs);
+            tensor_matrix_operation::get_shape(out, shape);
+
+            serializable_out = MatrixSerializable
+            {
+                .logit_vec  = std::move(rs),
+                .shape      = stdx::to_castable_vector_initializer(shape)
+            };
+        }
+
+        TrainingToken training_token
+        {
+            .inp = std::move(serializable_inp),
+            .out = std::move(serializable_out)
         };
 
-        return dg::network_compact_serializer::dgstd_serialize<std::string>(serializable, SERIALIZATION_SECRET);
+        return dg::network_compact_serializer::dgstd_serialize<std::string>(training_token);
     }
 
-    auto deserialize_matrix(const std::string& data) -> std::shared_ptr<tensor_model::Matrix>
+    auto decode_training_token(const std::string& data) -> std::pair<std::shared_ptr<tensor_model::Matrix>,
+                                                                     std::shared_ptr<tensor_model::Matrix>>
     {
-        MatrixSerializable rs = dg::network_compact_serializer::dgstd_deserialize<MatrixSerializable>(data, SERIALIZATION_SECRET);
+        TrainingToken training_token = dg::network_compact_serializer::dgstd_deserialize<TrainingToken>(data);
 
-        return tensor_matrix_operation::make_matrix_from_flat_vec(std::vector<size_t>(stdx::to_castable_vector_initializer(rs.shape)),
-                                                                  rs.logit_vec);
+        return {tensor_matrix_operation::make_matrix_from_flat_vec(std::vector<size_t>(stdx::to_castable_vector_initializer(training_token.inp.shape)),
+                                                                   training_token.inp.logit_vec),
+                tensor_matrix_operation::make_matrix_from_flat_vec(std::vector<size_t>(training_token.out.shape),
+                                                                   training_token.out.logit_vec)};
     }
 
     class DeviationCalculator: public virtual deviation_projector::GenericMatrixDeviationCalculatorInterface
@@ -104,35 +151,32 @@ namespace deviation_projector::host_wrapper
                 this->matrix                = std::move(matrix);
             }
 
-            auto get_deviation(const std::vector<std::pair<std::shared_ptr<std::string>, std::shared_ptr<std::string>>>& arg) -> mdc_float_t
+            auto get_deviation(const std::vector<std::shared_ptr<std::string>>& training_token_vec) -> mdc_float_t
             {
                 std::vector<std::pair<std::shared_ptr<tensor_model::Matrix>, std::shared_ptr<tensor_model::Matrix>>> tensor_pair_vec{};
-                std::vector<std::shared_ptr<tensor_model::Matrix>> projection_vec{};
+
+                std::vector<std::shared_ptr<tensor_model::Matrix>> projecting_vec{};
+                std::vector<std::shared_ptr<tensor_model::Matrix>> expected_vec{};
                 std::vector<std::shared_ptr<tensor_model::Matrix>> projected_vec{};
 
-                for (const auto& [lhs, rhs]: arg)
+                for (const auto& training_token: training_token_vec)
                 {
-                    if (lhs == nullptr)
+                    if (training_token == nullptr)
                     {
-                        throw std::invalid_argument("bad tensor, null");
+                        throw std::invalid_argument("bad training token, null");
                     }
 
-                    if (rhs == nullptr)
-                    {
-                        throw std::invalid_argument("bad tensor, null");
-                    }
+                    auto [lhs, rhs] = decode_training_token(*training_token);
+
+                    projecting_vec.push_back(lhs);
+                    expected_vec.push_back(rhs);
                 }
 
-                for (const auto& [lhs, _] : arg)
-                {
-                    projection_vec.push_back(deserialize_matrix(*lhs));
-                }
-
-                projected_vec = this->matrix->project(projection_vec);
+                projected_vec = this->matrix->project(projecting_vec);
 
                 if constexpr(DEBUG_MODE_FLAG)
                 {
-                    if (projected_vec.size() != projection_vec.size())
+                    if (projected_vec.size() != expected_vec.size())
                     {
                         std::abort();
                     }
@@ -140,7 +184,7 @@ namespace deviation_projector::host_wrapper
 
                 for (size_t i = 0u; i < projected_vec.size(); ++i)
                 {
-                    tensor_pair_vec.push_back({projection_vec[i], projected_vec[i]});
+                    tensor_pair_vec.push_back({projected_vec[i], expected_vec[i]});
                 }
 
                 return this->deviation_calculator->get_deviation(tensor_pair_vec);
