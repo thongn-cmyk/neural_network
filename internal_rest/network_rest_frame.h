@@ -82,6 +82,24 @@ namespace dg_sock::network_rest_frame::model
 
     using request_id_t = RequestID;
 
+    struct Remote
+    {
+        Address addr;
+        uint32_t channel;
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector) const
+        {
+            reflector(addr, channel);
+        }
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector)
+        {
+            reflector(addr, channel);
+        }
+    };
+
     struct ResourceAddress
     {
         Address remote_addr;

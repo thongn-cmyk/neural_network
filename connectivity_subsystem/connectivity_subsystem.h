@@ -546,7 +546,7 @@ namespace connectivity_subsystem
                 {
                     if (dg_sock::network_exception::is_failed(response.err_code))
                     {
-                        throw std::runtime_error(dg_sock::network_exception::verbose(response.err_code));
+                        dg_sock::network_excepiton::throw_exception(response.err_code);
                     }
 
                     if (std::string_view(response.response_serialization_format) != dg::network_compact_serializer::get_dgstd_serialization_identifier())

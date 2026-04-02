@@ -7,7 +7,7 @@
 #include <vector>
 #include <string>
 #include <optional>
-#include "stream_delimitor_interface.h"
+#include "delimited_stream_reader_interface.h"
 
 namespace data_loader::stream_reader
 {
