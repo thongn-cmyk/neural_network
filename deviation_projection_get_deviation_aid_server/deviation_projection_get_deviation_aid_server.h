@@ -7,27 +7,9 @@
 #include <request_extension/type_based_resolutor_interface.h>
 #include <deviation_projection_client/deviation_projection_client.h>
 
-//in this topic, we'd build a tree of deviation aid server, whose base is deviation_projection_client, we'd try to increase the outdegree to make sure that the latency is sound, otherwise, we'd have to do radix 2 just for fast diffraction
-//essentially, we'd have to do detached requests, with dedicated threads, and automatic timeout on client side (with cron_subsystem one time subscription)
-//detached in the sense of the dedicated thread must make another request to ping on completion
-
-//from the foundation of our AI coding, we already talked that this is session-scoped
-//if these things are not session'scoped, we can't quantify and can't be 100% correct about literally anything
-
-//I'm afraid that people underestimate the cuda processing speed and fairness of CPU saturation
-
 namespace deviation_projection_get_deviation_aid_server
 {
     static inline constexpr std::string_view DEVIATION_PROJECTION_GET_DEVIATION_AID_SERVER_VERSION_CONTROL = "";
-
-    //what's hard is that we'd have to have connection-based per node, not master node controlling all the connections
-    //so it's best to have this reference the clients respectively for set_child_vec
-    //we'd have to include the logic at the set_child_vec
-
-    //what I would imagine is that the detached rest would involve the smp id of client, just like how we built the rest_framework, just do it again this time
-    //detached rest would take care of the lightweight detachment process on top of the rest stack
-
-    //and we can have a decdicated thread to wait and do etc for us
 
     class ClientBox
     {

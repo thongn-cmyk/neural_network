@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stdlib.h>
+#include <atomic>
 
 namespace common_exception
 {
@@ -17,20 +18,20 @@ namespace common_exception
     {
         private:
 
-            std::atomic<bool> is_canceled;
+            std::atomic<bool> status;
 
         public:
 
-            CancellationToken(): is_canceled(false){}
+            CancellationToken(): status(false){}
 
             auto is_canceled() noexcept -> bool
             {
-                return this->is_canceled.load(std::memory_order_relaxed);
+                return this->status.load(std::memory_order_relaxed);
             }
 
             void cancel() noexcept
             {
-                this->is_canceled.exchange(true, std::memory_order_relaxed);
+                this->status.exchange(true, std::memory_order_relaxed);
             }
     };
 

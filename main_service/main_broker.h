@@ -10,29 +10,13 @@
 #include <unordered_map>
 #include <deque>
 #include <exception>
+#include "resolvable_interface.h"
+#include "resolver_interface.h"
 
-namespace main_broker
+namespace main_service::main_broker
 {
     //in this main brokerage system, we'd provide actionables that are polymorphically solvable by main, like thread spawning or recoverable or etc.
     //we'd mainly use this for matrix steering subsystem where we'd be on a dedicated thread to do our synchronization promise mission
-
-    class Resolvable
-    {
-        public:
-
-            virtual ~Resolvable() noexcept = default;
-
-            virtual auto get_resolvable_id() noexcept -> uint8_t = 0;
-    };
-
-    class ResolverInterface
-    {
-        public:
-
-            virtual ~ResolverInterface() noexcept = default;
-
-            virtual void resolve(std::shared_ptr<Resolvable> resolvable) = 0;
-    };
     
     class BrokerageController
     {
@@ -63,7 +47,7 @@ namespace main_broker
                                    main_arg(std::nullopt),
                                    mtx(fair_mutex::make_unique_fair_atomic_flag()){}
 
-            void ask(std::shared_ptr<Resolvable> resolvable)
+            void ask(const std::shared_ptr<Resolvable>& resolvable)
             {
                 if (resolvable == nullptr)
                 {
@@ -129,7 +113,7 @@ namespace main_broker
                     this->main_wait_for_one();
                 }
             }
-        
+
         private:
 
             void main_wait_for_one()
@@ -151,7 +135,7 @@ namespace main_broker
                     if (!this->resolvable_vec.empty())
                     {
                         ask_arg = std::move(this->resolvable_vec.front());
-                        
+
                         if (auto map_ptr = this->resolver_map.find(ask_arg.resolvable->get_resolvable_id()); map_ptr != this->resolver_map.end())
                         {
                             resolver = map_ptr->second;
@@ -164,17 +148,16 @@ namespace main_broker
                         this->resolvable_vec.pop_front();
                         return false;
                     }
-                    
+
                     if constexpr(DEBUG_MODE_FLAG)
                     {
-                        if (!this->main_arg.has_value())
+                        if (this->main_arg.has_value())
                         {
                             std::abort();
                         }
                     }
 
                     this->main_arg = wait_arg;
-
                     return true;
                 }();
 
@@ -210,7 +193,6 @@ namespace main_broker
                 ask_arg.smp->release();
             }
     };
-
 }
 
 #endif

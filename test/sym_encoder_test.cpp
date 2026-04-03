@@ -3,6 +3,10 @@
 
 #include <iostream>
 #include <internal_rest/network_ssl_symmetric_encoder.h>
+#include <internal_rest/network_concurrency.h>
+#include <internal_rest/network_randomizer.h>
+#include <internal_rest/network_allocation.h>
+#include <internal_rest/network_stack_allocation.h>
 #include <random>
 #include <functional>
 #include <algorithm>
@@ -16,9 +20,9 @@ auto randomize_size(size_t sz_range) -> size_t
     return randomizer() % sz_range;
 }
 
-auto randomize_string(size_t sz) -> std::string
+auto randomize_string(size_t sz) -> dg_sock::string
 {
-    std::string rs{};
+    dg_sock::string rs{};
 
     for (size_t i = 0u; i < sz; ++i)
     {
@@ -28,9 +32,9 @@ auto randomize_string(size_t sz) -> std::string
     return rs;
 }
 
-auto get_random_secret() -> std::string
+auto get_random_secret() -> dg_sock::string
 {
-    return randomize_string(size_t{1} << 4);
+    return randomize_string(size_t{1} << randomize_size(4));
 }
 
 auto get_random_one_test_size() -> size_t
@@ -45,22 +49,22 @@ auto get_random_per_token_size() -> size_t
 
 auto get_random_token()
 {
-    return randomize_string(size_t{1} << 4);
+    return randomize_string(randomize_size(size_t{1} << 4));
 }
 
 void run_one_test()
 {
     using namespace dg_sock::ud_sym_encoder;
 
-    std::string secret  = get_random_secret();
-    size_t sz           = get_random_one_test_size();
-    size_t per_token_sz = get_random_per_token_size();
+    dg_sock::string secret  = get_random_secret();
+    size_t sz               = get_random_one_test_size();
+    size_t per_token_sz     = get_random_per_token_size();
 
-    DoubleEncoder encoder(secret, per_token_sz);
+    DoubleEncoder encoder(secret, per_token_sz, size_t{1} << 6);
 
     for (size_t i = 0u; i < sz; ++i)
     {
-        std::string token = get_random_token();
+        dg_sock::string token = get_random_token();
 
         if (token != encoder.decode(encoder.encode(token)))
         {
@@ -90,7 +94,59 @@ void run_test()
     std::cout << "__END_SYM_ENCODER_TEST__\n";
 }
 
+void bench_test(size_t salt_sz, size_t buffer_sz, size_t renew_sz)
+{
+    using namespace dg_sock::ud_sym_encoder;
+
+    std::cout << "__BEGIN_SCOPE_BENCH_TEST__\n";
+    std::cout << "testing > salt_sz: " << salt_sz << "<> buffer_sz: " << buffer_sz << "<> renew_sz: " << renew_sz << "\n";
+
+    auto buffer = randomize_string(buffer_sz);
+    DoubleEncoder encoder("", salt_sz, renew_sz);
+
+    auto then   = std::chrono::high_resolution_clock::now();
+    auto result = encoder.decode(encoder.encode(buffer));
+
+    if (result != buffer)
+    {
+        std::cout << "mayday, mismatched string result\n";
+        std::abort();
+    }
+
+    auto now    = std::chrono::high_resolution_clock::now();
+
+    std::cout << "lapsed (ms): " << std::chrono::duration_cast<std::chrono::milliseconds>(now - then).count() << "\n";
+    std::cout << "__END_SCOPE_BENCH_TEST__\n";
+}
+
+void bench_test()
+{
+    bench_test(size_t{1} << 10, size_t{1} << 20, size_t{1} << 0);
+    bench_test(size_t{1} << 10, size_t{1} << 20, size_t{1} << 2);
+    bench_test(size_t{1} << 10, size_t{1} << 20, size_t{1} << 4);
+    bench_test(size_t{1} << 10, size_t{1} << 20, size_t{1} << 6);
+    // bench_test(size_t{1} << 10, size_t{1} << 30, size_t{1} << 2);
+    bench_test(size_t{1} << 10, size_t{1} << 22, size_t{1} << 6);
+}
+
+void initialize_resource()
+{
+    std::cout << "initializing concurrency\n";
+    dg_sock::network_concurrency::init({});
+
+    std::cout << "initializing network randomizer\n";
+    dg_sock::network_randomizer::init();
+
+    std::cout << "initializing stack allocation\n";
+    dg_sock::network_stack_allocation::init();
+    
+    std::cout << "initializing network allocation\n";
+    dg_sock::network_allocation::init();
+}
+
 int main()
 {
+    initialize_resource();
+    bench_test();
     run_test();
 }

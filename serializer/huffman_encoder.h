@@ -836,6 +836,8 @@ namespace dg::network_huffman_encoder{
 
     using namespace network_huffman_encoder::types; 
 
+    //this is not bullet-proof secured but it is essential to implementation-wise boost the entry of ssl_symmetric_encoder
+
     auto count(const char * buf, size_t sz) -> std::vector<size_t>{
 
         return make::count(buf, sz);

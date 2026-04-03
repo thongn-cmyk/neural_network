@@ -1,10 +1,14 @@
 #ifndef __DATA_LOADER_S3_SOURCE_H__
 #define __DATA_LOADER_S3_SOURCE_H__
 
-#include <data_loader/source/source_interface.h>
-#include <data_loader/stream_reader/delimited_stream_reader_interface.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <optional>
+#include <string>
+#include <memory>
+#include <fstream>
+#include <data_loader/source/source_interface.h>
+#include <data_loader/stream_reader/delimited_stream_reader_interface.h>
 #include <aws/core/Aws.h>
 #include <aws/s3/S3Client.h>
 #include <aws/s3/model/GetObjectRequest.h>
