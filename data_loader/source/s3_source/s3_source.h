@@ -7,18 +7,27 @@
 #include <string>
 #include <memory>
 #include <fstream>
-#include <data_loader/source/source_interface.h>
+#include <data_loader/source/source_loader_interface.h>
 #include <data_loader/stream_reader/delimited_stream_reader_interface.h>
+#include <data_loader/source/source_exception.h>
+#include <data_loader/stream_reader/delimited_stream_reader.h>
 #include <aws/core/Aws.h>
 #include <aws/s3/S3Client.h>
 #include <aws/s3/model/GetObjectRequest.h>
+#include <aws/core/utils/stream/PreallocatedStreamBuf.h>
+#include "serializable.h"
+#include <algorithm>
+#include <functional>
+#include <utility>
 
 namespace data_loader::s3_source
 {
+    using namespace data_loader::source_exception;
+
     struct Configuration
     {
         data_loader::stream_reader::Configuration delim_config;
-        data_loader::config::SerializableS3ClientConfiguration s3_client_config;
+        data_loader::s3_source::SerializableS3ClientConfiguration s3_client_config;
         std::string bucket_name;
         std::string object_key;
         std::optional<uint64_t> read_ahead_buffer_sz_hint;
@@ -60,56 +69,59 @@ namespace data_loader::s3_source
             struct BufferPointer
             {
                 size_t offset;
+                size_t sz;
             };
 
             std::unique_ptr<data_loader::stream_reader::DelimitedStreamReaderInterface> delim_stream_reader;
-            std::unique_ptr<Aws::S3::Model::GetObjecOutcome> object_outcome;
-            std::unique_ptr<char[]> buf;
-            Aws::Utils::Stream::PreallocatedStreamBuf buf_reference;
+            std::unique_ptr<Aws::S3::Model::GetObjectOutcome> object_outcome;
+            std::unique_ptr<unsigned char[]> buf;
+            std::unique_ptr<Aws::Utils::Stream::PreallocatedStreamBuf> buf_reference;
             size_t tx_unit_sz;
             bool was_completed;
             bool is_bad_state;
+            size_t soft_read_error_sz;
             S3ObjectConnectionString s3_connection_string;
             Aws::Client::ClientConfiguration client_config;
-            BufferPointer buf_pointer;
+            std::optional<BufferPointer> buf_pointer;
+
+            static inline constexpr size_t SOFT_READ_ERROR_THRESHOLD    = size_t{1} << 3;
 
         public:
 
-            static inline constexpr size_t MAX_READ_SZ      = size_t{1} << 20;
-            static inline constexpr size_t MIN_BUFFER_SZ    = size_t{1} << 10;
-            static inline constexpr size_t MAX_BUFFER_SZ    = size_t{1} << 20;
+            static inline constexpr size_t MAX_READ_SZ                  = size_t{1} << 20;
+            static inline constexpr size_t MIN_BUFFER_SZ                = size_t{1} << 10;
+            static inline constexpr size_t MAX_BUFFER_SZ                = size_t{1} << 20;
 
             S3Loader(Configuration config)
             {
-                this->delim_streamer    = std::make_unique<data_loader::stream_reader::DelimitedStreamReader>(config.delim_config);
-                this->object_outcome    = nullptr;
-                this->tx_unit_sz        = 1u;
+                this->delim_stream_reader   = std::make_unique<data_loader::stream_reader::DelimitedStreamReader>(config.delim_config);
+                this->object_outcome        = nullptr;
+                this->tx_unit_sz            = 1u;
 
                 if (config.unit_byte_sz_hint.has_value())
                 {
-                    this->tx_unit_sz = std::max(this->tx_unit_sz, config.unit_byte_sz_hint.value());
+                    this->tx_unit_sz = std::max(this->tx_unit_sz, static_cast<size_t>(config.unit_byte_sz_hint.value()));
                 }
 
                 if (config.read_ahead_buffer_sz_hint.has_value())
                 {
-                    size_t buf_sz       = std::clamp(config.read_ahead_buffer_sz_hint.value(), MIN_BUFFER_SZ, MAX_BUFFER_SZ);
-                    this->buf           = std::make_unique<char[]>(buf_sz);
-                    this->buf_reference = Aws::Utils::Stream::PreallocatedStreamBuf(this->buf.get(), buf_sz);
+                    size_t buf_sz       = std::clamp(static_cast<size_t>(config.read_ahead_buffer_sz_hint.value()), MIN_BUFFER_SZ, MAX_BUFFER_SZ);
+                    this->buf           = std::make_unique<unsigned char[]>(buf_sz);
+                    this->buf_reference = std::make_unique<Aws::Utils::Stream::PreallocatedStreamBuf>(this->buf.get(), buf_sz);
                 }
 
                 this->was_completed         = false;
                 this->is_bad_state          = false;
+                this->soft_read_error_sz    = 0u;
                 this->s3_connection_string  = S3ObjectConnectionString
                 {
                     .bucket_name    = config.bucket_name,
                     .object_key     = config.object_key
                 };
 
-                this->client_config         = data_loader::config::to_legacy_s3_client_config(config.s3_client_config);
-                this->buf_pointer           = BufferPointer
-                {
-                    .offset = 0u
-                };
+                this->client_config         = {};
+                // this->client_config         = data_loader::s3_source::to_legacy_s3_client_config(config.s3_client_config);
+                this->buf_pointer           = std::nullopt;
             }
 
             ~S3Loader() noexcept
@@ -138,22 +150,25 @@ namespace data_loader::s3_source
                     return std::vector<std::string>();
                 }
 
-                strd::string buf(tx_byte_sz, ' ');
+                std::string buf(tx_byte_sz, ' ');
                 intmax_t read_bytes;
 
                 if (this->object_outcome == nullptr)
                 {
                     this->initialize_object_outcome();
+                    this->buf_pointer = BufferPointer
+                    {
+                        .offset = size_t{0u},
+                        .sz     = this->get_outcome_stream_content_length(*this->object_outcome)
+                    };
                 }
 
                 try
                 {
-                    auto& oc_stream = this->object_outcome->GetResult().GetBody();
+                    this->seek_outcome_stream(*this->object_outcome, this->buf_pointer->offset);
+                    this->read_outcome_stream(*this->object_outcome, buf.data(), buf.size());
 
-                    oc_stream.seekg(this->buf_pointer.offset);
-                    oc_stream.read(buf.data(), buf.size());
-    
-                    read_bytes = oc_stream.gcount();
+                    read_bytes = this->gcount_outcome_stream(*this->object_outcome);
                 }
                 catch (...)
                 {
@@ -167,17 +182,23 @@ namespace data_loader::s3_source
                 }
 
                 buf.resize(read_bytes);
-                this->buf_pointer.offset += read_bytes;
+                this->buf_pointer->offset += read_bytes;
 
                 if (buf.size() == 0u)
                 {
+                    if (this->buf_pointer->offset != this->buf_pointer->sz)
+                    {
+                        this->revive_and_throw_size_inconsistency();
+                        this->punch_one_soft_read_error();
+                    }
+
                     this->was_completed = true;
                     return std::nullopt;
                 }
 
                 try
                 {
-                    return this->delim_streamer->put(buf);
+                    return this->delim_stream_reader->put(buf);
                 }
                 catch (...)
                 {
@@ -185,8 +206,125 @@ namespace data_loader::s3_source
                     throw;
                 }
             }
-        
+
         private:
+
+            void seek_outcome_stream(Aws::S3::Model::GetObjectOutcome& obj, size_t pos)
+            {
+                if (!obj.IsSuccess())
+                {
+                    throw other_error("S3 Bucket read went wrong, bad objet outcome");
+                }
+
+                try
+                {
+                    obj.GetResult().GetBody().seekg(pos);
+
+                    if (obj.GetResult().GetBody().fail())
+                    {
+                        throw std::exception();                        
+                    }
+                }
+                catch (...)
+                {
+                    throw other_error("S3 Bucket read went wrong, bad file seek");
+                }
+            }
+
+            void read_outcome_stream(Aws::S3::Model::GetObjectOutcome& obj, char * buf, size_t sz)
+            {
+                if (!obj.IsSuccess())
+                {
+                    throw other_error("S3 Bucket read went wrong, bad objet outcome");
+                }
+
+                try
+                {
+                    obj.GetResult().GetBody().read(buf, sz);
+                }
+                catch (...)
+                {
+                    throw other_error("S3 Bucket read went wrong, bad stream read");
+                }
+            }
+
+            auto gcount_outcome_stream(Aws::S3::Model::GetObjectOutcome& obj) -> size_t
+            {
+                if (!obj.IsSuccess())
+                {
+                    throw other_error("S3 Bucket read went wrong, bad objet outcome");
+                }
+
+                try
+                {
+                    intmax_t result = obj.GetResult().GetBody().gcount();
+
+                    if (result < 0)
+                    {
+                        throw std::exception();
+                    }
+
+                    return result;
+                }
+                catch (...)
+                {
+                    throw other_error("S3 Bucket read went wrong, bad file read count");
+                }
+            }
+
+            auto get_outcome_stream_content_length(Aws::S3::Model::GetObjectOutcome& obj) -> size_t
+            {
+                if (!obj.IsSuccess())
+                {
+                    throw other_error("S3 Bucket read went wrong, bad objet outcome");
+                }
+
+                try
+                {
+                    intmax_t result = obj.GetResult().GetContentLength();
+
+                    if (result < 0)
+                    {
+                        throw std::exception();
+                    }
+
+                    return result;
+                }
+                catch (...)
+                {
+                    throw other_error("S3 Bucket read went wrong, bad file content length read");
+                }
+            }
+
+            void revive_and_throw_size_inconsistency()
+            {
+                if (!this->buf_pointer.has_value())
+                {
+                    std::abort();
+                }
+
+                this->initialize_object_outcome();
+                size_t expected_sz = this->get_outcome_stream_content_length(*this->object_outcome);
+
+                if (expected_sz != this->buf_pointer->sz)
+                {
+                    this->is_bad_state = true;
+                    throw hard_file_read_error("file read went wrong, size was mutated");
+                }
+            }
+
+            void punch_one_soft_read_error()
+            {
+                if (this->soft_read_error_sz == SOFT_READ_ERROR_THRESHOLD)
+                {
+                    this->is_bad_state = true;
+                    throw hard_file_read_error("hard S3 read error, max retry count reached");
+                }
+
+                this->soft_read_error_sz += 1;
+
+                throw soft_file_read_error("soft S3 read error");
+            }
 
             auto get_s3_client() -> Aws::S3::S3Client
             {
@@ -200,19 +338,40 @@ namespace data_loader::s3_source
                 objectRequest.SetBucket(this->s3_connection_string.bucket_name);
                 objectRequest.SetKey(this->s3_connection_string.object_key);
 
-                if (this->buf.has_value())
+                if (this->buf != nullptr)
                 {
                     objectRequest.SetResponseStreamFactory([&]
                     {
-                        return Aws::New<Aws::IOStream>("PreallocatedStream", &this->buf_reference);
+                        return Aws::New<Aws::IOStream>("PreallocatedStream", this->buf_reference.get());
                     });
                 }
 
-                auto tmp = std::make_unique<Aws::S3::Model::GetObjectOutcome>(this->get_s3_client().GetOBject(objectRequest));
+                auto tmp = std::make_unique<Aws::S3::Model::GetObjectOutcome>(this->get_s3_client().GetObject(objectRequest));
 
                 if (!tmp->IsSuccess())
                 {
-                    throw std::runtime_error("s3 object get went wrong");
+                    const auto& err = tmp->GetError();
+
+                    if (err.GetErrorType() == Aws::S3::S3Errors::NO_SUCH_KEY)
+                    {
+                        throw authentication_error("No such key for AWS S3 bucket");
+                    }
+                    else if (err.GetErrorType() == Aws::S3::S3Errors::NO_SUCH_BUCKET)
+                    {
+                        throw bad_resource_pointer_error("No such AWS S3 bucket");
+                    }
+                    else if (err.GetErrorType() == Aws::S3::S3Errors::ACCESS_DENIED)
+                    {
+                        throw authentication_error("Access denied for AWS S3 bucket");
+                    }
+                    else if (err.GetErrorType() == Aws::S3::S3Errors::NETWORK_CONNECTION)
+                    {
+                        throw connection_error("Connection error for AWS S3 bucket");
+                    }
+                    else
+                    {
+                        throw other_error("Something went wrong with AWS S3 bucket reference object instantiation");
+                    }
                 }
 
                 this->object_outcome = std::move(tmp);
@@ -220,7 +379,7 @@ namespace data_loader::s3_source
 
             auto is_revivable_error(std::exception_ptr exception) -> bool
             {
-                return exception !+ nullptr;
+                return exception != nullptr;
             }
 
             void revive_object_outcome_on_error(std::exception_ptr exception)

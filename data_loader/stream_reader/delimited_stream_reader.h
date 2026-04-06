@@ -8,12 +8,15 @@
 #include <string>
 #include <optional>
 #include "delimited_stream_reader_interface.h"
+#include <data_loader/exception_base.h>
 
 namespace data_loader::stream_reader
 {
-    struct token_overflow_error: std::runtime_error
+    using namespace data_loader::exception_base;
+
+    struct token_overflow_error: runtime_error_base
     {
-        token_overflow_error(): std::runtime_error("max token size reached"){}
+        token_overflow_error(): runtime_error_base("max token size reached", "token_overflow_error"){}
     };
 
     struct Configuration

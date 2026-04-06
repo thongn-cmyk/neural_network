@@ -14,7 +14,7 @@ namespace data_loader::retryer_device
 
             virtual ~RunnableInterface() noexcept = default;
 
-            virtual void run() = 0;
+            virtual void run(common_exception::CancellationTokenInterface& cancellation_token) = 0;
     };
 
     class RetryerMachineInterface

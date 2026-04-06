@@ -14,10 +14,14 @@
 #include <common_exception/common_exception.h>
 #include <mutex_extension/fair_mutex.h>
 #include <stl_extension/stdx.h>
+#include "worker_interface.h"
+#include "rescheduler_interface.h"
+#include "concurrency_base_definition.h"
 
 namespace concurrency_base::worker_controller
 {
-    using daemon_kind_t = uint8_t; 
+    using namespace concurrency_base::interface;
+    using namespace concurrency_base::definition;
 
     struct StdDaemonRunnableInterface
     {
@@ -25,20 +29,6 @@ namespace concurrency_base::worker_controller
 
         virtual void infloop() noexcept = 0;
         virtual void signal_abort() noexcept = 0;
-    };
-
-    struct WorkerInterface
-    {
-        virtual ~WorkerInterface() noexcept = default;
-
-        virtual bool run_one_epoch() noexcept = 0;
-    };
-
-    struct ReschedulerInterface
-    {
-        virtual ~ReschedulerInterface() noexcept = default;
-
-        virtual void reschedule() noexcept = 0;
     };
 
     struct DaemonRunnerInterface

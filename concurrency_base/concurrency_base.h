@@ -1,39 +1,32 @@
-
 #ifndef __DG_CONCURRENCY_BASE_H__
 #define __DG_CONCURRENCY_BASE_H__
 
-//define HEADER_CONTROL 3
-
-#include <stddef.h>
 #include <stdint.h>
-#include <thread>
-#include <vector>
-#include <memory>
-#include "worker_controller.h"
-#include <bit>
-#include <stl_extension/datastructure.h>
-#include <stl_extension/stdx.h>
-#include <optional>
+#include <stdlib.h>
+#include "concurrency_base_onfly.h"
+#include "concurrency_base_dedicated.h"
+#include "worker_interface.h"
+#include "concurrency_base_definition.h"
 
 namespace concurrency_base
 {
-    using daemon_kind_t     = concurrency_base::worker_controller::daemon_kind_t;
+    using namespace concurrency_base::definition;
 
     enum daemon_option: daemon_kind_t
     {
-        MAILBOX_UNIT_DAEMON     = 0u,
-        MAILBOX_STREAM_DAEMON   = 1u,
-        MAILBOX_CHANNEL_DAEMON  = 2u,
-        REST_SERVER_DAEMON      = 3u,
-        REST_CLIENT_DAEMON      = 4u,
-        COROUTINE_DAEMON        = 5u,
-        CRON_TICK_DAEMON        = 6u,
-        CRON_WORK_DAEMON        = 7u,
-        ASYNC_SEQPAR_DAEMON     = 8u,
-        ASYNC_CUDA              = 9u
+        MAILBOX_UNIT_DAEMON     = 0x0000,
+        MAILBOX_STREAM_DAEMON   = 0x0001,
+        MAILBOX_CHANNEL_DAEMON  = 0x0002,
+        REST_SERVER_DAEMON      = 0x0003,
+        REST_CLIENT_DAEMON      = 0x0004,
+        COROUTINE_DAEMON        = 0x0005,
+        CRON_TICK_DAEMON        = 0x0006,
+        CRON_WORK_DAEMON        = 0x0007,
+        ASYNC_SEQPAR_DAEMON     = 0x0008,
+        ASYNC_CUDA_DAEMON       = 0x0009,
+        COMMON_ONFLY_POOL       = 0x0100,
+        DEDICATED_ONFLY_POOL    = 0x0101
     };
-
-    using WorkerInterface   = concurrency_base::worker_controller::WorkerInterface; 
 
     struct WorkerInformation
     {
@@ -46,133 +39,165 @@ namespace concurrency_base
         std::vector<WorkerInformation> worker_vec;
     };
 
-    struct Signature{}; 
+    using WorkerInterface = concurrency_base::interface::WorkerInterface;
 
-    struct ConcurrencyResource
+    static auto _is_dedicated_kind(daemon_kind_t kind) noexcept -> bool
     {
-        std::unique_ptr<concurrency_base::worker_controller::DaemonControllerInterface> daemon_controller; 
-        datastructure::unordered_map_variants::unordered_node_map<std::thread::id, size_t> thrid_to_idx_map;
-    };
+        return (kind >> 8) == 0;
+    }
 
-    using SingletonObject = stdx::singleton_container<ConcurrencyResource, Signature>;
-
-    extern void init(Config config, bool main_inclusion = true)
+    static auto _is_onfly_kind(daemon_kind_t kind) noexcept -> bool
     {
-        using namespace concurrency_base::worker_controller;
+        return (kind >> 8) == 1;
+    }
 
-        stdx::memtransaction_guard tx_grd;
+    static auto _to_base_kind(daemon_kind_t kind) noexcept -> daemon_kind_t
+    {
+        return kind & std::numeric_limits<uint8_t>::max();
+    }
 
-        std::vector<std::pair<std::unique_ptr<DaemonRunnerInterface>, daemon_kind_t>> runner_kind_vec{};
-        datastructure::unordered_map_variants::unordered_node_map<std::thread::id, size_t>  thrid_to_idx_map{};
+    static auto _get_dedicated_config(const Config& config) -> concurrency_base::dedicated::Config
+    {
+        concurrency_base::dedicated::Config result{};
 
-        for (size_t i = 0u; i < config.worker_vec.size(); ++i)
+        for (const auto& worker_info: config.worker_vec)
         {
-            std::unique_ptr<DaemonDedicatedRunnerInterface> runner;
-
-            if (config.worker_vec[i].cpu_id.has_value())
+            if (_is_dedicated_kind(worker_info.daemon))
             {
-                runner = DaemonRunnerFactory::spawn_std_daemon_affined_runner({config.worker_vec[i].cpu_id.value()});
+                result.worker_vec.push_back(concurrency_base::dedicated::WorkerInformation
+                {
+                    .cpu_id = worker_info.cpu_id,
+                    .daemon = _to_base_kind(worker_info.daemon)
+                });
+            }
+        }
+
+        return result;
+    }
+
+    static auto _get_onfly_config(const Config& config) -> concurrency_base::onfly::Config
+    {
+        concurrency_base::onfly::Config result{};
+
+        for (const auto& worker_info: config.worker_vec)
+        {
+            if (_is_onfly_kind(worker_info.daemon))
+            {
+                result.worker_vec.push_back(concurrency_base::onfly::WorkerInformation
+                {
+                    .daemon = _to_base_kind(worker_info.daemon)
+                });
+            }
+        }
+
+        return result;
+    }
+
+    void init(Config config, bool main_inclusion = true)
+    {
+        concurrency_base::dedicated::init(_get_dedicated_config(config), main_inclusion);
+        concurrency_base::onfly::init(_get_onfly_config(config));
+    }
+
+    void deinit() noexcept
+    {
+        concurrency_base::onfly::deinit();
+        concurrency_base::dedicated::deinit();
+    }
+
+    auto get_thread_count() noexcept -> size_t
+    {
+        return concurrency_base::dedicated::get_thread_count() + concurrency_base::onfly::get_thread_count();
+    }
+
+    static __attribute__((noinline)) auto _is_registered_thread() noexcept -> bool
+    {
+        return concurrency_base::dedicated::is_registered_thread() || concurrency_base::onfly::is_registered_thread();
+    }
+
+    auto is_registered_thread() noexcept -> bool
+    {
+        thread_local std::optional<bool> result = std::nullopt;
+
+        if (!result.has_value()) [[unlikely]]
+        {
+            result = _is_registered_thread();
+            return result.value();
+        }
+        else [[likely]]
+        {
+            return result.value();
+        }
+    }
+
+    static __attribute__((noinline)) auto _this_thread_idx() noexcept -> size_t
+    {
+        if (concurrency_base::dedicated::is_registered_thread())
+        {
+            return concurrency_base::dedicated::this_thread_idx();
+        }
+
+        return concurrency_base::dedicated::get_thread_count() + concurrency_base::onfly::this_thread_idx();
+    }
+
+    auto this_thread_idx() noexcept -> size_t
+    {
+        thread_local std::optional<size_t> result = std::nullopt;
+
+        if (!result.has_value()) [[unlikely]]
+        {
+            result = _this_thread_idx();
+            return result.value();
+        }
+        else [[likely]]
+        {
+            return result.value();
+        }
+    }
+
+    static auto _daemon_saferegister_dedicated(daemon_kind_t base_kind, std::unique_ptr<WorkerInterface> worker) -> std::shared_ptr<void>
+    {
+        auto result = concurrency_base::dedicated::daemon_saferegister(base_kind, std::move(worker));
+
+        if (!result.has_value())
+        {
+            common_exception::throw_exception(result.error());
+        }
+
+        return std::make_shared<decltype(result)>(std::move(result));
+    }
+
+    static auto _daemon_saferegister_onfly(daemon_kind_t base_kind, std::unique_ptr<WorkerInterface> worker) -> std::shared_ptr<void>
+    {
+        auto result = concurrency_base::onfly::daemon_saferegister(base_kind, std::move(worker));
+
+        return std::make_shared<decltype(result)>(std::move(result));
+    }
+
+    auto daemon_saferegister(daemon_kind_t kind, std::unique_ptr<WorkerInterface> worker) noexcept -> std::expected<std::shared_ptr<void>, exception_t>
+    {
+        try
+        {
+            if (_is_dedicated_kind(kind))
+            {
+                return _daemon_saferegister_dedicated(_to_base_kind(kind), std::move(worker));
+            }
+            else if (_is_onfly_kind(kind))
+            {
+                return _daemon_saferegister_onfly(_to_base_kind(kind), std::move(worker));
             }
             else
             {
-                runner = DaemonRunnerFactory::spawn_std_daemon_runner();
+                common_exception::throw_exception(common_exception::INVALID_ARGUMENT);
             }
-
-            thrid_to_idx_map[runner->id()] = i;
-            runner_kind_vec.push_back(std::make_pair(std::move(runner), config.worker_vec[i].daemon));
-        }
-
-        if (main_inclusion)
-        {
-            thrid_to_idx_map[std::this_thread::get_id()] = config.worker_vec.size();
-        }
-
-        SingletonObject::get() =
-        {
-            .daemon_controller  = ControllerFactory::spawn_daemon_controller(std::move(runner_kind_vec)),
-            .thrid_to_idx_map   = std::move(thrid_to_idx_map)
-        };
-    }
-
-    extern void deinit() noexcept
-    {
-        stdx::memtransaction_guard tx_grd;
-
-        SingletonObject::get() = {};
-    }
-
-    extern auto get_thread_count() noexcept -> size_t
-    {
-        return SingletonObject::get().thrid_to_idx_map.size();
-    }
-
-    extern auto is_registered_thread() noexcept -> bool
-    {
-        return SingletonObject::get().thrid_to_idx_map.contains(std::this_thread::get_id());
-    }
-
-    extern auto this_thread_idx() noexcept -> size_t
-    {    
-        auto ptr = SingletonObject::get().thrid_to_idx_map.find(std::this_thread::get_id());
-
-        if constexpr(DEBUG_MODE_FLAG)
-        {
-            if (ptr == SingletonObject::get().thrid_to_idx_map.end())
-            {
-                std::abort();
-            }
-        }
-
-        return ptr->second;
-    }
-
-    extern auto __attribute__((noipa)) daemon_register(daemon_kind_t daemon_kind, std::unique_ptr<WorkerInterface> worker) noexcept -> std::expected<size_t, exception_t>
-    {
-        auto ptr = SingletonObject::get().thrid_to_idx_map.find(std::this_thread::get_id());
-
-        return SingletonObject::get().daemon_controller->_register(daemon_kind, std::move(worker));
-    }
-
-    extern void daemon_deregister(size_t id) noexcept
-    {
-        auto ptr = SingletonObject::get().thrid_to_idx_map.find(std::this_thread::get_id());
-    
-        if (ptr == SingletonObject::get().thrid_to_idx_map.end())
-        {
-            std::abort();
-        }
-
-        SingletonObject::get().daemon_controller->deregister(id);
-    }
-
-    using daemon_deregister_t = void (*)(size_t *) noexcept; 
-
-    extern auto daemon_saferegister(daemon_kind_t daemon_kind, std::unique_ptr<WorkerInterface> worker) noexcept -> std::expected<std::unique_ptr<size_t, daemon_deregister_t>, exception_t>
-    {
-        std::expected<size_t, exception_t> handle = daemon_register(daemon_kind, std::move(worker));
-
-        if (!handle.has_value())
-        {
-            return std::unexpected(handle.error());
-        }
-
-        constexpr auto resource_destructor = [](size_t * daemon_id) noexcept
-        {
-            daemon_deregister(*daemon_id);
-            delete daemon_id;
-        };
-
-        try
-        {
-            return std::unique_ptr<size_t, daemon_deregister_t>(new size_t{handle.value()}, resource_destructor);
         }
         catch (...)
         {
-            std::abort();   
+            return std::unexpected(common_exception::wrap_std_exception(std::current_exception()));
         }
     }
 
-    using daemon_raii_handle_t = std::unique_ptr<size_t, daemon_deregister_t>;
-};
+    using daemon_raii_handle_t = std::shared_ptr<void>;
+}
 
 #endif

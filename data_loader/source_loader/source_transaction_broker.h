@@ -62,7 +62,7 @@ namespace data_loader::source_loader::broker
                                                                                     was_ran(was_ran),
                                                                                     rs(rs){}
 
-                    void run()
+                    void run(common_exception::CancellationTokenInterface& cancellation_token)
                     {
                         *this->rs       = this->src->get(this->tx_hint_sz);
                         *this->was_ran  = true;
