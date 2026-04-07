@@ -5,12 +5,27 @@
 #include <stdlib.h>
 #include <memory>
 #include <data_loader/source/generic_source.h>
+#include <data_loader/retryer_device/retryer_device_interface.h>
+#include "transaction_broker_interface.h"
 
 namespace data_loader::source_loader::broker
 {
-    struct retryer_machine_zero_ran_error: std::invalid_argument
+    struct SourceTransactionBrokerConfig
     {
-        retryer_machine_zero_ran_error(): std::invalid_argument("run process was not invoked by retryer machine"){}
+        data_loader::generic_source::GenericReaderConfig source_config;
+        data_loader::retryer_device::generic_device::GenericRetryConfig retry_config;
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector) const
+        {
+            reflector(source_config, retry_config);
+        }
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector)
+        {
+            reflector(source_config, retry_config);
+        }
     };
 
     class SourceTransactionBroker: public virtual TransactionBrokerInterface
@@ -18,25 +33,20 @@ namespace data_loader::source_loader::broker
         private:
 
             std::unique_ptr<data_loader::SourceLoaderInterface> base;
+            std::unique_ptr<data_loader::retryer_device::RetryerMachineInterface> retryer_machine;
 
         public:
 
-            SourceTransactionBroker(data_loader::generic_source::Configuration config): base(std::make_unique<data_loader::generic_source::GenericReader>(config)){}
+            SourceTransactionBroker(SourceTransactionBrokerConfig config): base(std::make_unique<data_loader::generic_source::GenericReader>(config.source_config)),
+                                                                           retryer_machine(std::make_unique<data_loader::retryer_device::generic_device::GenericRetryerMachine>(config.retry_config)){}
 
             auto get(size_t tx_hint_sz,
-                     data_loader::retryer_device::RetryerMachineInterface& retryer_machine,
                      common_exception::CancellationTokenInterface& cancellation_token) -> std::optional<std::vector<std::string>>
             {
-                bool was_ran = false;
                 std::optional<std::vector<std::string>> rs{};
 
-                InternalRunnable runnable(tx_hint_sz, this->base.get(), &was_ran, &rs);
-                retryer_machine.run(runnable, cancellation_token);
-
-                if (!was_ran)
-                {
-                    throw retryer_machine_zero_ran_error{};
-                }
+                InternalRunnable runnable(tx_hint_sz, this->base.get(), &rs);
+                this->retryer_machine->run(runnable, cancellation_token);
 
                 return rs;
             }
@@ -49,23 +59,19 @@ namespace data_loader::source_loader::broker
 
                     size_t tx_hint_sz;
                     data_loader::SourceLoaderInterface * src;
-                    bool * was_ran;
                     std::optional<std::vector<std::string>> * rs;
 
                 public:
 
                     InternalRunnable(size_t tx_hint_sz,
                                      data_loader::SourceLoaderInterface * src,
-                                     bool * was_ran,
                                      std::optional<std::vector<std::string>> * rs): tx_hint_sz(tx_hint_sz),
                                                                                     src(src),
-                                                                                    was_ran(was_ran),
                                                                                     rs(rs){}
 
                     void run(common_exception::CancellationTokenInterface& cancellation_token)
                     {
-                        *this->rs       = this->src->get(this->tx_hint_sz);
-                        *this->was_ran  = true;
+                        *this->rs = this->src->get(this->tx_hint_sz);
                     }
             };
     };

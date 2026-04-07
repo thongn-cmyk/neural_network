@@ -127,7 +127,9 @@ namespace common_exception
     static inline constexpr exception_t REST_LOST_RESPONSE                      = 64u;
     static inline constexpr exception_t REST_INVALID_TIMEOUT                    = 65u;
     static inline constexpr exception_t REST_MAX_CONSUME_SIZE_EXCEEDED          = 66u;
-    static inline constexpr exception_t POISONED_CONTAINER                      = 67u;
+    static inline constexpr exception_t REST_MISMATCHED_SERIALIZATION_METHOD    = 67u;
+    static inline constexpr exception_t POISONED_CONTAINER                      = 68u;
+    static inline constexpr exception_t OPERATION_CANCELED_ERROR                = 69u;
 
     struct segfault: std::runtime_error,
                      codex_base
@@ -595,11 +597,25 @@ namespace common_exception
                                           codex_base(REST_MAX_CONSUME_SIZE_EXCEEDED){}
     };
 
+    struct rest_mismatched_serialization_method: std::invalid_argument,
+                                                 codex_base
+    {
+        rest_mismatched_serialization_method(): std::invalid_argument("rest mismatched serialization method"),
+                                                codex_base(REST_MISMATCHED_SERIALIZATION_METHOD){}
+    };
+
     struct poisoned_container: std::runtime_error,
                                codex_base
     {
         poisoned_container(): std::runtime_error("poisoned container"),
                               codex_base(POISONED_CONTAINER){}
+    };
+
+    struct operation_canceled_error: std::runtime_erorr,
+                                     codex_base
+    {
+        operation_canceled_error(): std::runtime_error("operation canceled error"),
+                                    codex_base(OPERATION_CANCELED_ERROR){}
     };
 
     template <class T>
@@ -713,7 +729,9 @@ namespace common_exception
         result.insert(std::make_pair(REST_LOST_RESPONSE, std::make_unique<fancy_polymorphic_exception<rest_lost_response>>()));
         result.insert(std::make_pair(REST_INVALID_TIMEOUT, std::make_unique<fancy_polymorphic_exception<rest_invalid_timeout>>()));
         result.insert(std::make_pair(REST_MAX_CONSUME_SIZE_EXCEEDED, std::make_unique<fancy_polymorphic_exception<rest_max_consume_size_exceeded>>()));
+        result.insert(std::make_pair(REST_MISMATCHED_SERIALIZATION_METHOD, std::make_unique<fancy_polymorphic_exception<rest_mismatched_serialization_method>>()));
         result.insert(std::make_pair(POISONED_CONTAINER, std::make_unique<fancy_polymorphic_exception<poisoned_container>>()));
+        result.insert(std::make_pair(OPERATION_CANCELED_ERROR, std::make_unique<fancy_polymorphic_exception<operation_canceled_error>>()));
 
         return result;
     }();

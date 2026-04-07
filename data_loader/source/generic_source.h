@@ -4,19 +4,27 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <memory>
+#include <stl_extension/stdx.h>
+
 #include "file_source/file_source.h"
 #include "kafka_broker_source/kafka_broker_source.h"
-#include "s3_source/s3_source.h"
-#include <stl_extension/stdx.h>
+// #include "s3_source/s3_source.h"
+#include <data_loader/exception_base.h>
 
 namespace data_loader::generic_source
 {
-    struct Configuration
+    using namespace data_loader::exception_base;
+
+    struct GenericReaderConfig
     {
+        // std::variant<stdx::reflectible_monostate,
+        //              data_loader::file_source::Configuration,
+        //              data_loader::kafka_broker_source::Configuration,
+        //              data_loader::s3_source::Configuration> source;
+
         std::variant<stdx::reflectible_monostate,
-                     data_loader::file_source::Configuration,
-                     data_loader::kafka_broker_source::Configuration,
-                     data_loader::s3_source::Configuration> source;
+                     data_loader::file_source::FileLoaderConfig,
+                     data_loader::kafka_broker_source::KafkaBrokerConfig> source;
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector) const
@@ -39,29 +47,29 @@ namespace data_loader::generic_source
 
         public:
 
-            GenericReader(Configuration config)
+            GenericReader(GenericReaderConfig config)
             {
-                if (std::holds_alternative<data_loader::file_source::Configuration>(config.source))
+                if (std::holds_alternative<data_loader::file_source::FileLoaderConfig>(config.source))
                 {
-                    this->base = std::make_unique<data_loader::file_source::FileLoader>(std::get<data_loader::file_source::Configuration>(config.source));
+                    this->base = std::make_unique<data_loader::file_source::FileLoader>(std::get<data_loader::file_source::FileLoaderConfig>(config.source));
                 }
-                else if (std::holds_alternative<data_loader::s3_source::Configuration>(config.source))
-                {
-                    this->base = std::make_unique<data_loader::s3_source::S3Loader>(std::get<data_loader::s3_source::Configuration>(config.source));
-                }
-                else if (std::holds_alternative<data_loader::kafka_broker_source::Configuration>(config.source))
-                {
-                    this->base = std::make_unique<data_loader::kafka_broker_source::KafkaBrokerLoader>(std::get<data_loader::kafka_broker_source::Configuration>(config.source));
-                }
+                // else if (std::holds_alternative<data_loader::s3_source::Configuration>(config.source))
+                // {
+                //     this->base = std::make_unique<data_loader::s3_source::S3Loader>(std::get<data_loader::s3_source::Configuration>(config.source));
+                // }
+                // else if (std::holds_alternative<data_loader::kafka_broker_source::Configuration>(config.source))
+                // {
+                //     this->base = std::make_unique<data_loader::kafka_broker_source::KafkaBrokerLoader>(std::get<data_loader::kafka_broker_source::Configuration>(config.source));
+                // }
                 else
                 {
-                    throw std::invalid_argument("bad configuration, polymorphic state is not defined");
+                    throw invalid_argument_base("bad configuration, polymorphic state is not defined");
                 }
             }
 
             auto get(size_t tx_hint_sz) -> std::optional<std::vector<std::string>>
             {
-                return this->base->get();
+                return this->base->get(tx_hint_sz);
             }
     };
 }

@@ -31,6 +31,21 @@ namespace deviation_projection_server
 
     static inline constexpr std::string_view DEVIATION_PROJECTION_SERVER_VERSION_CONTROL    = "";
 
+    struct local_invalid_argument: std::invalid_argument
+    {
+        local_invalid_argument(const char * msg = "invalid argument"): std::invalid_argument(msg){}
+    };
+
+    struct local_runtime_error: std::runtime_error
+    {
+        local_runtime_error(const char * msg = "runtime error"): std::runtime_error(msg){}
+    };
+
+    struct client_not_found_error: std::invalid_argument
+    {
+        client_not_found_error(): std::invalid_argument("bad client box, client_box id not found"){}
+    };
+
     class ClientBox
     {
         private:

@@ -41,8 +41,8 @@ namespace concurrency_base::onfly
         size_t total_thr_count;
     };
 
-    using SingletonObject   = stdx::singleton_container<ConcurrencyResource, Signature>;
-    using WorkerInterface   = concurrency_base::interface::WorkerInterface;
+    using SingletonObject               = stdx::singleton_container<ConcurrencyResource, Signature>;
+    using InterruptableWorkerInterface  = concurrency_base::interface::InterruptableWorkerInterface;
 
     static void _check_daemon_kind(daemon_kind_t daemon_kind)
     {
@@ -177,7 +177,7 @@ namespace concurrency_base::onfly
         }
     }
 
-    auto daemon_register(daemon_kind_t daemon_kind, std::unique_ptr<WorkerInterface> worker) -> size_t
+    auto daemon_register(daemon_kind_t daemon_kind, std::unique_ptr<InterruptableWorkerInterface> worker) -> size_t
     {
         if constexpr(DEBUG_MODE_FLAG)
         {
@@ -205,7 +205,7 @@ namespace concurrency_base::onfly
 
     using daemon_deregister_t = void (*) (size_t *) noexcept;
 
-    auto daemon_saferegister(daemon_kind_t daemon_kind, std::unique_ptr<WorkerInterface> worker) -> std::unique_ptr<size_t, daemon_deregister_t>
+    auto daemon_saferegister(daemon_kind_t daemon_kind, std::unique_ptr<InterruptableWorkerInterface> worker) -> std::unique_ptr<size_t, daemon_deregister_t>
     {
         size_t resource_id = daemon_register(daemon_kind, std::move(worker));
 

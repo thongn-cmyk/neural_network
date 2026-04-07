@@ -8,6 +8,10 @@
 #include <request_extension/type_based_resolutor_interface.h>
 #include <request_extension/type_based_dgstd_resolutor.h>
 #include <deviation_projection_client/deviation_projection_client.h>
+#include <fire_bandwidth_control/temporal_firer.h>
+#include <data_loader/source_loader/generic_loader.h>
+#include <memory>
+#include <atomic>
 
 namespace deviation_projection_ingestion_aid_server
 {
@@ -19,19 +23,19 @@ namespace deviation_projection_ingestion_aid_server
 
     struct ServerSink
     {
-        dg_sock::network_rest_frame::model::Url url;
+        dg_sock::network_rest_frame::model::Remote remote;
         uint64_t client_id;
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector) const
         {
-            reflector(url, client_id);
+            reflector(remote, client_id);
         }
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector)
         {
-            reflector(url, client_id);
+            reflector(remote, client_id);
         }
     };
 
@@ -41,10 +45,11 @@ namespace deviation_projection_ingestion_aid_server
 
             struct Resource
             {
-                std::optional<data_loader::Configuration> data_loader_config;
+                std::optional<data_loader::source_loader::generic_loader::GenericLoaderConfig> data_loader_config;
                 std::optional<std::vector<ServerSink>> server_sink_vec;
-                std::optional<data_firehose::Configuration> data_firehose_config;
+                std::optional<fire_bandwidth_control::generic_firer::GenericFirerConfig> token_firer_config;
                 std::optional<dg_sock::network_rest_frame::client::retry_policy_t> client_retry_policy;
+                std::optional<size_t> concurrent_request_sz;
             };
 
             struct Deliverable
@@ -53,7 +58,7 @@ namespace deviation_projection_ingestion_aid_server
             };
 
             Resource resource;
-            std::shared_ptr<std::thread> task_thr;
+            std::shared_ptr<void> task_thr;
             bool was_run_broke;
             bool was_wait_broke;
             bool was_explicitly_destroyed;
@@ -72,23 +77,53 @@ namespace deviation_projection_ingestion_aid_server
                          interruption_pill(std::make_shared<std::atomic<bool>>(false)),
                          deliverable(std::make_shared<Deliverable>(Deliverable{.exception = nullptr})){}
 
-            void set_data_source(const data_loader::Configuration& data_loader_config)
+            void set_data_source(const data_loader::source_loader::generic_loader::GenericLoaderConfig& data_loader_config)
             {
+                if (this->was_explicitly_destroyed)
+                {
+                    throw destroyed_client_box_error{};
+                }
+
                 this->resource.data_loader_config = data_loader_config;
             }
 
             void set_server_sink(const std::vector<ServerSink>& server_sink_vec)
             {
+                if (this->was_explicitly_destroyed)
+                {
+                    throw destroyed_client_box_error{};
+                }
+
                 this->resource.server_sink_vec = server_sink_vec;
             }
 
-            void set_firehose_config(const data_firehose::Configuration& data_firehose_config)
+            void set_firer_config(const fire_bandwidth_control::generic_firer::GenericFirerConfig& token_firer_config)
             {
-                this->resource.data_firehose_config = data_firehose_config;
+                if (this->was_explicitly_destroyed)
+                {
+                    throw destroyed_client_box_error{};
+                }
+
+                this->resource.token_firer_config = token_firer_config;
+            }
+
+            void set_concurrent_request_size(size_t sz)
+            {
+                if (this->was_explicitly_destroyed)
+                {
+                    throw destroyed_client_box_error{};
+                }
+
+                this->resource.concurrent_request_sz = sz;
             }
 
             void set_client_retry_policy(const dg_sock::network_rest_frame::client::retry_policy_t& client_retry_policy)
             {
+                if (this->was_explicitly_destroyed)
+                {
+                    throw destroyed_client_box_error{};
+                }
+
                 this->resource.client_retry_policy = client_retry_policy;
             }
 
@@ -104,12 +139,24 @@ namespace deviation_projection_ingestion_aid_server
                     throw std::runtime_error("second run");
                 }
 
+                if (this->interruption_pill->load(std::memory_order_relaxed))
+                {
+                    throw std::runtime_error("interrupted run");
+                }
+
                 std::unique_ptr<InternalResolutor> resolutor = std::make_unique<InternalResolutor>(this->resource,
                                                                                                    this->is_completed_var,
                                                                                                    this->interruption_pill,
                                                                                                    this->deliverable);
 
-                this->task_thr      = main_service::run(std::move(resolutor));
+                auto tmp            = concurrency_base::daemon_saferegister(concurrency_base::COMMON_ONFLY_POOL, std::move(resolutor));
+
+                if (!tmp.has_value())
+                {
+                    common_exception::throw_exception(tmp.error());
+                }
+
+                this->task_thr      = std::move(tmp.value());
                 this->was_run_broke = true;
             }
 
@@ -125,6 +172,11 @@ namespace deviation_projection_ingestion_aid_server
 
             void interrupt() noexcept
             {
+                if (this->was_explicitly_destroyed)
+                {
+                    return;
+                }
+
                 this->interruption_pill->exchange(true, std::memory_order_relaxed);
             }
 
@@ -145,7 +197,14 @@ namespace deviation_projection_ingestion_aid_server
                     throw second_wait_error{};
                 }
 
-                this->task_thr->join();
+                this->task_thr = nullptr;
+                this->is_compelted_var->wait(false, std::memory_order_acquire);
+
+                if constexpr(STRONG_MEMORY_ORDERING_FLAG)
+                {
+                    std::atomic_thread_fence(std::memory_order_seq_cst);
+                }
+
                 std::rethrow_exception(this->deliverable->exception);
             }
 
@@ -169,36 +228,37 @@ namespace deviation_projection_ingestion_aid_server
 
         private:
 
-            class FirehoseProducer: public virtual data_firehose::FirehoseProducerInterface
+            class FirehoseProducer: public virtual fire_bandwidth_control::interface::FireableInterface
             {
                 private:
 
                     data_loader::source_loader::UserSpaceSourceLoaderInterface * source_loader;
                     std::vector<std::unique_ptr<deviation_projection_client::NoOwned_APIClient>> * api_client_vec;
-                    common_exception::CancellationTokenInterface * cancellation_token;
 
                     std::deque<std::unique_ptr<dg_sock::network_rest_frame::client::Promise<stdx::fancy_void>>> promise_vec;
                     bool is_loader_completed;
                     size_t client_offset;
+                    size_t concurrent_request_sz;
 
-                    static inline constexpr size_t PROMISE_CAPACITY = size_t{1} << 10;
+                    static inline constexpr size_t MIN_CONCURRENT_REQUEST_SZ    = 1u;
+                    static inline constexpr size_t MAX_CONCURRENT_REQUEST_SZ    = size_t{1} << 10;
 
                 public:
 
                     FirehoseProducer(data_loader::source_loader::UserSpaceSourceLoaderInterface * source_loader,
                                      std::vector<std::unique_ptr<deviation_projection_client::NoOwned_APIClient>> * api_client_vec,
-                                     common_exception::CancellationTokenInterface * cancellation_token): source_loader(stdx::safe_ptr_access(source_loader)),
-                                                                                                         api_client_vec(stdx::safe_ptr_access(api_client_vec)),
-                                                                                                         cancellation_token(stdx::safe_ptr_access(cancellation_token)),
-                                                                                                         promise_vec(),
-                                                                                                         is_loader_completed(false),
-                                                                                                         client_offset(0u){}
+                                     size_t concurrent_request_sz): source_loader(stdx::safe_ptr_access(source_loader)),
+                                                                    api_client_vec(stdx::safe_ptr_access(api_client_vec)),
+                                                                    promise_vec(),
+                                                                    is_loader_completed(false),
+                                                                    client_offset(0u),
+                                                                    concurrent_request_sz(std::clamp(concurrent_request_sz, MIN_CONCURRENT_REQUEST_SZ, MAX_CONCURRENT_REQUEST_SZ)){}
 
-                    auto produce_one() -> bool
+                    auto fire_one(common_exception::CancellationTokenInterface& cancellation_token) -> bool
                     {
-                        if (this->cancellation_token->is_canceled())
+                        if (cancellation_token.is_canceled())
                         {
-                            common_exception::throw_exception(common_exception::OPERATION_CANCELED_EXCEPTION);
+                            common_exception::throw_exception(common_exception::OPERATION_CANCELED_ERROR);
                         }
 
                         if (this->is_loader_completed)
@@ -207,13 +267,13 @@ namespace deviation_projection_ingestion_aid_server
                             return false;
                         }
 
-                        if (this->promise_vec.size() == PROMISE_CAPACITY)
+                        if (this->promise_vec.size() == this->concurrent_request_sz)
                         {
                             this->promise_vec.front()->wait();
                             this->promise_vec.pop_front();
                         }
 
-                        std::optional<std::string> nxt_token = this->source_loader->get(*this->cancellation_token);
+                        std::optional<std::string> nxt_token = this->source_loader->get(cancellation_token);
 
                         if (!nxt_token.has_next())
                         {
@@ -239,7 +299,7 @@ namespace deviation_projection_ingestion_aid_server
                         this->promise_vec.clear();
                     }
             };
-            
+
             class InternalCancellationToken: public virtual common_exception::CancellationTokenInterface
             {
                 private:
@@ -264,13 +324,14 @@ namespace deviation_projection_ingestion_aid_server
                             return true;
                         }
 
-                        if (this->thr_cancellation_token->is_canceled())
-                        {
-                            return true;
-                        }
-
                         if (affined_randomizer::randomize_int<uint8_t>() % DICE_CHANCE == 0u)
                         {
+                            if (this->thr_cancellation_token->is_canceled())
+                            {
+                                this->is_canceled_once = true;
+                                return true;
+                            }
+
                             if (this->interruption_pill->load(std::memory_order_relaxed))
                             {
                                 this->is_canceled_once = true;
@@ -282,7 +343,7 @@ namespace deviation_projection_ingestion_aid_server
                     }
             };
 
-            class InternalResolutor: public virtual main_service::ThreadTaskInterface
+            class InternalResolutor: public virtual concurrency_base::InterruptableWorkerInterface
             {
                 private:
 
@@ -310,12 +371,17 @@ namespace deviation_projection_ingestion_aid_server
 
                         if (!resource_arg.data_firehose_config.has_value())
                         {
-                            throw std::invalid_argument("bad data firehose config, not set");
+                            throw std::invalid_argument("bad data firehose config, not set"); //default
                         }
 
                         if (!resource_arg.client_retry_policy.has_value())
                         {
-                            throw std::invalid_argument("bad client retry policy, not set");
+                            throw std::invalid_argument("bad client retry policy, not set"); //default
+                        }
+
+                        if (!resource_arg.concurrent_request_sz.has_value())
+                        {
+                            throw std::invalid_argument("bad concurrent request size, not set"); //default
                         }
 
                         if (is_completed_var == nullptr)
@@ -339,7 +405,7 @@ namespace deviation_projection_ingestion_aid_server
                         this->deliverable       = std::move(deliverable);
                     }
 
-                    void run(common_exception::CancellationTokenInterface& cancellation_token)
+                    auto run_one_epoch(common_exception::CancellationTokenInterface& cancellation_token) -> bool
                     {
                         try
                         {
@@ -358,6 +424,8 @@ namespace deviation_projection_ingestion_aid_server
                         {
                             std::atomic_thread_fence(std::memory_order_seq_cst);
                         }
+
+                        return false;
                     }
 
                 private:
@@ -366,29 +434,22 @@ namespace deviation_projection_ingestion_aid_server
                     {
                         std::vector<std::unique_ptr<deviation_projection_client::NoOwned_APIClient>> api_client_vec{};
 
-                        for (const Remote& remote: resource.server_sink_vec.value())
+                        for (const ServerSink& sink: resource.server_sink_vec.value())
                         {
-                            deviation_projection_client::Remote client_remote
-                            {
-
-                            };
-
-                            uint64_t client_id = remote.client_id;
-
-                            api_client_vec.push_back(std::make_unique<deviation_projection_client::NoOwned_APIClient>(client_remote, client_id));
+                            api_client_vec.push_back(std::make_unique<deviation_projection_client::NoOwned_APIClient>(sink.remote, sink.client_id));
                             api_client_vec.back()->set_retry_policy(this->resource.client_retry_policy.value());
                         }
 
                         InternalCancellationToken arg_cancellation_token(this->interruption_pill.get(), &cancellation_token);
+
                         std::unique_ptr<data_loader::source_loader::UserSpaceSourceLoaderInterface> loader  = std::make_unique<data_loader::source_loader::GenericLoader>(this->resource.data_loader_config.value());
-                        std::unique_ptr<data_firehose::FirehoseInterface> firehose_instance                 = data_firehose::Builder{}.from_config(this->resource.data_firehose_config.value())
-                                                                                                                                      .build();
+                        std::unique_ptr<fire_bandwidth_control::FireableFirerInterface> firer_instance      = std::make_unique<fire_bandwidth_control::GenericFirer>(this->resource.token_firer_config.value());
 
                         FirehoseProducer firehose_producer(loader.get(),
                                                            &api_client_vec,
-                                                           &arg_cancellation_token);
+                                                           this->resource.concurrent_request_sz.value());
 
-                        firehose_instance->run(firehose_producer);
+                        firer_instance->run(firehose_producer, arg_cancellation_token);
                     }
             };
     };
@@ -433,6 +494,30 @@ namespace deviation_projection_ingestion_aid_server
                 this->base->set_server_sink(server_sink_vec);
             }
 
+            void set_firer_config(const fire_bandwidth_control::generic_firer::GenericFirerConfig& token_firer_config)
+            {
+                fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*this->mtx);
+
+                if (this->was_explicitly_destroyed->load(std::memory_order_relaxed))
+                {
+                    throw destroyed_client_box_error{};
+                }
+
+                this->base->set_firer_config(token_firer_config);
+            }
+
+            void set_concurrent_request_size(size_t sz)
+            {
+                fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*this->mtx);
+
+                if (this->was_explicitly_destroyed->load(std::memory_order_relaxed))
+                {
+                    throw destroyed_client_box_error{};
+                }
+
+                this->base->set_concurrent_request_size(sz);
+            }
+
             void run()
             {
                 fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*this->mtx);
@@ -447,11 +532,20 @@ namespace deviation_projection_ingestion_aid_server
 
             auto is_completed() -> bool
             {
-                return this->base->is_completed();
+                fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*this->mtx);
+
+                return this->was_explicitly_destroyed->load(std::memory_order_relaxed) || this->base->is_completed();
             }
 
             void interrupt() noexcept
             {
+                fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*this->mtx);
+
+                if (this->was_explicitly_destroyed->load(std::memory_order_relaxed))
+                {
+                    return;
+                }
+
                 this->base->interrupt();
             }
 

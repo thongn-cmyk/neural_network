@@ -15,7 +15,7 @@ namespace data_loader::source_loader
 
             virtual ~UserSpaceSourceLoaderInterface() noexcept = default;
 
-            virtual auto get(common_exception::CancellationTokenInterface& cancellation_token) -> std::optional<std::string> = 0
+            virtual auto get(common_exception::CancellationTokenInterface& cancellation_token) -> std::optional<std::string> = 0;
     };
 }
 

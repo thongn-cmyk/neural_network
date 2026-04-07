@@ -51,12 +51,6 @@ namespace data_loader::exception_base
                         const char * id = "retryable_error"): runtime_error_base(err_msg, id){}
     };
 
-    struct operation_canceled_error: runtime_error_base
-    {
-        operation_canceled_error(const char * err_msg = "operation canceled",
-                                 const char * id = "operation_canceled_error"): runtime_error_base(err_msg, id){}
-    };
-
     auto get_exception_id(std::exception_ptr exception) -> std::string_view
     {
         try

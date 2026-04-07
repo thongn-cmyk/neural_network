@@ -6,9 +6,19 @@
 
 namespace data_loader::kafka_broker_source
 {
-    struct Configuration
+    struct KafkaBrokerConfig
     {
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector) const
+        {
+            (void) reflector;
+        }
 
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector)
+        {
+            (void) reflector;
+        }
     };
 }
 

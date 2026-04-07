@@ -39,7 +39,8 @@ namespace concurrency_base
         std::vector<WorkerInformation> worker_vec;
     };
 
-    using WorkerInterface = concurrency_base::interface::WorkerInterface;
+    using WorkerInterface               = concurrency_base::interface::WorkerInterface;
+    using InterruptableWorkerInterface  = concurrency_base::interface::InterruptableWorkerInterface;
 
     static auto _is_dedicated_kind(daemon_kind_t kind) noexcept -> bool
     {
@@ -167,7 +168,7 @@ namespace concurrency_base
         return std::make_shared<decltype(result)>(std::move(result));
     }
 
-    static auto _daemon_saferegister_onfly(daemon_kind_t base_kind, std::unique_ptr<WorkerInterface> worker) -> std::shared_ptr<void>
+    static auto _daemon_saferegister_onfly(daemon_kind_t base_kind, std::unique_ptr<InterruptableWorkerInterface> worker) -> std::shared_ptr<void>
     {
         auto result = concurrency_base::onfly::daemon_saferegister(base_kind, std::move(worker));
 
@@ -182,7 +183,22 @@ namespace concurrency_base
             {
                 return _daemon_saferegister_dedicated(_to_base_kind(kind), std::move(worker));
             }
-            else if (_is_onfly_kind(kind))
+            else
+            {
+                common_exception::throw_exception(common_exception::INVALID_ARGUMENT);
+            }
+        }
+        catch (...)
+        {
+            return std::unexpected(common_exception::wrap_std_exception(std::current_exception()));
+        }
+    }
+
+    auto daemon_saferegister(daemon_kind_t kind, std::unique_ptr<InterruptableWorkerInterface> worker) noexcept -> std::expected<std::shared_ptr<void>, exception_t>
+    {
+        try
+        {
+            if (_is_onfly_kind(kind))
             {
                 return _daemon_saferegister_onfly(_to_base_kind(kind), std::move(worker));
             }

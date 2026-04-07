@@ -19,7 +19,7 @@ namespace data_loader::stream_reader
         token_overflow_error(): runtime_error_base("max token size reached", "token_overflow_error"){}
     };
 
-    struct Configuration
+    struct DelimitedStreamReaderConfig
     {
         char delim_char;
         char eor_char;
@@ -49,10 +49,10 @@ namespace data_loader::stream_reader
 
         public:
 
-            DelimitedStreamReader(Configuration config): stream(),
-                                                         delim_char(config.delim_char),
-                                                         eor_char(config.eor_char),
-                                                         max_token_sz(config.max_token_sz){}
+            DelimitedStreamReader(DelimitedStreamReaderConfig config): stream(),
+                                                                       delim_char(config.delim_char),
+                                                                       eor_char(config.eor_char),
+                                                                       max_token_sz(config.max_token_sz){}
 
             auto put(std::string_view stream_arg) -> std::vector<std::string>
             {

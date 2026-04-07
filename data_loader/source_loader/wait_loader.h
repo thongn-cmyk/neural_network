@@ -6,25 +6,37 @@
 #include <memory>
 #include <data_loader/source/generic_source.h>
 #include <data_loader/retryer_device/generic_device.h>
+#include <data_loader/exception_base.h>
+#include <deque>
+#include "source_transaction_broker.h"
+#include "userspace_source_loader_interface.h"
 
 namespace data_loader::source_loader::wait_loader
 {
-    struct Configuration
+    using namespace data_loader::exception_base;
+
+    struct corrupted_loader_error: runtime_error_base
     {
-        uint64_t tx_hint_sz;
-        data_loader::generic_source::Configuration source_config;
-        data_loader::retryer_device::Configuration retry_config;
+        corrupted_loader_error(): runtime_error_base("bad loader, loader is in corrupted state"){}
+    };
+
+    struct WaitLoaderConfig
+    {
+        uint64_t tx_sz;
+        data_loader::source_loader::broker::SourceTransactionBrokerConfig broker_config;
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector) const
         {
-            reflector(tx_hint_sz, source_config, retry_config);            
+            reflector(tx_sz,
+                      broker_config);
         }
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector)
         {
-            reflector(tx_hint_sz, source_config, retry_config);
+            reflector(tx_sz,
+                      broker_config);
         }
     };
 
@@ -33,26 +45,24 @@ namespace data_loader::source_loader::wait_loader
         private:
 
             std::unique_ptr<data_loader::source_loader::broker::TransactionBrokerInterface> broker;
-            std::unique_ptr<data_loader::retryer_device::RetryerMachineInterface> retryer_machine;
             std::deque<std::string> prefetched_token_vec;
-            size_t tx_hint_sz;
+            size_t tx_sz;
             bool was_completed;
             bool was_corrupted;
 
         public:
 
-            WaitLoader(Configuration config): broker(std::make_unique<data_loader::source_loader::broker::SourceTransactionBroker>(config.source_config)),
-                                              retryer_machine(std::make_unique<data_loader::retryer_device::GenericRetryDevice>(config.retry_config)),
-                                              prefetched_token_vec(),
-                                              tx_hint_sz(stdx::safe_non_zero_access(config.tx_hint_sz)),
-                                              was_completed(false),
-                                              was_corrupted(false){}
+            WaitLoader(const WaitLoaderConfig& config): broker(std::make_unique<data_loader::source_loader::broker::SourceTransactionBroker>(config.broker_config)),
+                                                        prefetched_token_vec(),
+                                                        tx_sz(stdx::safe_non_zero_access(config.tx_sz)),
+                                                        was_completed(false),
+                                                        was_corrupted(false){}
 
             auto get(common_exception::CancellationTokenInterface& cancellation_token) -> std::optional<std::string>
             {
                 if (this->was_corrupted)
                 {
-                    throw loader_corrupted_error{};
+                    throw corrupted_loader_error{};
                 }
 
                 if (this->was_completed)
@@ -68,7 +78,6 @@ namespace data_loader::source_loader::wait_loader
                 if (this->prefetched_token_vec.empty())
                 {
                     this->was_completed = true;
-
                     return std::nullopt;
                 }
 
@@ -82,35 +91,34 @@ namespace data_loader::source_loader::wait_loader
 
             void refill_prefetched_token_vec(common_exception::CancellationTokenInterface& cancellation_token)
             {
-                while (true)
+                try
                 {
-                    std::optional<std::vector<std::string>> rs = this->broker->get(this->tx_hint_sz,
-                                                                                   *this->retryer_machine,
-                                                                                   cancellation_token);
-
-                    if (!rs.has_value())
+                    while (true)
                     {
-                        return;
-                    }
+                        std::optional<std::vector<std::string>> rs = this->broker->get(this->tx_sz, 
+                                                                                       cancellation_token);
 
-                    if (rs->empty())
-                    {
-                        continue;
-                    }
+                        if (!rs.has_value())
+                        {
+                            return;
+                        }
 
-                    try
-                    {
+                        if (rs->empty())
+                        {
+                            continue;
+                        }
+
                         std::copy(std::make_move_iterator(rs->begin()),
                                   std::make_move_iterator(rs->end()),
                                   std::back_inserter(this->prefetched_token_vec));
-                    }
-                    catch (...)
-                    {
-                        this->was_corrupted = true;
-                        throw;
-                    }
 
-                    return;
+                        return;
+                    }
+                }
+                catch (...)
+                {
+                    this->was_corrupted = true;
+                    throw;
                 }
             }
     };

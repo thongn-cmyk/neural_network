@@ -472,12 +472,12 @@ void test_connection_master_break()
 
     MasterConfiguration config
     {
-        .connection_timeout_dur = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(10)),
-        .connection_broke_dur   = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(10)),
-        .abs_timeout_dur        = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::minutes(1)),
-        .ping_retry_count       = uint64_t{0},
-        .ping_retry_break_dur   = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(10)),
-        .slave_count            = uint64_t{1}
+        .connection_timeout_dur         = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(10)),
+        .connection_broke_dur           = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(10)),
+        .abs_timeout_dur                = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::minutes(1)),
+        .ping_retry_count               = uint64_t{0},
+        .ping_retry_break_dur_exp_s0    = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(10)),
+        .slave_count                    = uint64_t{1}
     };
 
     MasterConnection master_connection(config);
@@ -511,12 +511,12 @@ void test_connection_slave_break()
 
     MasterConfiguration config
     {
-        .connection_timeout_dur = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(10)),
-        .connection_broke_dur   = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(10)),
-        .abs_timeout_dur        = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::minutes(1)),
-        .ping_retry_count       = uint64_t{0},
-        .ping_retry_break_dur   = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(10)),
-        .slave_count            = uint64_t{1}
+        .connection_timeout_dur         = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(10)),
+        .connection_broke_dur           = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(10)),
+        .abs_timeout_dur                = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::minutes(1)),
+        .ping_retry_count               = uint64_t{0},
+        .ping_retry_break_dur_exp_s0    = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(10)),
+        .slave_count                    = uint64_t{1}
     };
 
     std::unique_ptr<MasterConnection> master_connection     = std::make_unique<MasterConnection>(config);
@@ -552,12 +552,12 @@ void test_stable_connection()
 
     MasterConfiguration config
     {
-        .connection_timeout_dur = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(10)),
-        .connection_broke_dur   = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(10)),
-        .abs_timeout_dur        = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::minutes(1)),
-        .ping_retry_count       = uint64_t{0},
-        .ping_retry_break_dur   = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(10)),
-        .slave_count            = uint64_t{1}
+        .connection_timeout_dur         = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(10)),
+        .connection_broke_dur           = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(10)),
+        .abs_timeout_dur                = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::minutes(1)),
+        .ping_retry_count               = uint64_t{0},
+        .ping_retry_break_dur_exp_s0    = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(10)),
+        .slave_count                    = uint64_t{1}
     };
 
     MasterConnection master_connection(config);
@@ -598,12 +598,12 @@ void test_stable_connection_without_some_slave()
 
     MasterConfiguration config
     {
-        .connection_timeout_dur = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(10)),
-        .connection_broke_dur   = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(10)),
-        .abs_timeout_dur        = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::minutes(1)),
-        .ping_retry_count       = uint64_t{0},
-        .ping_retry_break_dur   = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(10)),
-        .slave_count            = uint64_t{2}
+        .connection_timeout_dur         = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(10)),
+        .connection_broke_dur           = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(10)),
+        .abs_timeout_dur                = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::minutes(1)),
+        .ping_retry_count               = uint64_t{0},
+        .ping_retry_break_dur_exp_s0    = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(10)),
+        .slave_count                    = uint64_t{2}
     };
 
     MasterConnection master_connection(config);

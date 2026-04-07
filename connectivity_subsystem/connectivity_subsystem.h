@@ -133,7 +133,7 @@ namespace connectivity_subsystem
         std::chrono::nanoseconds connection_broke_dur;
         std::chrono::nanoseconds abs_timeout_dur;
         uint64_t ping_retry_count;
-        std::chrono::nanoseconds ping_retry_break_dur;
+        std::chrono::nanoseconds ping_retry_break_dur_exp_s0;
         uint64_t slave_count;
 
         template <class Reflector>
@@ -143,7 +143,7 @@ namespace connectivity_subsystem
                       connection_broke_dur,
                       abs_timeout_dur,
                       ping_retry_count,
-                      ping_retry_break_dur,
+                      ping_retry_break_dur_exp_s0,
                       slave_count);
         }
 
@@ -154,7 +154,7 @@ namespace connectivity_subsystem
                       connection_broke_dur,
                       abs_timeout_dur,
                       ping_retry_count,
-                      ping_retry_break_dur,
+                      ping_retry_break_dur_exp_s0,
                       slave_count);
         }
     };
@@ -164,7 +164,7 @@ namespace connectivity_subsystem
         dg_sock::network_rest_frame::model::Url url;
         uint64_t topic_id;
         uint64_t ping_retry_count;
-        std::chrono::nanoseconds ping_retry_break_dur;
+        std::chrono::nanoseconds ping_retry_break_dur_exp_s0;
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector) const
@@ -172,7 +172,7 @@ namespace connectivity_subsystem
             reflector(url,
                       topic_id,
                       ping_retry_count,
-                      ping_retry_break_dur);
+                      ping_retry_break_dur_exp_s0);
         }
 
         template <class Reflector>
@@ -181,7 +181,7 @@ namespace connectivity_subsystem
             reflector(url,
                       topic_id,
                       ping_retry_count,
-                      ping_retry_break_dur);
+                      ping_retry_break_dur_exp_s0);
         }
     };
 
@@ -599,19 +599,19 @@ namespace connectivity_subsystem
 
         public:
 
-            static inline const std::chrono::nanoseconds MIN_CONNECTION_TIMEOUT_DUR = std::chrono::nanoseconds(0);
-            static inline const std::chrono::nanoseconds MAX_CONNECTION_TIMEOUT_DUR = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::hours(1));
-            static inline const std::chrono::nanoseconds MIN_CONNECTION_BROKE_DUR   = std::chrono::nanoseconds(0);
-            static inline const std::chrono::nanoseconds MAX_CONNECTION_BROKE_DUR   = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::hours(1));
-            static inline const std::chrono::nanoseconds MIN_ABS_TIMEOUT_DUR        = std::chrono::nanoseconds(0);
-            static inline const std::chrono::nanoseconds MAX_ABS_TIMEOUT_DUR        = std::chrono::nanoseconds::max();
-            static inline const std::chrono::nanoseconds CRON_JOB_DURATION          = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::milliseconds(100));
-            static inline const uint64_t MIN_PING_RETRY_COUNT                       = 0u;
-            static inline const uint64_t MAX_PING_RETRY_COUNT                       = std::numeric_limits<uint64_t>::max();
-            static inline const std::chrono::nanoseconds MIN_PING_RETRY_BREAK_DUR   = std::chrono::nanoseconds(0);
-            static inline const std::chrono::nanoseconds MAX_PING_RETRY_BREAK_DUR   = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::hours(1));
-            static inline const uint64_t MIN_SLAVE_COUNT                            = 1u;
-            static inline const uint64_t MAX_SLAVE_COUNT                            = std::numeric_limits<uint64_t>::max(); 
+            static inline const std::chrono::nanoseconds MIN_CONNECTION_TIMEOUT_DUR         = std::chrono::nanoseconds(0);
+            static inline const std::chrono::nanoseconds MAX_CONNECTION_TIMEOUT_DUR         = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::hours(1));
+            static inline const std::chrono::nanoseconds MIN_CONNECTION_BROKE_DUR           = std::chrono::nanoseconds(0);
+            static inline const std::chrono::nanoseconds MAX_CONNECTION_BROKE_DUR           = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::hours(1));
+            static inline const std::chrono::nanoseconds MIN_ABS_TIMEOUT_DUR                = std::chrono::nanoseconds(0);
+            static inline const std::chrono::nanoseconds MAX_ABS_TIMEOUT_DUR                = std::chrono::nanoseconds::max();
+            static inline const std::chrono::nanoseconds CRON_JOB_DURATION                  = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::milliseconds(100));
+            static inline const uint64_t MIN_PING_RETRY_COUNT                               = 0u;
+            static inline const uint64_t MAX_PING_RETRY_COUNT                               = std::numeric_limits<uint64_t>::max();
+            static inline const std::chrono::nanoseconds MIN_PING_RETRY_BREAK_DUR_EXP_S0    = std::chrono::nanoseconds(0);
+            static inline const std::chrono::nanoseconds MAX_PING_RETRY_BREAK_DUR_EXP_S0    = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::hours(1));
+            static inline const uint64_t MIN_SLAVE_COUNT                                    = 1u;
+            static inline const uint64_t MAX_SLAVE_COUNT                                    = std::numeric_limits<uint64_t>::max(); 
 
             MasterConnection(const MasterConfiguration& config,
                              std::shared_ptr<ConnectionControllerInterface> controller = ConnectionControllerSingleton::get())
@@ -711,7 +711,7 @@ namespace connectivity_subsystem
                     throw std::invalid_argument("bad ping retry count, value out of range");
                 }
 
-                if (std::clamp(config.ping_retry_break_dur, MIN_PING_RETRY_BREAK_DUR, MAX_PING_RETRY_BREAK_DUR) != config.ping_retry_break_dur)
+                if (std::clamp(config.ping_retry_break_dur_exp_s0, MIN_PING_RETRY_BREAK_DUR_EXP_S0, MAX_PING_RETRY_BREAK_DUR_EXP_S0) != config.ping_retry_break_dur_exp_s0)
                 {
                     throw std::invalid_argument("bad ping retry break duration, duration out of range");
                 }
@@ -738,10 +738,10 @@ namespace connectivity_subsystem
                 {
                     .master_payload = MasterPayload
                     {
-                        .url                    = this->get_master_payload_url(),
-                        .topic_id               = this->connection_id,
-                        .ping_retry_count       = this->master_config.ping_retry_count,
-                        .ping_retry_break_dur   = this->master_config.ping_retry_break_dur
+                        .url                            = this->get_master_payload_url(),
+                        .topic_id                       = this->connection_id,
+                        .ping_retry_count               = this->master_config.ping_retry_count,
+                        .ping_retry_break_dur_exp_s0    = this->master_config.ping_retry_break_dur_exp_s0
                     },
                     .connection_timeout_dur = this->master_config.connection_timeout_dur,
                     .abs_timeout_dur        = this->master_config.abs_timeout_dur,
@@ -898,15 +898,15 @@ namespace connectivity_subsystem
 
         public:
 
-            static inline const uint64_t MIN_PING_RETRY_COUNT                       = 0u;
-            static inline const uint64_t MAX_PING_RETRY_COUNT                       = std::numeric_limits<uint64_t>::max();
-            static inline const std::chrono::nanoseconds MIN_PING_RETRY_BREAK_DUR   = std::chrono::nanoseconds(0);
-            static inline const std::chrono::nanoseconds MAX_PING_RETRY_BREAK_DUR   = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::hours(1));
-            static inline const std::chrono::nanoseconds MIN_CONNECTION_TIMEOUT_DUR = std::chrono::nanoseconds(0);
-            static inline const std::chrono::nanoseconds MAX_CONNECTION_TIMEOUT_DUR = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::hours(1));
-            static inline const std::chrono::nanoseconds MIN_ABS_TIMEOUT_DUR        = std::chrono::nanoseconds(0);
-            static inline const std::chrono::nanoseconds MAX_ABS_TIMEOUT_DUR        = std::chrono::nanoseconds::max();
-            static inline const std::chrono::nanoseconds CRON_JOB_DURATION          = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::milliseconds(100));
+            static inline const uint64_t MIN_PING_RETRY_COUNT                               = 0u;
+            static inline const uint64_t MAX_PING_RETRY_COUNT                               = std::numeric_limits<uint64_t>::max();
+            static inline const std::chrono::nanoseconds MIN_PING_RETRY_BREAK_DUR_EXP_S0    = std::chrono::nanoseconds(0);
+            static inline const std::chrono::nanoseconds MAX_PING_RETRY_BREAK_DUR_EXP_S0    = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::hours(1));
+            static inline const std::chrono::nanoseconds MIN_CONNECTION_TIMEOUT_DUR         = std::chrono::nanoseconds(0);
+            static inline const std::chrono::nanoseconds MAX_CONNECTION_TIMEOUT_DUR         = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::hours(1));
+            static inline const std::chrono::nanoseconds MIN_ABS_TIMEOUT_DUR                = std::chrono::nanoseconds(0);
+            static inline const std::chrono::nanoseconds MAX_ABS_TIMEOUT_DUR                = std::chrono::nanoseconds::max();
+            static inline const std::chrono::nanoseconds CRON_JOB_DURATION                  = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::milliseconds(100));
 
             SlaveConnection(const SlaveConfiguration& config)
             {
@@ -954,7 +954,7 @@ namespace connectivity_subsystem
                     throw std::invalid_argument("bad ping retry count, value out of range");
                 }
 
-                if (std::clamp(config.master_payload.ping_retry_break_dur, MIN_PING_RETRY_BREAK_DUR, MAX_PING_RETRY_BREAK_DUR) != config.master_payload.ping_retry_break_dur)
+                if (std::clamp(config.master_payload.ping_retry_break_dur_exp_s0, MIN_PING_RETRY_BREAK_DUR_EXP_S0, MAX_PING_RETRY_BREAK_DUR_EXP_S0) != config.master_payload.ping_retry_break_dur_exp_s0)
                 {
                     throw std::invalid_argument("bad ping retry break duration, duration out of range");
                 }

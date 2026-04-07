@@ -12,6 +12,7 @@
 #include "concurrency_base_definition.h"
 #include "worker_interface.h"
 #include "rescheduler_interface.h"
+#include "interruptable_worker_interface.h"
 #include <main_service/main_service.h>
 #include <main_service/thread_service.h>
 #include <optional>
@@ -31,7 +32,7 @@ namespace concurrency_base::onfly_worker_controller
     {
         virtual ~DaemonControllerInterface() noexcept = default;
 
-        virtual auto _register(daemon_kind_t daemon_kind, std::unique_ptr<WorkerInterface>&& worker) -> size_t = 0;
+        virtual auto _register(daemon_kind_t daemon_kind, std::unique_ptr<InterruptableWorkerInterface>&& worker) -> size_t = 0;
         virtual void deregister(size_t registration_id) noexcept = 0; 
 
         virtual auto daemon_info(std::thread::id id) -> std::optional<DaemonInformation> = 0;
@@ -81,7 +82,7 @@ namespace concurrency_base::onfly_worker_controller
                 }
             }
 
-            auto _register(daemon_kind_t daemon_kind, std::unique_ptr<WorkerInterface>&& worker) -> resource_id_t
+            auto _register(daemon_kind_t daemon_kind, std::unique_ptr<InterruptableWorkerInterface>&& worker) -> resource_id_t
             {
                 uint32_t tmp_id;
 
@@ -248,13 +249,13 @@ namespace concurrency_base::onfly_worker_controller
             {
                 private:
 
-                    std::unique_ptr<WorkerInterface> worker;
+                    std::unique_ptr<InterruptableWorkerInterface> worker;
 
                     static inline constexpr size_t CHK_INTERVAL_SZ = size_t{1} << 3;
 
                 public:
  
-                    ThreadRunnableWrapper(std::unique_ptr<WorkerInterface>&& worker)
+                    ThreadRunnableWrapper(std::unique_ptr<InterruptableWorkerInterface>&& worker)
                     {
                         if (worker == nullptr)
                         {
@@ -273,24 +274,35 @@ namespace concurrency_base::onfly_worker_controller
                                 break;
                             }
 
-                            for (size_t i = 0u; i < CHK_INTERVAL_SZ; ++i)
+                            try
                             {
-                                if (!this->worker->run_one_epoch())
+                                for (size_t i = 0u; i < CHK_INTERVAL_SZ; ++i)
                                 {
-                                    std::this_thread::sleep_for(YIELD_PERIOD);
-                                    break;
+                                    if (!this->worker->run_one_epoch(cancellation_token))
+                                    {
+                                        std::this_thread::sleep_for(YIELD_PERIOD);
+                                        break;
+                                    }
                                 }
+                            }
+                            catch (...)
+                            {
+                                logging_subsystem::log(logging_subsystem::LogFactory{}.topic("concurrency_base::onfly_worker_controller")
+                                                                                      .topic("thread_runner")
+                                                                                      .message(std::current_exception()));
+
+                                break;
                             }
                         }
                     }
 
-                    auto get() -> std::unique_ptr<WorkerInterface>&
+                    auto get() -> std::unique_ptr<InterruptableWorkerInterface>&
                     {
                         return this->worker;
                     }
             };
 
-            auto get_thread_task(std::unique_ptr<WorkerInterface>&& worker) -> std::shared_ptr<std::thread>
+            auto get_thread_task(std::unique_ptr<InterruptableWorkerInterface>&& worker) -> std::shared_ptr<std::thread>
             {
                 std::shared_ptr<main_service::thread_service::TaskInterface> task = std::make_shared<ThreadRunnableWrapper>(std::move(worker));
 

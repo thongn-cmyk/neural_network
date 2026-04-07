@@ -18,9 +18,9 @@ namespace data_loader::file_source
 {
     using namespace data_loader::source_exception;
 
-    struct Configuration
+    struct FileLoaderConfig
     {
-        data_loader::stream_reader::Configuration delim_config;
+        data_loader::stream_reader::DelimitedStreamReaderConfig delim_config;
         std::string local_file_path;
         std::optional<uint64_t> read_ahead_buffer_sz_hint;
         std::optional<uint64_t> unit_byte_sz_hint;
@@ -63,12 +63,12 @@ namespace data_loader::file_source
             static inline constexpr size_t MIN_BUFFER_SZ    = size_t{1} << 10;
             static inline constexpr size_t MAX_BUFFER_SZ    = size_t{1} << 20;
 
-            FileLoader(Configuration config): delim_streamer(std::make_unique<data_loader::stream_reader::DelimitedStreamReader>(config.delim_config)),
-                                              f_stream(config.local_file_path, std::ios::binary),
-                                              buf(nullptr),
-                                              tx_unit_sz(1u),
-                                              was_completed(false),
-                                              is_bad_state(false)
+            FileLoader(FileLoaderConfig config): delim_streamer(std::make_unique<data_loader::stream_reader::DelimitedStreamReader>(config.delim_config)),
+                                                 f_stream(config.local_file_path, std::ios::binary),
+                                                 buf(nullptr),
+                                                 tx_unit_sz(1u),
+                                                 was_completed(false),
+                                                 is_bad_state(false)
             {
                 if (!this->f_stream.is_open())
                 {

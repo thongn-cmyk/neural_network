@@ -5,7 +5,11 @@
 #include <stdlib.h>
 #include <memory>
 #include "retryer_device_interface.h"
+
+#include <data_loader/source_loader/generic_loader.h>
 #include <data_loader/exception_base.h>
+#include <fire_bandwidth_control/generic_firer.h>
+
 #include <optional>
 #include <chrono>
 #include <string>
@@ -17,6 +21,8 @@
 
 namespace data_loader::retryer_device::normal_device
 {
+    using namespace data_loader::exception_base;
+
     struct RetryConfig
     {
         std::chrono::nanoseconds base_wait_time;
@@ -61,6 +67,7 @@ namespace data_loader::retryer_device::normal_device
             static inline const std::chrono::nanoseconds MIN_BASE_WAIT_TIME = std::chrono::nanoseconds(0);
             static inline const std::chrono::nanoseconds MAX_BASE_WAIT_TIME = std::chrono::nanoseconds::max();
 
+            static inline const std::chrono::nanoseconds MIN_BREAK_TIME     = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::milliseconds(10));
             static inline const std::chrono::nanoseconds MAX_BREAK_TIME     = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(1));
 
         public:
@@ -69,17 +76,17 @@ namespace data_loader::retryer_device::normal_device
             {
                 if (std::clamp(retry_config.base_wait_time, MIN_BASE_WAIT_TIME, MAX_BASE_WAIT_TIME) != retry_config.base_wait_time)
                 {
-                    throw data_loader::exception_base::invalid_argument_base("bad base wait time, base wait time is not in range, [0, max]");
+                    throw invalid_argument_base("bad base wait time, base wait time is not in range, [0, max]");
                 }   
                 
                 if (std::clamp(static_cast<size_t>(retry_config.exponential_base), MIN_EXPONENTIAL_BASE, MAX_EXPONENTIAL_BASE) != retry_config.exponential_base)
                 {
-                    throw data_loader::exception_base::invalid_argument_base("bad exponential base, exponential base is not in range [2, 10]");
+                    throw invalid_argument_base("bad exponential base, exponential base is not in range [2, 10]");
                 }
 
                 if (std::clamp(static_cast<size_t>(retry_config.max_retry_count), MIN_RETRY_COUNT, MAX_RETRY_COUNT) != retry_config.max_retry_count)
                 {
-                    throw data_loader::exception_base::invalid_argument_base("bad max retry count, max retry count is not in range [0, 10]");
+                    throw invalid_argument_base("bad max retry count, max retry count is not in range [0, 10]");
                 }
 
                 this->base_wait_time            = retry_config.base_wait_time;
@@ -153,7 +160,7 @@ namespace data_loader::retryer_device::normal_device
 
             auto get_break_duration(std::chrono::nanoseconds sleep_dur) -> std::chrono::nanoseconds
             {
-                return std::min(sleep_dur, MAX_BREAK_TIME);
+                return std::clamp(sleep_dur, MIN_BREAK_TIME, MAX_BREAK_TIME);
             }
 
             void sleep_at_index(size_t i,
@@ -161,13 +168,14 @@ namespace data_loader::retryer_device::normal_device
             {
                 std::chrono::nanoseconds sleep_dur  = this->get_sleep_duration_at_index(i);
                 std::chrono::nanoseconds break_dur  = this->get_break_duration(sleep_dur);
+
                 std::chrono::time_point<std::chrono::steady_clock> since = std::chrono::steady_clock::now();
 
                 while (true)
                 {
                     if (cancellation_token.is_canceled())
                     {
-                        throw data_loader::exception_base::operation_canceled_error{};
+                        common_exception::throw_exception(common_exception::OPERATION_CANCELED_ERROR);
                     }
 
                     std::chrono::time_point<std::chrono::steady_clock> now  = std::chrono::steady_clock::now();

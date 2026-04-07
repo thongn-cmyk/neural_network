@@ -26,7 +26,7 @@ namespace data_loader::s3_source
 
     struct Configuration
     {
-        data_loader::stream_reader::Configuration delim_config;
+        data_loader::stream_reader::DelimitedStreamReaderConfig delim_config;
         data_loader::s3_source::SerializableS3ClientConfiguration s3_client_config;
         std::string bucket_name;
         std::string object_key;
@@ -161,6 +161,12 @@ namespace data_loader::s3_source
                         .offset = size_t{0u},
                         .sz     = this->get_outcome_stream_content_length(*this->object_outcome)
                     };
+                }
+
+                if (!this->buf_pointer.has_value())
+                {
+                    this->is_bad_state = true;
+                    throw other_error("S3 Bucket read went wrong, failed to initialize read pointer");
                 }
 
                 try
@@ -374,7 +380,7 @@ namespace data_loader::s3_source
                     }
                 }
 
-                this->object_outcome = std::move(tmp);
+                this->object_outcome        = std::move(tmp);
             }
 
             auto is_revivable_error(std::exception_ptr exception) -> bool

@@ -47,7 +47,7 @@ namespace request_extension::resolutor
                     .response = dg::network_compact_serializer::dgstd_serialize<dg_sock::string>(semantic_response),
                     .response_serialization_format = dg_sock::string(dg::network_compact_serializer::get_dgstd_serialization_identifier()),
                     .err_code = dg_sock::network_exception::SUCCESS
-                }
+                };
             }
     };
 
@@ -71,11 +71,9 @@ namespace request_extension::resolutor
             template <class Tmp = Base, std::enable_if_t<std::is_default_constructible_v<Tmp>, bool> = true>
             ClientResponseDgstdFormatter(): base(){}
 
-            template <class BaseLike>
-            ClientResponseDgstdFormatter(BaseLike&& base_like): base(std::forward<BaseLike>(base_like)){}
+            ClientResponseDgstdFormatter(Base base_arg): base(std::move(base_arg)){}
 
-            template <class BaseLike>
-            ClientResponseDgstdFormatter(stdx::Tag<T>, BaseLike&& base_like): base(std::forward<BaseLike>(base_like)){}
+            ClientResponseDgstdFormatter(stdx::Tag<T>, Base base_arg): base(std::move(base_arg)){}
 
             auto operator()(const ClientResponse& response) const -> decltype(std::declval<const Base&>()(std::declval<const T&>()))
             {
@@ -89,7 +87,7 @@ namespace request_extension::resolutor
                     dg_sock::network_exception::throw_exception(dg_sock::network_exception::REST_MISMATCHED_SERIALIZATION_METHOD);
                 }
 
-                const T& semantic_response = dg::network_compact_serializer::dgstd_deserialize<T>(response.content);
+                const T& semantic_response = dg::network_compact_serializer::dgstd_deserialize<T>(response.response);
 
                 return this->base(semantic_response);
             }
@@ -106,7 +104,7 @@ namespace request_extension::resolutor
                     dg_sock::network_exception::throw_exception(dg_sock::network_exception::REST_MISMATCHED_SERIALIZATION_METHOD);
                 }
 
-                const T& semantic_response = dg::network_compact_serializer::dgstd_deserialize<T>(response.content);
+                const T& semantic_response = dg::network_compact_serializer::dgstd_deserialize<T>(response.response);
 
                 return this->base(semantic_response);
             }
