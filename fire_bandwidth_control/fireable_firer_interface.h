@@ -12,7 +12,7 @@ namespace fire_bandwidth_control::interface
     {
         public:
 
-            virtual FireableFirerInterface() noexcept = default;
+            virtual ~FireableFirerInterface() noexcept = default;
             virtual void run(FireableInterface& fireable,
                              common_exception::CancellationTokenInterface& cancellation_token) = 0;
     };

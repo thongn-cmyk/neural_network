@@ -185,7 +185,7 @@ namespace concurrency_base
             }
             else
             {
-                common_exception::throw_exception(common_exception::INVALID_ARGUMENT);
+                common_exception::throw_valid_exception(common_exception::INVALID_ARGUMENT);
             }
         }
         catch (...)
@@ -204,7 +204,7 @@ namespace concurrency_base
             }
             else
             {
-                common_exception::throw_exception(common_exception::INVALID_ARGUMENT);
+                common_exception::throw_valid_exception(common_exception::INVALID_ARGUMENT);
             }
         }
         catch (...)

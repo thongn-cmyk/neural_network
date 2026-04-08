@@ -7,7 +7,7 @@
 #include "fireable_firer_interface.h"
 #include <chrono>
 #include <common_exception/common_exception.h>
-#include <common_exception/cancelleation_token.h>
+#include <common_exception/cancellation_token.h>
 #include <functional>
 #include <random>
 #include <algorithm>
@@ -41,13 +41,13 @@ namespace fire_bandwidth_control::temporal_firer
         uintptr_t stack_seed;
 
         template <class Reflector>
-        void dg_reflect(const Reflector& reflector) const
+        constexpr void dg_reflect(const Reflector& reflector) const noexcept
         {
             reflector(time_seed, stack_seed);
         }
 
         template <class Reflector>
-        void dg_reflect(const Reflector& reflector)
+        constexpr void dg_reflect(const Reflector& reflector) noexcept
         {
             reflector(time_seed, stack_seed);
         }

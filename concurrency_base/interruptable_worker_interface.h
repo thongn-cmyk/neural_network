@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 #include <stdlib.h>
-#include "worker_interface"
+#include <common_exception/cancellation_token.h>
 
 namespace concurrency_base::interface
 {
@@ -11,7 +11,7 @@ namespace concurrency_base::interface
     {
         virtual ~InterruptableWorkerInterface() noexcept = default;
 
-        virtual void run_one_epoch(common_exception::CancellationTokenInterface& cancellation_token) = 0;
+        virtual auto run_one_epoch(common_exception::CancellationTokenInterface& cancellation_token) -> bool = 0;
     };
 }
 

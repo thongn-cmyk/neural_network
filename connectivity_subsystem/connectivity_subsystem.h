@@ -1105,7 +1105,7 @@ namespace connectivity_subsystem
             };
     };
 
-    class ThreadSafeSlaveConnection: private SlaveConnection
+    class ThreadSafeSlaveConnection: public SlaveConnection
     {
         private:
 
@@ -1116,14 +1116,14 @@ namespace connectivity_subsystem
             ThreadSafeSlaveConnection(const SlaveConfiguration& config): SlaveConnection(config),
                                                                          mtx(fair_mutex::make_unique_fair_atomic_flag()){}
 
-            void close() noexcept
+            virtual void close() noexcept
             {
                 fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*this->mtx);
 
                 SlaveConnection::close();
             }
 
-            auto is_alive() -> bool
+            virtual auto is_alive() -> bool
             {
                 fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*this->mtx);
 

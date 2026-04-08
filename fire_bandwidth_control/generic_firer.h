@@ -6,9 +6,15 @@
 #include <stl_extension/stdx.h>
 #include "temporal_firer.h"
 #include <variant>
+#include "fireable_firer_interface.h"
+#include "fireable_interface.h"
+#include <common_exception/common_exception.h>
+#include <memory>
 
 namespace fire_bandwidth_control::generic_firer
 {
+    using namespace fire_bandwidth_control::interface;
+
     struct GenericFirerConfig
     {
         std::variant<stdx::reflectible_monostate, fire_bandwidth_control::temporal_firer::TemporalFirerConfig> config;

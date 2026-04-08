@@ -13,6 +13,7 @@
 #include <string>
 #include <unordered_map>
 #include <memory>
+#include <utility>
 
 using exception_t = uint16_t; 
 
@@ -130,6 +131,7 @@ namespace common_exception
     static inline constexpr exception_t REST_MISMATCHED_SERIALIZATION_METHOD    = 67u;
     static inline constexpr exception_t POISONED_CONTAINER                      = 68u;
     static inline constexpr exception_t OPERATION_CANCELED_ERROR                = 69u;
+    static inline constexpr exception_t OPERATION_GRACEFUL_TERMINATION_ERROR    = 70u;
 
     struct segfault: std::runtime_error,
                      codex_base
@@ -611,11 +613,18 @@ namespace common_exception
                               codex_base(POISONED_CONTAINER){}
     };
 
-    struct operation_canceled_error: std::runtime_erorr,
+    struct operation_canceled_error: std::runtime_error,
                                      codex_base
     {
         operation_canceled_error(): std::runtime_error("operation canceled error"),
                                     codex_base(OPERATION_CANCELED_ERROR){}
+    };
+
+    struct operation_graceful_termination_error: std::runtime_error,
+                                                 codex_base
+    {
+        operation_graceful_termination_error(): std::runtime_error("operation graceful termination error"),
+                                                codex_base(OPERATION_GRACEFUL_TERMINATION_ERROR){}
     };
 
     template <class T>
@@ -732,6 +741,7 @@ namespace common_exception
         result.insert(std::make_pair(REST_MISMATCHED_SERIALIZATION_METHOD, std::make_unique<fancy_polymorphic_exception<rest_mismatched_serialization_method>>()));
         result.insert(std::make_pair(POISONED_CONTAINER, std::make_unique<fancy_polymorphic_exception<poisoned_container>>()));
         result.insert(std::make_pair(OPERATION_CANCELED_ERROR, std::make_unique<fancy_polymorphic_exception<operation_canceled_error>>()));
+        result.insert(std::make_pair(OPERATION_GRACEFUL_TERMINATION_ERROR, std::make_unique<fancy_polymorphic_exception<operation_graceful_termination_error>>()));
 
         return result;
     }();
@@ -781,7 +791,7 @@ namespace common_exception
     {
         if (is_success(err))
         {
-            return "success";
+            return "";
         }
 
         auto map_ptr = polymorphic_cpp_exception_table.find(err);
@@ -809,6 +819,12 @@ namespace common_exception
         }
 
         map_ptr->second->throw_me();
+    }
+
+    [[noreturn]] void throw_valid_exception(exception_t err)
+    {
+        throw_exception(err);
+        std::abort();
     }
 
     template <class Functor>

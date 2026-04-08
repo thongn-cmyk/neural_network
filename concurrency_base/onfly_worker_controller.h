@@ -285,6 +285,10 @@ namespace concurrency_base::onfly_worker_controller
                                     }
                                 }
                             }
+                            catch (common_exception::operation_graceful_termination_error& e)
+                            {
+                                break;
+                            }
                             catch (...)
                             {
                                 logging_subsystem::log(logging_subsystem::LogFactory{}.topic("concurrency_base::onfly_worker_controller")
