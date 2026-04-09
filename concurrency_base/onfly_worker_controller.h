@@ -103,7 +103,7 @@ namespace concurrency_base::onfly_worker_controller
 
                     if (map_ptr->second.id_table.empty())
                     {
-                        common_exception::throw_exception(common_exception::INVALID_ARGUMENT);
+                        common_exception::throw_exception(common_exception::RESOURCE_EXHAUSTION);
                     }
 
                     uint32_t tmp_id = map_ptr->second.id_table.back();

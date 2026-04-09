@@ -49,10 +49,10 @@ namespace data_loader::stream_reader
 
         public:
 
-            DelimitedStreamReader(DelimitedStreamReaderConfig config): stream(),
-                                                                       delim_char(config.delim_char),
-                                                                       eor_char(config.eor_char),
-                                                                       max_token_sz(config.max_token_sz){}
+            DelimitedStreamReader(const DelimitedStreamReaderConfig& config): stream(),
+                                                                              delim_char(config.delim_char),
+                                                                              eor_char(config.eor_char),
+                                                                              max_token_sz(config.max_token_sz){}
 
             auto put(std::string_view stream_arg) -> std::vector<std::string>
             {

@@ -14,18 +14,19 @@ namespace concurrency_base
 
     enum daemon_option: daemon_kind_t
     {
-        MAILBOX_UNIT_DAEMON     = 0x0000,
-        MAILBOX_STREAM_DAEMON   = 0x0001,
-        MAILBOX_CHANNEL_DAEMON  = 0x0002,
-        REST_SERVER_DAEMON      = 0x0003,
-        REST_CLIENT_DAEMON      = 0x0004,
-        COROUTINE_DAEMON        = 0x0005,
-        CRON_TICK_DAEMON        = 0x0006,
-        CRON_WORK_DAEMON        = 0x0007,
-        ASYNC_SEQPAR_DAEMON     = 0x0008,
-        ASYNC_CUDA_DAEMON       = 0x0009,
-        COMMON_ONFLY_POOL       = 0x0100,
-        DEDICATED_ONFLY_POOL    = 0x0101
+        MAILBOX_UNIT_DAEMON         = 0x0000,
+        MAILBOX_STREAM_DAEMON       = 0x0001,
+        MAILBOX_CHANNEL_DAEMON      = 0x0002,
+        REST_SERVER_DAEMON          = 0x0003,
+        REST_CLIENT_DAEMON          = 0x0004,
+        COROUTINE_DAEMON            = 0x0005,
+        CRON_TICK_DAEMON            = 0x0006,
+        CRON_WORK_DAEMON            = 0x0007,
+        ASYNC_SEQPAR_DAEMON         = 0x0008,
+        ASYNC_CUDA_DAEMON           = 0x0009,
+        RESOURCE_DISPOSER_DAEMON    = 0x000a,
+        COMMON_ONFLY_POOL           = 0x0100,
+        DEDICATED_ONFLY_POOL        = 0x0101
     };
 
     struct WorkerInformation

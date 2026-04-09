@@ -2,7 +2,7 @@
 #define __CONCURRENCY_DETACHABLE_TASK_DETACHABLE_LAUNCHER_H__
 
 #include "detachable_task_handle_interface.h"
-#include <concurrency_task/normal_launcher.h>
+#include <concurrency_task/task_launcher.h>
 #include <resource_disposer/resource_disposer.h>
 #include <memory>
 
@@ -77,7 +77,7 @@ namespace concurrency_detachable_task
             template <class T>
             auto launch(const std::shared_ptr<concurrency_task::TaskInterface<T>>& task) -> std::unique_ptr<DetachableTaskHandleInterface<T>>
             {
-                auto rs = concurrency_task::normal_launcher::TaskLauncher{}.launch(task);
+                auto rs = concurrency_task::TaskLauncher{}.launch(task);
 
                 try
                 {

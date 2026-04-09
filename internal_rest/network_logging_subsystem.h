@@ -115,15 +115,15 @@ namespace dg_sock::network_logging_subsystem
 
     void noexcept_log(const GenericLogMessage& msg) noexcept
     {
-        try
-        {
-            dg_sock::network_logging_subsystem::log(msg);
-        }
-        catch (const bad_msg_log_topic& e)
-        {
-            std::abort();
-        }
-        catch (const std::exception& e){}
+        // try
+        // {
+        //     dg_sock::network_logging_subsystem::log(msg);
+        // }
+        // catch (const bad_msg_log_topic& e)
+        // {
+        //     std::abort();
+        // }
+        // catch (const std::exception& e){}
     }
 
     class LogFactory

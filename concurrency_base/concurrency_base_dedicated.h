@@ -24,19 +24,20 @@ namespace concurrency_base::dedicated
 
     enum daemon_option: daemon_kind_t
     {
-        MAILBOX_UNIT_DAEMON     = 0,
-        MAILBOX_STREAM_DAEMON   = 1,
-        MAILBOX_CHANNEL_DAEMON  = 2,
-        REST_SERVER_DAEMON      = 3,
-        REST_CLIENT_DAEMON      = 4,
-        COROUTINE_DAEMON        = 5,
-        CRON_TICK_DAEMON        = 6,
-        CRON_WORK_DAEMON        = 7,
-        ASYNC_SEQPAR_DAEMON     = 8,
-        ASYNC_CUDA_DAEMON       = 9
+        MAILBOX_UNIT_DAEMON         = 0,
+        MAILBOX_STREAM_DAEMON       = 1,
+        MAILBOX_CHANNEL_DAEMON      = 2,
+        REST_SERVER_DAEMON          = 3,
+        REST_CLIENT_DAEMON          = 4,
+        COROUTINE_DAEMON            = 5,
+        CRON_TICK_DAEMON            = 6,
+        CRON_WORK_DAEMON            = 7,
+        ASYNC_SEQPAR_DAEMON         = 8,
+        ASYNC_CUDA_DAEMON           = 9,
+        RESOURCE_DISPOSER_DAEMON    = 10
     };
 
-    static inline constexpr size_t DAEMON_OPTION_ENUMERATION_RANGE = 10u;
+    static inline constexpr size_t DAEMON_OPTION_ENUMERATION_RANGE = 11u;
 
     using WorkerInterface   = concurrency_base::worker_controller::WorkerInterface; 
 

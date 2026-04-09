@@ -571,6 +571,6 @@ namespace smart_pointer::shared_ptr_implementation
 //                             std::forward<CharMemoryManagerLike>(mem_manager),
 //                             size_t sz);
 //     }
-// }
+}
 
 #endif

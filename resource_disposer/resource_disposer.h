@@ -7,6 +7,7 @@
 #include <atomic>
 #include <concurrency_base/concurrency_base.h>
 #include <stl_extension/stdx.h>
+#include <concurrent_queue/bounded_queue.h>
 
 namespace resource_disposer
 {
@@ -54,18 +55,69 @@ namespace resource_disposer
             }
     };
 
+    class DisposableContainer: public virtual DisposableContainerInterface
+    {
+        private:
+
+            concurrent_queue::bounded_queue::BoundedQueue<std::shared_ptr<DisposableInterface>> base;
+        
+        public:
+
+            DisposableContainer(size_t container_sz): base(container_sz){}
+
+            void push(const std::shared_ptr<DisposableInterface>& disposable)
+            {
+                if (disposable == nullptr)
+                {
+                    return;
+                }
+
+                auto tmp = disposable;
+                this->base.push(std::move(tmp));
+            }
+
+            auto pop() noexcept -> std::shared_ptr<DisposableInterface>
+            {
+                std::optional<std::shared_ptr<DisposableInterface>> result = this->base.pop();
+
+                if (!result.has_value())
+                {
+                    return nullptr;
+                }
+
+                return std::move(result.value());
+            }
+
+            void poison() noexcept
+            {
+                this->base.poison();
+            }
+    };
+
     class Disposer: public virtual DisposerInterface
     {
         private:
 
             std::shared_ptr<DisposableContainerInterface> disposable_container;
             std::shared_ptr<void> daemon;
-        
+
+            static inline constexpr size_t DISPOSABLE_CONTAINER_SZ = size_t{1} << 4;
+
         public:
 
             Disposer()
             {
+                std::shared_ptr<DisposableContainerInterface> container     = std::make_shared<DisposableContainer>(DISPOSABLE_CONTAINER_SZ);
+                std::unique_ptr<concurrency_base::WorkerInterface> worker   = std::make_unique<DisposerWorker>(container);
+                std::expected<std::shared_ptr<void>, exception_t> _daemon   = concurrency_base::daemon_saferegister(concurrency_base::RESOURCE_DISPOSER_DAEMON, std::move(worker));
 
+                if (!_daemon.has_value())
+                {
+                    common_exception::throw_exception(_daemon.error());
+                }
+
+                this->disposable_container  = std::move(container);
+                this->daemon                = std::move(_daemon.value());
             }
 
             ~Disposer() noexcept

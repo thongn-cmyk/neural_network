@@ -16,6 +16,7 @@ namespace main_service::thread_service
     struct TaskInterface
     {
         virtual ~TaskInterface() noexcept = default;
+
         virtual void run(common_exception::CancellationTokenInterface& cancellation_token) noexcept = 0;
     };
 

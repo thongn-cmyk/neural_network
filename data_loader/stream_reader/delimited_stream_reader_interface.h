@@ -14,6 +14,7 @@ namespace data_loader::stream_reader
         public:
 
             virtual ~DelimitedStreamReaderInterface() noexcept = default;
+
             virtual auto put(std::string_view stream) -> std::vector<std::string> = 0;
     };
 }

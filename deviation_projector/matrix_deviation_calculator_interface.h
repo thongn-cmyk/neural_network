@@ -17,6 +17,7 @@ namespace deviation_projector
         public:
 
             virtual ~MatrixDeviationCalculatorInterface() noexcept = default;
+
             virtual auto get_deviation(const std::vector<std::pair<std::shared_ptr<tensor_model::Matrix>, std::shared_ptr<tensor_model::Matrix>>>& arg) -> mdc_float_t = 0;
     };   
 }

@@ -54,6 +54,11 @@ namespace data_loader::source_loader::generic_loader
             {
                 return this->base->get(cancellation_token);
             }
+
+            auto is_ready() -> bool
+            {
+                return this->base->is_ready();
+            }
     };
 }
 

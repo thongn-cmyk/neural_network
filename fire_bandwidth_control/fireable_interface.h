@@ -11,6 +11,7 @@ namespace fire_bandwidth_control::interface
         public:
 
             virtual ~FireableInterface() noexcept = default;
+
             virtual auto fire_one(common_exception::CancellationTokenInterface& cancellation_token) -> bool = 0;
     };
 }

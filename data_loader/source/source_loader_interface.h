@@ -14,6 +14,7 @@ namespace data_loader
         public:
 
             virtual ~SourceLoaderInterface() noexcept = default;
+
             virtual auto get(size_t tx_hint_sz) -> std::optional<std::vector<std::string>> = 0;
     };
 }

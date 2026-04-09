@@ -65,6 +65,16 @@ namespace data_loader::source_loader::multisource_loader
                     return rs;
                 }
             }
+
+            auto is_ready() -> bool
+            {
+                if (this->offset == this->base_vec.size())
+                {
+                    return true;
+                }
+
+                return this->base_vec[this->offset]->is_ready();
+            }
     };
 }
 

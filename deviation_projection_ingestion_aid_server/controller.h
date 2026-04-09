@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <request_extension/type_based_resolutor_interface.h>
 #include <request_extension/type_based_dgstd_resolutor.h>
+#include <internal_rest/network_rest_frame.h>
 #include "client_box.h"
 #include "model.h"
 #include "local_exception.h"
@@ -68,7 +69,7 @@ namespace deviation_projection_ingestion_aid_server
                 }
             }
     };
-    
+
     class CloseClientResolver: public virtual TypeBasedResolutorInterface<CloseClientRequest, CloseClientResponse>
     {
         private:

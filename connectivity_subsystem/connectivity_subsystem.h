@@ -268,6 +268,7 @@ namespace connectivity_subsystem
         public:
 
             virtual ~ConnectionInterface() noexcept = default;
+
             virtual void close() noexcept = 0;
             virtual auto is_alive() -> bool = 0;
     };
@@ -277,6 +278,7 @@ namespace connectivity_subsystem
         public:
 
             virtual ~ConnectionControllerInterface() noexcept = default;
+
             virtual auto open_connection(const MasterConfiguration& config) -> uint64_t = 0;
             virtual auto get_connection(uint64_t connection_id) -> std::optional<ConnectionTopic> = 0;
             virtual void ping_connection(uint64_t connection_id, const std::string& who) = 0;
@@ -288,6 +290,7 @@ namespace connectivity_subsystem
         public:
 
             virtual ~ConnectionPingerInterface() noexcept = default;
+
             virtual auto ping(const MasterPayload& payload) -> std::shared_ptr<dg_sock::network_rest_frame::client::Promise<stdx::fancy_void>> = 0;
     };
 

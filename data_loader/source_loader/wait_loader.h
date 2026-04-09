@@ -87,6 +87,11 @@ namespace data_loader::source_loader::wait_loader
                 return rs;
             }
 
+            auto is_ready() -> bool
+            {
+                return true;
+            }
+
         private:
 
             void refill_prefetched_token_vec(common_exception::CancellationTokenInterface& cancellation_token)

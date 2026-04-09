@@ -11,6 +11,7 @@ namespace concurrency_task
         public:
 
             virtual ~TaskInterface() noexcept = default;
+
             virtual auto run(common_exception::CancellationTokenInterface& cancellation_token) -> T = 0;
     };
 }

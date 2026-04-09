@@ -16,6 +16,7 @@ namespace matrix_optimizer_2
         public:
 
             virtual ~GenericMatrixResourceDeviationCalculatorInterface() = default;
+
             virtual auto get_deviation(const generic_matrix_factory::GenericMatrixResource& resource) -> mdc_float_t
     };
 

@@ -1,35 +1,28 @@
-#ifndef __DEVIATION_PROJECTION_CLIENT_H__
-#define __DEVIATION_PROJECTION_CLIENT_H__
+#ifndef __DEVIATION_PROJECTION_INGESTION_AID_CLIENT_H__
+#define __DEVIATION_PROJECTION_INGESTION_AID_CLIENT_H__
 
 #include <stdint.h>
 #include <stdlib.h>
 #include <vector>
 #include <unordered_map>
-#include <general_definition/float_def.h>
-#include <internal_rest/network_rest_frame.h>
-#include <serializer/compact_serializer.h>
-#include <request_extension/type_based_dgstd_resolutor.h>
-#include <string_view>
-#include <string>
-#include <stl_extension/stdx.h>
-#include <exception>
-#include <stdexcept>
-#include <deviation_projector/generic_resource.h>
 #include <expected>
 #include <connectivity_subsystem/connectivity_subsystem.h>
 #include "local_exception.h"
 #include "model.h"
 #include "remote_url_factory.h"
-#include <resource_disposer/resource_disposer.h>
+#include <request_extension/type_based_dgstd_resolutor.h>
+#include <request_extension/type_based_resolutor_interface.h>
+#include <stl_extension/stdx.h>
+#include <memory>
 
-namespace deviation_projection_client
+namespace deviation_projection_ingestion_aid_client
 {
     class APIClient_Base
     {
         private:
 
             dg_sock::network_rest_frame::client::RequestClient client;
-
+        
         public:
 
             void set_unique_request(bool is_unique_request)
@@ -75,13 +68,13 @@ namespace deviation_projection_client
                                    .get_promise();
             }
 
-            auto close_client_box(const Remote& remote, uint64_t client_id) -> std::shared_ptr<Promise<stdx::fancy_void>>
+            auto close_client_box(const Remote& remote, uint64_t client_box_id) -> std::shared_ptr<Promise<stdx::fancy_void>>
             {
                 using namespace dg_sock::network_rest_frame::client;
 
                 CloseClientRequest raw_request
                 {
-                    .client_id = client_id
+                    .client_box_id = client_box_id
                 };
 
                 std::string request_payload = dg::network_compact_serializer::dgstd_serialize<std::string>(raw_request);
@@ -100,117 +93,90 @@ namespace deviation_projection_client
                 request_extension::resolutor::ClientResponseDgstdFormatter resolutor(stdx::Tag<CloseClientResponse>{}, base_resolutor);
 
                 return this->client.request(request)
-                                    .set_resolutor(resolutor)
-                                    .get_promise();
+                                   .set_resolutor(resolutor)
+                                   .get_promise();
             }
 
-            auto add_training_data(const Remote& remote, uint64_t client_id,
-                                   std::string_view training_token) -> std::shared_ptr<Promise<stdx::fancy_void>>
+            auto run(const Remote& remote, uint64_t client_box_id,
+                     const RunPayload& payload) -> std::shared_ptr<Promise<stdx::fancy_void>>
             {
                 using namespace dg_sock::network_rest_frame::client;
 
-                AddTrainingDataRequest raw_request
+                RunRequest raw_request
                 {
-                    .client_id  = client_id,
-                    .token      = std::string(training_token),
+                    .client_box_id          = client_box_id,
+                    .data_loader_config     = payload.data_loader_config,
+                    .server_sink_vec        = payload.server_sink_vec,
+                    .token_firer_config     = payload.token_firer_config,
+                    .concurrent_request_sz  = payload.concurrent_request_sz,
+                    .client_retry_policy    = payload.client_retry_policy
                 };
 
                 std::string request_payload = dg::network_compact_serializer::dgstd_serialize<std::string>(raw_request);
-                ClientRequest request       = RequestFactory{}.url(RemoteUrlFactory::get_add_training_data_url(remote))
+                ClientRequest request       = RequestFactory{}.url(RemoteUrlFactory::get_run_url(remote))
                                                               .payload(request_payload)
                                                               .serialization_method(dg::network_compact_serializer::get_dgstd_serialization_identifier())
                                                               .get();
 
-                auto base_resolutor = [](const AddTrainingDataResponse& response)
+                auto base_resolutor = [](const RunResponse& response)
                 {
                     throw_error_code(response.result, response.err_verbal_description);
 
                     return stdx::fancy_void{};
                 };
 
-                request_extension::resolutor::ClientResponseDgstdFormatter resolutor(stdx::Tag<AddTrainingDataResponse>{}, base_resolutor);
+                request_extension::resolutor::ClientResponseDgstdFormatter resolutor(stdx::Tag<RunResponse>{}, base_resolutor);
 
                 return this->client.request(request)
                                    .set_resolutor(resolutor)
                                    .get_promise();
             }
 
-            auto clear_training_data(const Remote& remote, uint64_t client_id) -> std::shared_ptr<Promise<stdx::fancy_void>>
+            auto interrupt(const Remote& remote, uint64_t client_box_id) -> std::shared_ptr<Promise<stdx::fancy_void>>
             {
                 using namespace dg_sock::network_rest_frame::client;
 
-                ClearTrainingDataRequest raw_request
+                InterruptRequest raw_request
                 {
-                    .client_id = client_id
+                    .client_box_id = client_box_id
                 };
 
                 std::string request_payload = dg::network_compact_serializer::dgstd_serialize<std::string>(raw_request);
-                ClientRequest request       = RequestFactory{}.url(RemoteUrlFactory::get_clear_training_data_url(remote))
+                ClientRequest request       = RequestFactory{}.url(RemoteUrlFactory::get_interrupt_url(remote))
                                                               .payload(request_payload)
                                                               .serialization_method(dg::network_compact_serializer::get_dgstd_serialization_identifier())
                                                               .get();
 
-                auto base_resolutor = [](const ClearTrainingDataResponse& response)
+                auto base_resolutor = [](const InterruptResponse& response)
                 {
                     throw_error_code(response.result, response.err_verbal_description);
 
                     return stdx::fancy_void{};
                 };
 
-                request_extension::resolutor::ClientResponseDgstdFormatter resolutor(stdx::Tag<ClearTrainingDataResponse>{}, base_resolutor);
+                request_extension::resolutor::ClientResponseDgstdFormatter resolutor(stdx::Tag<InterruptResponse>{}, base_resolutor);
 
                 return this->client.request(request)
                                    .set_resolutor(resolutor)
                                    .get_promise();
             }
 
-            auto set_matrix_resource(const Remote& remote, uint64_t client_id,
-                                     const std::vector<deviation_projector::GenericMatrixDeviationCalculatorResource>& matrix_resource_vec) -> std::shared_ptr<Promise<stdx::fancy_void>>
+            auto is_completed(const Remote& remote, uint64_t client_box_id) -> std::shared_ptr<Promise<bool>>
             {
                 using namespace dg_sock::network_rest_frame::client;
 
-                SetMatrixResourceRequest raw_request
+                IsCompletedRequest raw_request
                 {
-                    .client_id = client_id,
-                    .matrix_resource_vec = matrix_resource_vec
+                    .client_box_id = client_box_id
                 };
 
                 std::string request_payload = dg::network_compact_serializer::dgstd_serialize<std::string>(raw_request);
-                ClientRequest request       = RequestFactory{}.url(RemoteUrlFactory::get_set_matrix_resource_url(remote))
+                ClientRequest request       = RequestFactory{}.url(RemoteUrlFactory::get_is_completed_url(remote))
                                                               .payload(request_payload)
                                                               .serialization_method(dg::network_compact_serializer::get_dgstd_serialization_identifier())
                                                               .get();
 
-                auto base_resolutor = [](const SetMatrixResourceResponse& response)
-                {
-                    throw_error_code(response.result, response.err_verbal_description);
-
-                    return stdx::fancy_void{};
-                };
-
-                request_extension::resolutor::ClientResponseDgstdFormatter resolutor(stdx::Tag<SetMatrixResourceResponse>{}, base_resolutor);
-
-                return this->client.request(request)
-                                   .set_resolutor(resolutor)
-                                   .get_promise();
-            }
-
-            auto get_deviation(const Remote& remote, uint64_t client_id) -> std::shared_ptr<Promise<std::vector<mdc_float_t>>>
-            {
-                using namespace dg_sock::network_rest_frame::client;
-
-                GetDeviationRequest raw_request
-                {
-                    .client_id = client_id
-                };
-
-                std::string request_payload = dg::network_compact_serializer::dgstd_serialize<std::string>(raw_request);
-                ClientRequest request       = RequestFactory{}.url(RemoteUrlFactory::get_get_deviation_url(remote))
-                                                              .payload(request_payload)
-                                                              .serialization_method(dg::network_compact_serializer::get_dgstd_serialization_identifier())
-                                                              .get();
-
-                auto base_resolutor = [](const GetDeviationResponse& response)
+                auto base_resolutor = [](const IsCompletedResponse& response)
                 {
                     if (!response.result.has_value())
                     {
@@ -220,41 +186,36 @@ namespace deviation_projection_client
                     return response.result.value();
                 };
 
-                request_extension::resolutor::ClientResponseDgstdFormatter resolutor(stdx::Tag<GetDeviationResponse>{}, base_resolutor);
+                request_extension::resolutor::ClientResponseDgstdFormatter resolutor(stdx::Tag<IsCompletedResponse>{}, base_resolutor);
 
                 return this->client.request(request)
                                    .set_resolutor(resolutor)
                                    .get_promise();
             }
 
-            auto set_and_get_deviation(const Remote& remote, uint64_t client_id,
-                                       const std::vector<deviation_projector::GenericMatrixDeviationCalculatorResource>& matrix_resource_vec) -> std::shared_ptr<Promise<std::vector<mdc_float_t>>>
+            auto get_result(const Remote& remote, uint64_t client_box_id) -> std::shared_ptr<Promise<stdx::fancy_void>>
             {
                 using namespace dg_sock::network_rest_frame::client;
 
-                SetAndGetDeviationRequest raw_request
+                GetResultRequest raw_request
                 {
-                    .client_id = client_id,
-                    .matrix_resource_vec = matrix_resource_vec
+                    .client_box_id = client_box_id
                 };
 
                 std::string request_payload = dg::network_compact_serializer::dgstd_serialize<std::string>(raw_request);
-                ClientRequest request       = RequestFactory{}.url(RemoteUrlFactory::get_set_and_get_deviation_url(remote))
+                ClientRequest request       = RequestFactory{}.url(RemoteUrlFactory::get_get_result_url(remote))
                                                               .payload(request_payload)
                                                               .serialization_method(dg::network_compact_serializer::get_dgstd_serialization_identifier())
                                                               .get();
 
-                auto base_resolutor = [](const SetAndGetDeviationResponse& response)
+                auto base_resolutor = [](const GetResultResponse& response)
                 {
-                    if (!response.result.has_value())
-                    {
-                        throw_error_code(response.result.error(), response.err_verbal_description);
-                    }
+                    throw_error_code(response.result, response.err_verbal_description);
 
-                    return response.result.value();
+                    return stdx::fancy_void{};
                 };
 
-                request_extension::resolutor::ClientResponseDgstdFormatter resolutor(stdx::Tag<SetAndGetDeviationResponse>{}, base_resolutor);
+                request_extension::resolutor::ClientResponseDgstdFormatter resolutor(stdx::Tag<GetResultResponse>{}, base_resolutor);
 
                 return this->client.request(request)
                                    .set_resolutor(resolutor)
@@ -271,7 +232,7 @@ namespace deviation_projection_client
             bool was_explicitly_closed;
             Remote remote;
             uint64_t client_id;
-
+        
             static auto default_master_configuration() -> connectivity_subsystem::MasterConfiguration
             {
                 return connectivity_subsystem::MasterConfiguration
@@ -326,64 +287,45 @@ namespace deviation_projection_client
                 this->base.set_retry_policy(retry_policy);
             }
 
-            auto add_training_data(std::string_view token) -> std::shared_ptr<Promise<stdx::fancy_void>>
+            auto run(const RunPayload& payload) -> std::shared_ptr<Promise<stdx::fancy_void>>
             {
                 if (!this->can_operate())
                 {
                     throw inoperable_client_error{};
                 }
 
-                return this->base.add_training_data(this->remote, this->client_id, token);
+                return this->base.run(this->remote, this->client_id,
+                                      payload);
             }
 
-            auto clear_training_data() -> std::shared_ptr<Promise<stdx::fancy_void>>
+            auto interrupt() -> std::shared_ptr<Promise<stdx::fancy_void>>
             {
                 if (!this->can_operate())
                 {
                     throw inoperable_client_error{};
                 }
 
-                return this->base.clear_training_data(this->remote, this->client_id);
+                return this->base.interrupt(this->remote, this->client_id);
             }
 
-            auto set_matrix_resource(const std::vector<deviation_projector::GenericMatrixDeviationCalculatorResource>& matrix_resource_vec) -> std::shared_ptr<Promise<stdx::fancy_void>>
+            auto is_completed() -> std::shared_ptr<Promise<bool>>
             {
                 if (!this->can_operate())
                 {
                     throw inoperable_client_error{};
                 }
 
-                return this->base.set_matrix_resource(this->remote, this->client_id, matrix_resource_vec);
+                return this->base.is_completed(this->remote, this->client_id);
             }
 
-            auto get_deviation() -> std::shared_ptr<Promise<std::vector<mdc_float_t>>>
+            auto get_result() -> std::shared_ptr<Promise<stdx::fancy_void>>
             {
                 if (!this->can_operate())
                 {
                     throw inoperable_client_error{};
                 }
 
-                return this->base.get_deviation(this->remote, this->client_id);
-            }
-
-            auto set_and_get_deviation(const std::vector<deviation_projector::GenericMatrixDeviationCalculatorResource>& matrix_resource_vec) -> std::shared_ptr<Promise<std::vector<mdc_float_t>>>
-            {
-                if (!this->can_operate())
-                {
-                    throw inoperable_client_error{};
-                }
-
-                return this->base.set_and_get_deviation(this->remote, this->client_id, matrix_resource_vec);
-            }
-
-            auto get_remote() const -> const Remote&
-            {
-                return this->remote;
-            }
-
-            auto get_client_id() const -> uint64_t
-            {
-                return this->client_id;
+                return this->base.get_result(this->remote, this->client_id);
             }
 
             void close(bool hard_close = true) noexcept
@@ -402,16 +344,16 @@ namespace deviation_projection_client
                 }
                 catch (...)
                 {
-                    logging_subsystem::noexcept_log(logging_subsystem::LogFactory{}.topic("deviation_projection_client")
+                    logging_subsystem::noexcept_log(logging_subsystem::LogFactory{}.topic("deviation_projection_ingestion_aid_client")
                                                                                    .topic("APIClient")
                                                                                    .message(std::current_exception()));
                 }
 
                 this->connection->close();
             }
-
+        
         private:
-            
+
             auto can_operate() -> bool
             {
                 if (!this->connection->is_alive())
@@ -435,7 +377,7 @@ namespace deviation_projection_client
             APIClient_Base base;
             Remote remote;
             uint64_t client_id;
-
+        
         public:
 
             NoOwned_APIClient(const Remote& remote,
@@ -453,29 +395,25 @@ namespace deviation_projection_client
                 this->base.set_retry_policy(retry_policy);
             }
 
-            auto add_training_data(std::string_view token) -> std::shared_ptr<Promise<stdx::fancy_void>>
+            auto run(const RunPayload& payload) -> std::shared_ptr<Promise<stdx::fancy_void>>
             {
-                return this->base.add_training_data(this->remote, this->client_id, token);
+                return this->base.run(this->remote, this->client_id,
+                                      payload);
             }
 
-            auto clear_training_data() -> std::shared_ptr<Promise<stdx::fancy_void>>
+            auto interrupt() -> std::shared_ptr<Promise<stdx::fancy_void>>
             {
-                return this->base.clear_training_data(this->remote, this->client_id);
+                return this->base.interrupt(this->remote, this->client_id);
             }
 
-            auto set_matrix_resource(const std::vector<deviation_projector::GenericMatrixDeviationCalculatorResource>& matrix_resource_vec) -> std::shared_ptr<Promise<stdx::fancy_void>>
+            auto is_completed() -> std::shared_ptr<Promise<bool>>
             {
-                return this->base.set_matrix_resource(this->remote, this->client_id, matrix_resource_vec);
+                return this->base.is_completed(this->remote, this->client_id);
             }
 
-            auto get_deviation() -> std::shared_ptr<Promise<std::vector<mdc_float_t>>>
+            auto get_result() -> std::shared_ptr<Promise<stdx::fancy_void>>
             {
-                return this->base.get_deviation(this->remote, this->client_id);
-            }
-
-            auto set_and_get_deviation(const std::vector<deviation_projector::GenericMatrixDeviationCalculatorResource>& matrix_resource_vec) -> std::shared_ptr<Promise<std::vector<mdc_float_t>>>
-            {
-                return this->base.set_and_get_deviation(this->remote, this->client_id, matrix_resource_vec);
+                return this->base.get_result(this->remote, this->client_id);
             }
 
             auto get_remote() const noexcept -> const Remote&

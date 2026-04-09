@@ -14,6 +14,7 @@ namespace deviation_projector
         public:
 
             virtual ~GenericMatrixDeviationCalculatorInterface() noexcept = default;
+
             virtual auto get_deviation(const std::vector<std::shared_ptr<std::string>>& arg) -> mdc_float_t = 0;
     };
 }

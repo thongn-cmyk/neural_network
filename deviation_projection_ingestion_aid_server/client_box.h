@@ -51,6 +51,11 @@ namespace deviation_projection_ingestion_aid_server
                          was_wait_broke(false),
                          was_explicitly_destroyed(false){}
 
+            ~ClientBox() noexcept
+            {
+                this->close();
+            }
+
             void set_data_source(const data_loader::source_loader::multisource_loader::MultisourceLoaderConfig& data_loader_config)
             {
                 if (this->was_explicitly_destroyed)

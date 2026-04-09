@@ -13,7 +13,7 @@
 #include <exception>
 #include <stdexcept>
 
-namespace concurrency_task::normal_launcher
+namespace concurrency_task
 {
     template <class T>
     class InterruptableTaskWrapper: public virtual concurrency_task::TaskInterface<T>
@@ -45,6 +45,7 @@ namespace concurrency_task::normal_launcher
             auto run(common_exception::CancellationTokenInterface& cancellation_token) -> T
             {
                 InternalCancellationToken full_cancellation_token(this->task_cancellation_token.get(), &cancellation_token);
+
                 return this->base_task->run(full_cancellation_token);
             }
 
@@ -118,7 +119,9 @@ namespace concurrency_task::normal_launcher
                     this->deliverable->ex_ptr   = std::current_exception();
                 }
 
-                this->deliverable->is_completed.exchange(true, std::memory_order_release);
+                this->deliverable->is_completed.exchange(true, std::memory_order_relaxed);
+                this->deliverable->is_completed.notify_one();
+
                 common_exception::throw_valid_exception(common_exception::OPERATION_GRACEFUL_TERMINATION_ERROR);
             }
     };
@@ -178,7 +181,7 @@ namespace concurrency_task::normal_launcher
                     throw std::invalid_argument("bad wait, second wait");
                 }
 
-                this->deliverable->is_completed.wait(false, std::memory_order_acquire);
+                this->deliverable->is_completed.wait(false, std::memory_order_relaxed);
                 this->daemon_task = nullptr;
                 std::atomic_signal_fence(std::memory_order_seq_cst);
 
