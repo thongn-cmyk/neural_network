@@ -143,8 +143,6 @@ namespace deviation_projection_ingestion_aid_server
         data_loader::source_loader::multisource_loader::MultisourceLoaderConfig data_loader_config;
         std::vector<ServerSink> server_sink_vec;
         fire_bandwidth_control::generic_firer::GenericFirerConfig token_firer_config;
-        uint64_t concurrent_request_sz;
-        dg_sock::network_rest_frame::client::retry_policy_t client_retry_policy;
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector) const
@@ -152,9 +150,7 @@ namespace deviation_projection_ingestion_aid_server
             reflector(client_box_id,
                       data_loader_config,
                       server_sink_vec,
-                      token_firer_config,
-                      concurrent_request_sz,
-                      client_retry_policy);
+                      token_firer_config);
         }
 
         template <class Reflector>
@@ -163,9 +159,7 @@ namespace deviation_projection_ingestion_aid_server
             reflector(client_box_id,
                       data_loader_config,
                       server_sink_vec,
-                      token_firer_config,
-                      concurrent_request_sz,
-                      client_retry_policy);
+                      token_firer_config);
         }
     };
 

@@ -269,8 +269,7 @@ namespace deviation_projection_client
             APIClient_Base base;
             std::unique_ptr<connectivity_subsystem::ConnectionInterface> connection;
             bool was_explicitly_closed;
-            Remote remote;
-            uint64_t client_id;
+            ClientRemote client_remote;
 
             static auto default_master_configuration() -> connectivity_subsystem::MasterConfiguration
             {
@@ -295,10 +294,15 @@ namespace deviation_projection_client
 
                 std::unique_ptr<connectivity_subsystem::MasterConnection> connection = std::make_unique<connectivity_subsystem::MasterConnection>(tmp_config);
 
-                this->client_id             = this->base.open_client_box(remote, connection->get_slave_configuration())->wait();
+                uint64_t client_id          = this->base.open_client_box(remote, connection->get_slave_configuration())->wait();
                 this->connection            = std::move(connection);
                 this->was_explicitly_closed = false;
-                this->remote                = remote;
+
+                this->client_remote         =
+                {
+                    .remote     = remote,
+                    .client_id  = client_id
+                };
             }
 
             ~APIClient() noexcept
@@ -333,7 +337,7 @@ namespace deviation_projection_client
                     throw inoperable_client_error{};
                 }
 
-                return this->base.add_training_data(this->remote, this->client_id, token);
+                return this->base.add_training_data(this->client_remote.remote, this->client_remote.client_id, token);
             }
 
             auto clear_training_data() -> std::shared_ptr<Promise<stdx::fancy_void>>
@@ -343,7 +347,7 @@ namespace deviation_projection_client
                     throw inoperable_client_error{};
                 }
 
-                return this->base.clear_training_data(this->remote, this->client_id);
+                return this->base.clear_training_data(this->client_remote.remote, this->client_remote.client_id);
             }
 
             auto set_matrix_resource(const std::vector<deviation_projector::GenericMatrixDeviationCalculatorResource>& matrix_resource_vec) -> std::shared_ptr<Promise<stdx::fancy_void>>
@@ -353,7 +357,7 @@ namespace deviation_projection_client
                     throw inoperable_client_error{};
                 }
 
-                return this->base.set_matrix_resource(this->remote, this->client_id, matrix_resource_vec);
+                return this->base.set_matrix_resource(this->client_remote.remote, this->client_remote.client_id, matrix_resource_vec);
             }
 
             auto get_deviation() -> std::shared_ptr<Promise<std::vector<mdc_float_t>>>
@@ -363,7 +367,7 @@ namespace deviation_projection_client
                     throw inoperable_client_error{};
                 }
 
-                return this->base.get_deviation(this->remote, this->client_id);
+                return this->base.get_deviation(this->client_remote.remote, this->client_remote.client_id);
             }
 
             auto set_and_get_deviation(const std::vector<deviation_projector::GenericMatrixDeviationCalculatorResource>& matrix_resource_vec) -> std::shared_ptr<Promise<std::vector<mdc_float_t>>>
@@ -373,17 +377,22 @@ namespace deviation_projection_client
                     throw inoperable_client_error{};
                 }
 
-                return this->base.set_and_get_deviation(this->remote, this->client_id, matrix_resource_vec);
+                return this->base.set_and_get_deviation(this->client_remote.remote, this->client_remote.client_id, matrix_resource_vec);
             }
 
-            auto get_remote() const -> const Remote&
+            auto get_remote() const noexcept -> const Remote&
             {
-                return this->remote;
+                return this->client_remote.remote;
             }
 
-            auto get_client_id() const -> uint64_t
+            auto get_client_id() const noexcept -> uint64_t
             {
-                return this->client_id;
+                return this->client_remote.client_id;
+            }
+
+            auto get_client_remote() const noexcept -> const ClientRemote&
+            {
+                return this->client_remote;
             }
 
             void close(bool hard_close = true) noexcept
@@ -397,7 +406,7 @@ namespace deviation_projection_client
                 {
                     if (hard_close)
                     {
-                        this->base.close_client_box(this->remote, this->client_id)->wait();
+                        this->base.close_client_box(this->client_remote.remote, this->client_remote.client_id)->wait();
                     }
                 }
                 catch (...)
@@ -433,15 +442,16 @@ namespace deviation_projection_client
         private:
 
             APIClient_Base base;
-            Remote remote;
-            uint64_t client_id;
+            ClientRemote client_remote;
 
         public:
 
             NoOwned_APIClient(const Remote& remote,
                               uint64_t client_id): base(),
-                                                   remote(remote),
-                                                   client_id(client_id){}
+                                                   client_remote({.remote = remote, .client_id = client_id}){}
+
+            NoOwned_APIClient(const ClientRemote& client_remote): base(),
+                                                                  client_remote(client_remote){}
 
             void set_unique_request(bool is_unique_request)
             {
@@ -455,37 +465,42 @@ namespace deviation_projection_client
 
             auto add_training_data(std::string_view token) -> std::shared_ptr<Promise<stdx::fancy_void>>
             {
-                return this->base.add_training_data(this->remote, this->client_id, token);
+                return this->base.add_training_data(this->client_remote.remote, this->client_remote.client_id, token);
             }
 
             auto clear_training_data() -> std::shared_ptr<Promise<stdx::fancy_void>>
             {
-                return this->base.clear_training_data(this->remote, this->client_id);
+                return this->base.clear_training_data(this->client_remote.remote, this->client_remote.client_id);
             }
 
             auto set_matrix_resource(const std::vector<deviation_projector::GenericMatrixDeviationCalculatorResource>& matrix_resource_vec) -> std::shared_ptr<Promise<stdx::fancy_void>>
             {
-                return this->base.set_matrix_resource(this->remote, this->client_id, matrix_resource_vec);
+                return this->base.set_matrix_resource(this->client_remote.remote, this->client_remote.client_id, matrix_resource_vec);
             }
 
             auto get_deviation() -> std::shared_ptr<Promise<std::vector<mdc_float_t>>>
             {
-                return this->base.get_deviation(this->remote, this->client_id);
+                return this->base.get_deviation(this->client_remote.remote, this->client_remote.client_id);
             }
 
             auto set_and_get_deviation(const std::vector<deviation_projector::GenericMatrixDeviationCalculatorResource>& matrix_resource_vec) -> std::shared_ptr<Promise<std::vector<mdc_float_t>>>
             {
-                return this->base.set_and_get_deviation(this->remote, this->client_id, matrix_resource_vec);
+                return this->base.set_and_get_deviation(this->client_remote.remote, this->client_remote.client_id, matrix_resource_vec);
             }
 
             auto get_remote() const noexcept -> const Remote&
             {
-                return this->remote;
+                return this->client_remote.remote;
             }
 
             auto get_client_id() const noexcept -> uint64_t
             {
-                return this->client_id;
+                return this->client_remote.client_id;
+            }
+
+            auto get_client_remote() const noexcept -> const ClientRemote&
+            {
+                return this->client_remote;
             }
     };
 }

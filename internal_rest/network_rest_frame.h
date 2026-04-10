@@ -22,6 +22,7 @@
 #include "network_stack_allocation.h"
 #include "network_ticket_timeout_manager.h"
 #include <cron_subsystem/cron_subsystem.h>
+#include <common_exception/cancellation_token.h>
 
 namespace dg_sock::network_rest_frame::model
 {
@@ -5161,7 +5162,8 @@ namespace dg_sock::network_rest_frame::client
             virtual ~RequestRetryMachineInterface() noexcept = default;
 
             virtual auto get_retryable_promise(dg_sock::unique_ptr<PromiseFactoryInterface<T>>&& factory,
-                                               dg_sock::unique_ptr<RetryExceptionRuleInterface>&& exception_rule) -> dg_sock::unique_ptr<Promise<T>> = 0;
+                                               dg_sock::unique_ptr<RetryExceptionRuleInterface>&& exception_rule,
+                                               std::shared_ptr<common_exception::CancellationTokenInterface> cancellation_token) -> dg_sock::unique_ptr<Promise<T>> = 0;
     };
 
     class TrueOnAllRetryExceptionRule: public virtual RetryExceptionRuleInterface
@@ -5196,7 +5198,8 @@ namespace dg_sock::network_rest_frame::client
                                          std::chrono::nanoseconds timeout_dur,
                                          size_t retry_count,
                                          dg_sock::unique_ptr<PromiseFactoryInterface<T>>&& promise_factory,
-                                         dg_sock::unique_ptr<RetryExceptionRuleInterface>&& exception_rule)
+                                         dg_sock::unique_ptr<RetryExceptionRuleInterface>&& exception_rule,
+                                         std::shared_ptr<common_exception::CancellationTokenInterface> cancellation_token)
             {
                 const std::chrono::nanoseconds MIN_DUR  = std::chrono::nanoseconds(0);
                 const std::chrono::nanoseconds MAX_DUR  = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::hours(1));
@@ -5238,7 +5241,8 @@ namespace dg_sock::network_rest_frame::client
                                                                                                       timeout_dur,
                                                                                                       retry_count,
                                                                                                       std::move(promise_factory),
-                                                                                                      std::move(exception_rule)),
+                                                                                                      std::move(exception_rule),
+                                                                                                      cancellation_token),
                                           coroutine_x::NETWORK_COROUTINE);
             }
 
@@ -5277,6 +5281,8 @@ namespace dg_sock::network_rest_frame::client
                     dg_sock::unique_ptr<PromiseFactoryInterface<T>> promise_factory;
                     dg_sock::unique_ptr<RetryExceptionRuleInterface> exception_rule;
 
+                    std::shared_ptr<common_exception::CancellationTokenInterface> cancellation_token;
+                
                     std::chrono::nanoseconds first_retry_dur;
                     std::chrono::nanoseconds max_retry_dur;
                     std::chrono::nanoseconds timeout_dur;
@@ -5299,27 +5305,30 @@ namespace dg_sock::network_rest_frame::client
                                       std::chrono::nanoseconds timeout_dur,
                                       size_t max_retry_count,
                                       dg_sock::unique_ptr<PromiseFactoryInterface<T>>&& promise_factory,
-                                      dg_sock::unique_ptr<RetryExceptionRuleInterface>&& exception_rule)
+                                      dg_sock::unique_ptr<RetryExceptionRuleInterface>&& exception_rule,
+                                      std::shared_ptr<common_exception::CancellationTokenInterface> cancellation_token)
                     {
-                        this->current_promise   = promise_factory->get();
+                        this->current_promise       = promise_factory->get();
 
-                        this->bucket            = std::move(bucket);
-                        this->promise_factory   = std::move(promise_factory);
-                        this->exception_rule    = std::move(exception_rule);
+                        this->bucket                = std::move(bucket);
+                        this->promise_factory       = std::move(promise_factory);
+                        this->exception_rule        = std::move(exception_rule);
 
-                        this->first_retry_dur   = first_retry_dur;
-                        this->max_retry_dur     = max_retry_dur;
-                        this->timeout_dur       = timeout_dur;
+                        this->cancellation_token    = std::move(cancellation_token);
+
+                        this->first_retry_dur       = first_retry_dur;
+                        this->max_retry_dur         = max_retry_dur;
+                        this->timeout_dur           = timeout_dur;
                         
-                        this->max_retry_count   = max_retry_count;
-                        this->retry_idx         = 0u;
+                        this->max_retry_count       = max_retry_count;
+                        this->retry_idx             = 0u;
 
-                        this->since             = std::chrono::steady_clock::now();
-                        this->is_concluded      = false;
+                        this->since                 = std::chrono::steady_clock::now();
+                        this->is_concluded          = false;
 
-                        this->is_on_retry       = false;
-                        this->on_retry_since    = {};
-                        this->on_retry_idx      = {};
+                        this->is_on_retry           = false;
+                        this->on_retry_since        = {};
+                        this->on_retry_idx          = {};
                     }
 
                     auto next() noexcept -> bool
@@ -5331,6 +5340,12 @@ namespace dg_sock::network_rest_frame::client
                                 dg_sock::network_log_stackdump::critical(dg_sock::network_exception::verbose(dg_sock::network_exception::INTERNAL_CORRUPTION));
                                 std::abort();
                             }
+                        }
+
+                        if (this->cancellation_token != nullptr && this->cancellation_token->is_canceled())
+                        {
+                            this->error_finalize(dg_sock::network_exception::OPERATION_CANCELED_ERROR);
+                            return true;
                         }
 
                         std::chrono::time_point<std::chrono::steady_clock> now  = std::chrono::steady_clock::now();
@@ -5497,14 +5512,16 @@ namespace dg_sock::network_rest_frame::client
                                                                      retry_count(retry_count){}
 
             auto get_retryable_promise(dg_sock::unique_ptr<PromiseFactoryInterface<T>>&& factory,
-                                       dg_sock::unique_ptr<RetryExceptionRuleInterface>&& exception_rule) -> dg_sock::unique_ptr<Promise<T>>
+                                       dg_sock::unique_ptr<RetryExceptionRuleInterface>&& exception_rule,
+                                       std::shared_ptr<common_exception::CancellationTokenInterface> cancellation_token) -> dg_sock::unique_ptr<Promise<T>>
             {
                 return dg_sock::make_unique<Base2ExponentialRetryPromise<T>>(this->first_retry_dur,
                                                                              this->max_retry_dur,
                                                                              this->timeout_dur,
                                                                              this->retry_count,
                                                                              std::move(factory),
-                                                                             std::move(exception_rule));
+                                                                             std::move(exception_rule),
+                                                                             std::move(cancellation_token));
             }
     };
 
@@ -5677,14 +5694,17 @@ namespace dg_sock::network_rest_frame::client
             Resolutor resolutor;
             std::optional<retry_policy_t> retry_policy;
             std::shared_ptr<ClientRequest> client_request;
+            std::shared_ptr<common_exception::CancellationTokenInterface> cancellation_token;
             bool is_distinct_request;
 
             RequestDispatcher(Resolutor resolutor,
                               std::optional<retry_policy_t> retry_policy,
                               std::shared_ptr<ClientRequest> client_request,
+                              std::shared_ptr<common_exception::CancellationTokenInterface> cancellation_token,
                               bool is_distinct_request): resolutor(std::move(resolutor)),
                                                          retry_policy(retry_policy),
                                                          client_request(std::move(client_request)),
+                                                         cancellation_token(std::move(cancellation_token)),
                                                          is_distinct_request(is_distinct_request){}
 
             using self              = RequestDispatcher;
@@ -5701,10 +5721,12 @@ namespace dg_sock::network_rest_frame::client
             RequestDispatcher(): RequestDispatcher(ResolutorLike{},
                                                    std::nullopt,
                                                    nullptr,
+                                                   nullptr,
                                                    false){}
 
             RequestDispatcher(Resolutor resolutor): RequestDispatcher(std::move(resolutor),
                                                                       std::nullopt,
+                                                                      nullptr,
                                                                       nullptr,
                                                                       false){}
 
@@ -5712,6 +5734,13 @@ namespace dg_sock::network_rest_frame::client
             {
                 this->check_and_throw_retry_policy(retry_policy);
                 this->retry_policy = retry_policy;
+
+                return *this;
+            }
+
+            auto set_cancellation_token(std::shared_ptr<common_exception::CancellationTokenInterface> cancellation_token) -> self&
+            {
+                this->cancellation_token = std::move(cancellation_token);
 
                 return *this;
             }
@@ -5729,6 +5758,7 @@ namespace dg_sock::network_rest_frame::client
                 RequestDispatcher<std::decay_t<NewResolutor>> rs(std::forward<NewResolutor>(resolutor),
                                                                  this->retry_policy,
                                                                  this->client_request,
+                                                                 this->cancellation_token,
                                                                  this->is_distinct_request);
 
                 return rs;
@@ -5753,7 +5783,8 @@ namespace dg_sock::network_rest_frame::client
                 if (this->retry_policy.has_value())
                 {
                     return RequestRetryMachineFactory<value_type>{}.get(this->retry_policy.value())->get_retryable_promise(this->get_promise_factory(),
-                                                                                                                           this->get_exception_rule());
+                                                                                                                           this->get_exception_rule(),
+                                                                                                                           this->cancellation_token);
                 }
 
                 return this->get_raw_promise();

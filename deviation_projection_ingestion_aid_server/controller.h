@@ -120,8 +120,6 @@ namespace deviation_projection_ingestion_aid_server
                     client->set_data_source(request.data_loader_config);
                     client->set_server_sink(request.server_sink_vec);
                     client->set_firer_config(request.token_firer_config);
-                    client->set_concurrent_request_size(request.concurrent_request_sz);
-                    client->set_client_retry_policy(request.client_retry_policy);
 
                     client->run();
 
@@ -245,6 +243,11 @@ namespace deviation_projection_ingestion_aid_server
                     if (client == nullptr)
                     {
                         throw client_box_not_found_error{};
+                    }
+
+                    if (!client->is_completed())
+                    {
+                        throw ingestion_in_progress_error{};
                     }
 
                     client->wait();

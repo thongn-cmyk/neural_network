@@ -1,44 +1,18 @@
-#ifndef __DEVIATION_PROJECTION_INGESTION_AID_CLIENT_MODEL_H__
-#define __DEVIATION_PROJECTION_INGESTION_AID_CLIENT_MODEL_H__
+#ifndef __DG_DEVIATION_PROJECTION_SERVER_MODEL_H__
+#define __DG_DEVIATION_PROJECTION_SERVER_MODEL_H__
 
 #include <stdint.h>
 #include <stdlib.h>
-#include <fire_bandwidth_control/generic_firer.h>
-#include <data_loader/source_loader/multisource_loader.h>
-#include <memory>
-#include <expected>
-#include "local_exception.h"
 #include <string>
+#include "local_exception.h"
 #include <connectivity_subsystem/connectivity_subsystem.h>
+#include <expected>
+#include <deviation_projector/generic_resource.h>
 #include <vector>
-#include <internal_rest/network_rest_frame.h>
 
-namespace deviation_projection_ingestion_aid_client
+namespace deviation_projection_server
 {
-    template <class T>
-    using Promise       = dg_sock::network_rest_frame::client::Promise<T>;
-
-    using Remote        = dg_sock::network_rest_frame::model::Remote;
-    using Url           = dg_sock::network_rest_frame::model::Url;
-    using ClientRequest = dg_sock::network_rest_frame::model::ClientRequest;
-
-    struct ServerSink
-    {
-        Remote remote;
-        uint64_t client_id;
-
-        template <class Reflector>
-        void dg_reflect(const Reflector& reflector) const
-        {
-            reflector(remote, client_id);
-        }
-
-        template <class Reflector>
-        void dg_reflect(const Reflector& reflector)
-        {
-            reflector(remote, client_id);
-        }
-    };
+    using namespace float_def;
 
     struct GetVersionRequest
     {
@@ -57,7 +31,7 @@ namespace deviation_projection_ingestion_aid_client
 
     struct GetVersionResponse
     {
-        std::expected<std::string, deviation_projection_ingestion_aid_client::local_exception_t> response;
+        std::expected<std::string, deviation_projection_server::local_exception_t> response;
         std::string err_verbal_description;
 
         template <class Reflector>
@@ -87,12 +61,12 @@ namespace deviation_projection_ingestion_aid_client
         void dg_reflect(const Reflector& reflector)
         {
             reflector(connection_config);
-        };
+        }
     };
 
     struct OpenClientResponse
     {
-        std::expected<uint64_t, deviation_projection_ingestion_aid_client::local_exception_t> result;
+        std::expected<uint64_t, deviation_projection_server::local_exception_t> result;
         std::string err_verbal_description;
 
         template <class Reflector>
@@ -110,24 +84,24 @@ namespace deviation_projection_ingestion_aid_client
 
     struct CloseClientRequest
     {
-        uint64_t client_box_id;
+        uint64_t client_id;
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector) const
         {
-            reflector(client_box_id);
+            reflector(client_id);
         }
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector)
         {
-            reflector(client_box_id);
+            reflector(client_id);
         }
     };
 
     struct CloseClientResponse
     {
-        deviation_projection_ingestion_aid_client::local_exception_t result;
+        deviation_projection_server::local_exception_t result;
         std::string err_verbal_description;
 
         template <class Reflector>
@@ -143,59 +117,27 @@ namespace deviation_projection_ingestion_aid_client
         }
     };
 
-    struct RunPayload
+    struct AddTrainingDataRequest
     {
-        data_loader::source_loader::multisource_loader::MultisourceLoaderConfig data_loader_config;
-        std::vector<ServerSink> server_sink_vec;
-        fire_bandwidth_control::generic_firer::GenericFirerConfig token_firer_config;
+        uint64_t client_id;
+        std::string token;
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector) const
         {
-            reflector(data_loader_config,
-                      server_sink_vec,
-                      token_firer_config);
+            reflector(client_id, token);
         }
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector)
         {
-            reflector(data_loader_config,
-                      server_sink_vec,
-                      token_firer_config);
+            reflector(client_id, token);
         }
     };
 
-    struct RunRequest
+    struct AddTrainingDataResponse
     {
-        uint64_t client_box_id;
-
-        data_loader::source_loader::multisource_loader::MultisourceLoaderConfig data_loader_config;
-        std::vector<ServerSink> server_sink_vec;
-        fire_bandwidth_control::generic_firer::GenericFirerConfig token_firer_config;
-
-        template <class Reflector>
-        void dg_reflect(const Reflector& reflector) const
-        {
-            reflector(client_box_id,
-                      data_loader_config,
-                      server_sink_vec,
-                      token_firer_config);
-        }
-
-        template <class Reflector>
-        void dg_reflect(const Reflector& reflector)
-        {
-            reflector(client_box_id,
-                      data_loader_config,
-                      server_sink_vec,
-                      token_firer_config);
-        }
-    };
-
-    struct RunResponse
-    {
-        deviation_projection_ingestion_aid_client::local_exception_t result;
+        deviation_projection_server::local_exception_t result;
         std::string err_verbal_description;
 
         template <class Reflector>
@@ -211,26 +153,26 @@ namespace deviation_projection_ingestion_aid_client
         }
     };
 
-    struct InterruptRequest
+    struct ClearTrainingDataRequest
     {
-        uint64_t client_box_id;
+        uint64_t client_id;
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector) const
         {
-            reflector(client_box_id);
+            reflector(client_id);
         }
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector)
         {
-            reflector(client_box_id);
+            reflector(client_id);
         }
     };
 
-    struct InterruptResponse
+    struct ClearTrainingDataResponse
     {
-        deviation_projection_ingestion_aid_client::local_exception_t result;
+        deviation_projection_server::local_exception_t result;
         std::string err_verbal_description;
 
         template <class Reflector>
@@ -246,26 +188,27 @@ namespace deviation_projection_ingestion_aid_client
         }
     };
 
-    struct IsCompletedRequest
+    struct SetMatrixResourceRequest
     {
-        uint64_t client_box_id;
+        uint64_t client_id;
+        std::vector<deviation_projector::GenericMatrixDeviationCalculatorResource> matrix_resource_vec;
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector) const
         {
-            reflector(client_box_id);
+            reflector(client_id, matrix_resource_vec);
         }
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector)
         {
-            reflector(client_box_id);
+            reflector(client_id, matrix_resource_vec);
         }
     };
 
-    struct IsCompletedResponse
+    struct SetMatrixResourceResponse
     {
-        std::expected<bool, deviation_projection_ingestion_aid_client::local_exception_t> result;
+        deviation_projection_server::local_exception_t result;
         std::string err_verbal_description;
 
         template <class Reflector>
@@ -281,26 +224,26 @@ namespace deviation_projection_ingestion_aid_client
         }
     };
 
-    struct GetResultRequest
+    struct GetDeviationRequest
     {
-        uint64_t client_box_id;
+        uint64_t client_id;
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector) const
         {
-            reflector(client_box_id);
+            reflector(client_id);
         }
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector)
         {
-            reflector(client_box_id);
+            reflector(client_id);
         }
     };
 
-    struct GetResultResponse
+    struct GetDeviationResponse
     {
-        deviation_projection_ingestion_aid_client::local_exception_t result;
+        std::expected<std::vector<mdc_float_t>, deviation_projection_server::local_exception_t> result;
         std::string err_verbal_description;
 
         template <class Reflector>
@@ -315,6 +258,43 @@ namespace deviation_projection_ingestion_aid_client
             reflector(result, err_verbal_description);
         }
     };
+
+    struct SetAndGetDeviationRequest
+    {
+        uint64_t client_id;
+        std::vector<deviation_projector::GenericMatrixDeviationCalculatorResource> matrix_resource_vec;
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector) const
+        {
+            reflector(client_id, matrix_resource_vec);
+        }
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector)
+        {
+            reflector(client_id, matrix_resource_vec);
+        }
+    };
+
+    struct SetAndGetDeviationResponse
+    {
+        std::expected<std::vector<mdc_float_t>, deviation_projection_server::local_exception_t> result;
+        std::string err_verbal_description;
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector) const
+        {
+            reflector(result, err_verbal_description);
+        }
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector)
+        {
+            reflector(result, err_verbal_description);
+        }
+    };
+
 }
 
 #endif

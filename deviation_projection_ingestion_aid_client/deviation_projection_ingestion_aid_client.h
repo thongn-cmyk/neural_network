@@ -107,9 +107,7 @@ namespace deviation_projection_ingestion_aid_client
                     .client_box_id          = client_box_id,
                     .data_loader_config     = payload.data_loader_config,
                     .server_sink_vec        = payload.server_sink_vec,
-                    .token_firer_config     = payload.token_firer_config,
-                    .concurrent_request_sz  = payload.concurrent_request_sz,
-                    .client_retry_policy    = payload.client_retry_policy
+                    .token_firer_config     = payload.token_firer_config
                 };
 
                 std::string request_payload = dg::network_compact_serializer::dgstd_serialize<std::string>(raw_request);

@@ -40,6 +40,16 @@ namespace deviation_projection_ingestion_aid_client
         interrupted_run_error(): std::runtime_error("bad client box operation, run was interrupted by interruption signal"){}
     };
 
+    struct ingestion_in_progress_error: std::runtime_error
+    {
+        ingestion_in_progress_error(): std::runtime_error("bad client box operation, get result performed before completion"){}
+    };
+
+    struct inoperable_client_error: std::runtime_error
+    {
+        inoperable_client_error(): std::runtime_error("bad client operation, client in in inoperable state"){}
+    };
+
     struct other_invalid_argument: std::invalid_argument
     {
         private:
@@ -74,11 +84,6 @@ namespace deviation_projection_ingestion_aid_client
             }
     };
 
-    struct inoperable_client_error: std::runtime_error
-    {
-        inoperable_client_error(): std::runtime_error("bad client operation, client in in inoperable state"){}
-    };
-
     static inline constexpr local_exception_t SUCCESS                           = 0u;
 
     static inline constexpr local_exception_t CLIENT_BOX_NOT_FOUND_ERROR_CODE   = 1u;
@@ -87,9 +92,10 @@ namespace deviation_projection_ingestion_aid_client
     static inline constexpr local_exception_t SECOND_WAIT_ERROR_CODE            = 4u;
     static inline constexpr local_exception_t SECOND_RUN_ERROR_CODE             = 5u;
     static inline constexpr local_exception_t INTERRUPTED_RUN_ERROR_CODE        = 6u;
-    static inline constexpr local_exception_t OTHER_INVALID_ARGUMENT_CODE       = 7u;
-    static inline constexpr local_exception_t OTHER_RUNTIME_ERROR_CODE          = 8u;
-    static inline constexpr local_exception_t INOPERABLE_CLIENT_ERROR_CODE      = 9u;
+    static inline constexpr local_exception_t INGESTION_IN_PROGRESS_ERROR_CODE  = 7u;
+    static inline constexpr local_exception_t INOPERABLE_CLIENT_ERROR_CODE      = 8u;
+    static inline constexpr local_exception_t OTHER_INVALID_ARGUMENT_CODE       = 9u;
+    static inline constexpr local_exception_t OTHER_RUNTIME_ERROR_CODE          = 10u;
 
     auto to_local_exception_error_code(std::exception_ptr ptr) -> local_exception_t
     {
@@ -121,6 +127,14 @@ namespace deviation_projection_ingestion_aid_client
         {
             return INTERRUPTED_RUN_ERROR_CODE;
         }
+        catch (ingestion_in_progress_error& e)
+        {
+            return INGESTION_IN_PROGRESS_ERROR_CODE;
+        }
+        catch (inoperable_client_error& e)
+        {
+            return INOPERABLE_CLIENT_ERROR_CODE;
+        }
         catch (std::invalid_argument& e)
         {
             return OTHER_INVALID_ARGUMENT_CODE;
@@ -128,10 +142,6 @@ namespace deviation_projection_ingestion_aid_client
         catch (std::runtime_error& e)
         {
             return OTHER_RUNTIME_ERROR_CODE;
-        }
-        catch (inoperable_client_error& e)
-        {
-            return INOPERABLE_CLIENT_ERROR_CODE;
         }
         catch (std::exception& e)
         {
@@ -195,6 +205,14 @@ namespace deviation_projection_ingestion_aid_client
             {
                 throw interrupted_run_error{};
             }
+            case INGESTION_IN_PROGRESS_ERROR_CODE:
+            {
+                throw ingestion_in_progress_error{};
+            }
+            case INOPERABLE_CLIENT_ERROR_CODE:
+            {
+                throw inoperable_client_error{};
+            }
             case OTHER_INVALID_ARGUMENT_CODE:
             {
                 throw other_invalid_argument(msg);
@@ -202,10 +220,6 @@ namespace deviation_projection_ingestion_aid_client
             case OTHER_RUNTIME_ERROR_CODE:
             {
                 throw other_runtime_error(msg);
-            }
-            case INOPERABLE_CLIENT_ERROR_CODE:
-            {
-                throw inoperable_client_error{};
             }
             default:
             {

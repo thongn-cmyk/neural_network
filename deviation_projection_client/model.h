@@ -300,6 +300,24 @@ namespace deviation_projection_client
             reflector(result, err_verbal_description);
         }
     };
+
+    struct ClientRemote
+    {
+        Remote remote;
+        uint64_t client_id;
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector) const
+        {
+            reflector(remote, client_id);
+        }
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector)
+        {
+            reflector(remote, client_id);
+        }
+    };
 }
 
 #endif

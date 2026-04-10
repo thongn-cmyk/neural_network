@@ -33,8 +33,6 @@ namespace deviation_projection_ingestion_aid_server
                 std::optional<data_loader::source_loader::multisource_loader::MultisourceLoaderConfig> data_loader_config;
                 std::optional<std::vector<ServerSink>> server_sink_vec;
                 std::optional<fire_bandwidth_control::generic_firer::GenericFirerConfig> token_firer_config;
-                std::optional<dg_sock::network_rest_frame::client::retry_policy_t> client_retry_policy;
-                std::optional<size_t> concurrent_request_sz;
             };
 
             Resource resource;
@@ -53,7 +51,7 @@ namespace deviation_projection_ingestion_aid_server
 
             ~ClientBox() noexcept
             {
-                this->close();
+                this->close(false);
             }
 
             void set_data_source(const data_loader::source_loader::multisource_loader::MultisourceLoaderConfig& data_loader_config)
@@ -84,26 +82,6 @@ namespace deviation_projection_ingestion_aid_server
                 }
 
                 this->resource.token_firer_config = token_firer_config;
-            }
-
-            void set_concurrent_request_size(size_t sz)
-            {
-                if (this->was_explicitly_destroyed)
-                {
-                    throw destroyed_client_box_error{};
-                }
-
-                this->resource.concurrent_request_sz = sz;
-            }
-
-            void set_client_retry_policy(const dg_sock::network_rest_frame::client::retry_policy_t& client_retry_policy)
-            {
-                if (this->was_explicitly_destroyed)
-                {
-                    throw destroyed_client_box_error{};
-                }
-
-                this->resource.client_retry_policy = client_retry_policy;
             }
 
             void run()
@@ -189,7 +167,7 @@ namespace deviation_projection_ingestion_aid_server
                 }
             }
 
-            void close() noexcept
+            void close(bool hard_close = true) noexcept
             {
                 if (std::exchange(this->was_explicitly_destroyed, true))
                 {
@@ -208,7 +186,14 @@ namespace deviation_projection_ingestion_aid_server
                         std::abort();
                     }
 
-                    this->task_handle->detach();
+                    if (hard_close)
+                    {
+                        this->task_handle = nullptr;
+                    }
+                    else
+                    {
+                        this->task_handle->detach();
+                    }
                 }
             }
 
@@ -224,21 +209,17 @@ namespace deviation_projection_ingestion_aid_server
                     std::deque<std::shared_ptr<dg_sock::network_rest_frame::client::Promise<stdx::fancy_void>>> promise_vec;
                     bool is_loader_completed;
                     size_t client_offset;
-                    size_t concurrent_request_sz;
 
-                    static inline constexpr size_t MIN_CONCURRENT_REQUEST_SZ    = 1u;
-                    static inline constexpr size_t MAX_CONCURRENT_REQUEST_SZ    = size_t{1} << 10;
+                    static inline constexpr size_t DEFAULT_CONCURRENT_REQUEST_SZ = size_t{1} << 10;
 
                 public:
 
                     FireableProducer(data_loader::source_loader::UserSpaceSourceLoaderInterface * source_loader,
-                                     std::vector<std::unique_ptr<deviation_projection_client::NoOwned_APIClient>> * api_client_vec,
-                                     size_t concurrent_request_sz): source_loader(stdx::safe_ptr_access(source_loader)),
-                                                                    api_client_vec(stdx::safe_ptr_access(api_client_vec)),
-                                                                    promise_vec(),
-                                                                    is_loader_completed(false),
-                                                                    client_offset(0u),
-                                                                    concurrent_request_sz(std::clamp(concurrent_request_sz, MIN_CONCURRENT_REQUEST_SZ, MAX_CONCURRENT_REQUEST_SZ)){}
+                                     std::vector<std::unique_ptr<deviation_projection_client::NoOwned_APIClient>> * api_client_vec): source_loader(stdx::safe_ptr_access(source_loader)),
+                                                                                                                                     api_client_vec(stdx::safe_ptr_access(api_client_vec)),
+                                                                                                                                     promise_vec(),
+                                                                                                                                     is_loader_completed(false),
+                                                                                                                                     client_offset(0u){}
 
                     auto fire_one(common_exception::CancellationTokenInterface& cancellation_token) -> bool
                     {
@@ -253,13 +234,13 @@ namespace deviation_projection_ingestion_aid_server
                             return false;
                         }
 
-                        if (this->promise_vec.size() == this->concurrent_request_sz)
+                        if (this->promise_vec.size() == DEFAULT_CONCURRENT_REQUEST_SZ)
                         {
                             this->promise_vec.front()->wait();
                             this->promise_vec.pop_front();
                         }
 
-                        std::optional<std::string> nxt_token = this->source_loader->get(cancellation_token);
+                        std::optional<std::string> nxt_token = this->source_loader->get(cancellation_token); //I would like to actually CPU-wait this operation, and automatic retry performed on our side, because wait() by hardware has 0 latency and we are doing batch operations
 
                         if (!nxt_token.has_value())
                         {
@@ -327,6 +308,8 @@ namespace deviation_projection_ingestion_aid_server
 
                     Resource resource;
 
+                    static inline const dg_sock::network_rest_frame::client::retry_policy_t DEFAULT_RETRY_POLICY = dg_sock::network_rest_frame::client::RequestRetryMachineFactory<>::EXPONENTIAL_HARD;
+
                 public:
 
                     InternalResolutor(Resource resource_arg)
@@ -344,16 +327,6 @@ namespace deviation_projection_ingestion_aid_server
                         if (!resource_arg.token_firer_config.has_value())
                         {
                             throw std::invalid_argument("bad token firer config, not set"); //default
-                        }
-
-                        if (!resource_arg.client_retry_policy.has_value())
-                        {
-                            throw std::invalid_argument("bad client retry policy, not set"); //default
-                        }
-
-                        if (!resource_arg.concurrent_request_sz.has_value())
-                        {
-                            throw std::invalid_argument("bad concurrent request size, not set"); //default
                         }
 
                         this->resource  = std::move(resource_arg);
@@ -374,7 +347,7 @@ namespace deviation_projection_ingestion_aid_server
                         for (const ServerSink& sink: resource.server_sink_vec.value())
                         {
                             api_client_vec.push_back(std::make_unique<deviation_projection_client::NoOwned_APIClient>(sink.remote, sink.client_id));
-                            api_client_vec.back()->set_retry_policy(this->resource.client_retry_policy.value());
+                            api_client_vec.back()->set_retry_policy(DEFAULT_RETRY_POLICY);
                         }
 
                         InternalCancellationToken arg_cancellation_token(&cancellation_token);
@@ -383,8 +356,7 @@ namespace deviation_projection_ingestion_aid_server
                         std::unique_ptr<fire_bandwidth_control::interface::FireableFirerInterface> firer_instance   = std::make_unique<fire_bandwidth_control::generic_firer::GenericFirer>(this->resource.token_firer_config.value());
 
                         FireableProducer fireable_producer(loader.get(),
-                                                           &api_client_vec,
-                                                           this->resource.concurrent_request_sz.value());
+                                                           &api_client_vec);
 
                         firer_instance->run(fireable_producer, arg_cancellation_token);
                     }
@@ -443,30 +415,6 @@ namespace deviation_projection_ingestion_aid_server
                 this->base->set_firer_config(token_firer_config);
             }
 
-            void set_concurrent_request_size(size_t sz)
-            {
-                fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*this->mtx);
-
-                if (this->was_explicitly_destroyed->load(std::memory_order_relaxed))
-                {
-                    throw destroyed_client_box_error{};
-                }
-
-                this->base->set_concurrent_request_size(sz);
-            }
-
-            void set_client_retry_policy(const dg_sock::network_rest_frame::client::retry_policy_t& client_retry_policy)
-            {
-                fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*this->mtx);
-
-                if (this->was_explicitly_destroyed->load(std::memory_order_relaxed))
-                {
-                    throw destroyed_client_box_error{};
-                }
-
-                this->base->set_client_retry_policy(client_retry_policy);
-            }
-
             void run()
             {
                 fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*this->mtx);
@@ -510,7 +458,7 @@ namespace deviation_projection_ingestion_aid_server
                 this->base->wait();
             }
 
-            void close() noexcept
+            void close(bool hard_close = true) noexcept
             {
                 fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*this->mtx);
 
@@ -520,7 +468,7 @@ namespace deviation_projection_ingestion_aid_server
                 }
 
                 this->connection->close();
-                this->base->close();
+                this->base->close(hard_close);
             }
 
             auto is_alive() -> bool

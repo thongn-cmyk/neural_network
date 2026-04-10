@@ -22,7 +22,7 @@ namespace deviation_projection_ingestion_aid_server
 
     struct run_not_invoked_error: std::invalid_argument
     {
-        run_not_invoked_error(): std::invalid_argument("bad client box operation, wait invoked before run"){}
+        run_not_invoked_error(): std::invalid_argument("bad client box operation, run was not invoked"){}
     };
 
     struct second_wait_error: std::invalid_argument
@@ -38,6 +38,11 @@ namespace deviation_projection_ingestion_aid_server
     struct interrupted_run_error: std::runtime_error
     {
         interrupted_run_error(): std::runtime_error("bad client box operation, run was interrupted by interruption signal"){}
+    };
+
+    struct ingestion_in_progress_error: std::invalid_argument
+    {
+        ingestion_in_progress_error(): std::invalid_argument("bad client box operation, ingestion in progress"){}
     };
 
     struct other_invalid_argument: std::invalid_argument
@@ -58,8 +63,9 @@ namespace deviation_projection_ingestion_aid_server
     static inline constexpr local_exception_t SECOND_WAIT_ERROR_CODE            = 4u;
     static inline constexpr local_exception_t SECOND_RUN_ERROR_CODE             = 5u;
     static inline constexpr local_exception_t INTERRUPTED_RUN_ERROR_CODE        = 6u;
-    static inline constexpr local_exception_t OTHER_INVALID_ARGUMENT_CODE       = 7u;
-    static inline constexpr local_exception_t OTHER_RUNTIME_ERROR_CODE          = 8u;
+    static inline constexpr local_exception_t INGESTION_IN_PROGRESS_ERROR_CODE  = 7u;
+    static inline constexpr local_exception_t OTHER_INVALID_ARGUMENT_CODE       = 8u;
+    static inline constexpr local_exception_t OTHER_RUNTIME_ERROR_CODE          = 9u;
 
     auto to_local_exception_error_code(std::exception_ptr ptr) -> local_exception_t
     {
@@ -90,6 +96,10 @@ namespace deviation_projection_ingestion_aid_server
         catch (interrupted_run_error& e)
         {
             return INTERRUPTED_RUN_ERROR_CODE;
+        }
+        catch (ingestion_in_progress_error& e)
+        {
+            return INGESTION_IN_PROGRESS_ERROR_CODE;
         }
         catch (std::invalid_argument& e)
         {
