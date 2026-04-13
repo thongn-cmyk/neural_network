@@ -9,6 +9,7 @@
 #include <utility>
 #include <chrono>
 #include <iostream>
+#include <filesystem>
 
 static inline constexpr char DELIM_CHAR = ',';
 static inline constexpr char EOR_CHAR   = '\0';
@@ -81,7 +82,7 @@ auto join(const std::vector<std::string>& data, char c) -> std::string
     return rs;
 }
 
-auto randomize_delim_config() -> data_loader::stream_reader::Configuration
+auto randomize_delim_config() -> data_loader::stream_reader::DelimitedStreamReaderConfig
 {
     return
     {
@@ -92,17 +93,27 @@ auto randomize_delim_config() -> data_loader::stream_reader::Configuration
     };
 }
 
-auto randomize_config(const std::string& file_path) -> data_loader::file_source::Configuration
+auto randomize_external_delim_config() -> data_loader::stream_reader::ExternalDelimitedStreamReaderConfig
+{
+    return data_loader::stream_reader::to_external_delimited_stream_reader_config(randomize_delim_config());
+}
+
+auto randomize_file_loader_config(const std::string& file_path) -> data_loader::file_source::FileLoaderConfig
 {
     return 
     {
-        .delim_config               = randomize_delim_config(),
+        .delim_config               = randomize_external_delim_config(),
         .local_file_path            = file_path,
         .read_ahead_buffer_sz_hint  = (randomize_int(2) == 0u) ? std::optional<uint64_t>(std::nullopt)
                                                                : std::optional<uint64_t>(randomize_int(size_t{1} << 4)),
         .unit_byte_sz_hint          = (randomize_int(2) == 0u) ? std::optional<uint64_t>(std::nullopt)
                                                                : std::optional<uint64_t>(randomize_int(size_t{1} << 4))
     };
+}
+
+auto randomize_external_file_loader_config(const std::string& file_path) -> data_loader::file_source::ExternalFileLoaderConfig
+{
+    return data_loader::file_source::to_external_file_loader_config(randomize_file_loader_config(file_path));
 }
 
 auto join_hex_token(const std::vector<std::string>& token_vec) -> std::string
@@ -138,7 +149,7 @@ void run_one_test()
         out_file.write(file_output.data(), file_output.size());
     }
 
-    data_loader::file_source::FileLoader loader(randomize_config(FILE_PATH));
+    data_loader::file_source::FileLoader loader(randomize_external_file_loader_config(FILE_PATH));
 
     std::vector<std::string> rs{};
 

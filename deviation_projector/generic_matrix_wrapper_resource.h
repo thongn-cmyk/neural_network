@@ -21,6 +21,21 @@ namespace deviation_projector
             (void) reflector;
         }
     };
+
+    struct ExternalMatrixAsDeviationWrapperConfig
+    {
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector) const
+        {
+            (void) reflector;
+        }
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector)
+        {
+            (void) reflector;
+        }
+    };
 }
 
 #endif

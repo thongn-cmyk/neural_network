@@ -5190,6 +5190,7 @@ namespace dg_sock::network_rest_frame::client
 
             std::shared_ptr<Bucket> bucket;
             bool wait_broke;
+            std::shared_ptr<InternalCancellationToken> cancellation_token;
 
         public:
 
@@ -5234,6 +5235,7 @@ namespace dg_sock::network_rest_frame::client
                 this->bucket->result        = std::nullopt;
                 this->bucket->err           = dg_sock::network_exception::SUCCESS;
                 this->wait_broke            = false;
+                this->cancellation_token    = std::make_shared<InternalCancellationToken>(std::move(cancellation_token));
 
                 coroutine_x::run_detached(dg_sock::network_allocation::make_shared<InternalCoroutine>(this->bucket,
                                                                                                       first_retry_dur,
@@ -5242,8 +5244,13 @@ namespace dg_sock::network_rest_frame::client
                                                                                                       retry_count,
                                                                                                       std::move(promise_factory),
                                                                                                       std::move(exception_rule),
-                                                                                                      cancellation_token),
+                                                                                                      this->cancellation_token),
                                           coroutine_x::NETWORK_COROUTINE);
+            }
+
+            ~Base2ExponentialRetryPromise() noexcept
+            {
+                this->cancellation_token->cancel(); //need synchronizations, to make sure that we are not overflowing, because the number of held resources do not reflect the actual alive resources
             }
 
             auto is_completed() noexcept -> bool
@@ -5270,6 +5277,42 @@ namespace dg_sock::network_rest_frame::client
             }
 
         private:
+
+            class InternalCancellationToken: public virtual common_exception::CancellationTokenInterface
+            {
+                private:
+
+                    std::shared_ptr<common_exception::CancellationTokenInterface> cancellation_token_0;
+                    common_exception::CancellationToken base;
+                
+                public:
+
+                    InternalCancellationToken(std::shared_ptr<common_exception::CancellationTokenInterface> cancellation_token_0): cancellation_token_0(std::move(cancellation_token_0)),
+                                                                                                                                   base(){}
+
+                    auto is_canceled() noexcept -> bool
+                    {
+                        if (this->cancellation_token_0 != nullptr)
+                        {
+                            if (this->cancellation_token_0->is_canceled())
+                            {
+                                return true;
+                            }
+                        }
+
+                        if (this->base.is_canceled())
+                        {
+                            return true;
+                        }
+
+                        return false;
+                    }
+
+                    void cancel() noexcept
+                    {
+                        this->base.cancel();
+                    }
+            };
 
             class InternalCoroutine: public virtual coroutine_x::CoroutineableInterface
             {

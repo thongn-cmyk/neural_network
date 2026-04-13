@@ -21,12 +21,12 @@ namespace concurrency_task
         private:
 
             std::shared_ptr<common_exception::CancellationTokenInterface> task_cancellation_token;
-            std::shared_ptr<concurrency_task::TaskInterface<T>> base_task;
+            std::unique_ptr<concurrency_task::TaskInterface<T>> base_task;
 
         public:
 
-            InterruptableTaskWrapper(const std::shared_ptr<common_exception::CancellationTokenInterface>& task_cancellation_token_arg,
-                                     const std::shared_ptr<concurrency_task::TaskInterface<T>>& base_task_arg)
+            InterruptableTaskWrapper(std::shared_ptr<common_exception::CancellationTokenInterface> task_cancellation_token_arg,
+                                     std::unique_ptr<concurrency_task::TaskInterface<T>>&& base_task_arg)
             {
                 if (task_cancellation_token_arg == nullptr)
                 {
@@ -38,8 +38,8 @@ namespace concurrency_task
                     throw std::invalid_argument("bad base task, null");
                 }
 
-                this->task_cancellation_token   = task_cancellation_token_arg;
-                this->base_task                 = base_task_arg;
+                this->task_cancellation_token   = std::move(task_cancellation_token_arg);
+                this->base_task                 = std::move(base_task_arg);
             }
 
             auto run(common_exception::CancellationTokenInterface& cancellation_token) -> T
@@ -85,12 +85,12 @@ namespace concurrency_task
         private:
 
             std::shared_ptr<Deliverable<T>> deliverable;
-            std::shared_ptr<concurrency_task::TaskInterface<T>> base_task;
+            std::unique_ptr<concurrency_task::TaskInterface<T>> base_task;
 
         public:
 
-            TaskAsDaemon(const std::shared_ptr<Deliverable<T>>& deliverable,
-                         const std::shared_ptr<concurrency_task::TaskInterface<T>>& base_task)
+            TaskAsDaemon(std::shared_ptr<Deliverable<T>> deliverable,
+                         std::unique_ptr<concurrency_task::TaskInterface<T>>&& base_task)
             {
                 if (deliverable == nullptr)
                 {
@@ -102,8 +102,8 @@ namespace concurrency_task
                     throw std::invalid_argument("bad base task, null");
                 }
 
-                this->deliverable   = deliverable;
-                this->base_task     = base_task;
+                this->deliverable   = std::move(deliverable);
+                this->base_task     = std::move(base_task);
             }
 
             auto run_one_epoch(common_exception::CancellationTokenInterface& cancellation_token) -> bool
@@ -137,7 +137,7 @@ namespace concurrency_task
 
         public:
 
-            TaskHandle(const std::shared_ptr<concurrency_task::TaskInterface<T>>& base_task)
+            TaskHandle(std::unique_ptr<concurrency_task::TaskInterface<T>> base_task)
             {
                 if (base_task == nullptr)
                 {
@@ -153,8 +153,8 @@ namespace concurrency_task
 
                 auto tmp                        = concurrency_base::daemon_saferegister(concurrency_base::COMMON_ONFLY_POOL,
                                                                                         std::make_unique<TaskAsDaemon<T>>(this->deliverable,
-                                                                                                                          std::make_shared<InterruptableTaskWrapper<T>>(this->interruption_pill,
-                                                                                                                                                                        base_task)));
+                                                                                                                          std::make_unique<InterruptableTaskWrapper<T>>(this->interruption_pill,
+                                                                                                                                                                        std::move(base_task))));
 
                 if (!tmp.has_value())
                 {
@@ -199,14 +199,39 @@ namespace concurrency_task
             }
     };
 
+    template <class T>
+    class SharedPointerTask: public virtual concurrency_task::TaskInterface<T>
+    {
+        private:
+
+            std::shared_ptr<concurrency_task::TaskInterface<T>> base;
+
+        public:
+
+            SharedPointerTask(std::shared_ptr<concurrency_task::TaskInterface<T>> base)
+            {
+                if (base == nullptr)
+                {
+                    throw std::invalid_argument("bad base, null");
+                }
+
+                this->base = std::move(base);
+            }
+
+            auto run(common_exception::CancellationTokenInterface& cancellation_token) -> T
+            {
+                return this->base->run(cancellation_token);
+            }
+    };
+
     class TaskLauncher
     {
         public:
 
             template <class T>
-            auto launch(const std::shared_ptr<concurrency_task::TaskInterface<T>>& task) -> std::unique_ptr<concurrency_task::TaskHandleInterface<T>>
+            auto launch(std::unique_ptr<concurrency_task::TaskInterface<T>> task) -> std::unique_ptr<concurrency_task::TaskHandleInterface<T>>
             {
-                return std::make_unique<TaskHandle<T>>(task);
+                return std::make_unique<TaskHandle<T>>(std::move(task));
             }
 
     };

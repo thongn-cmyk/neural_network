@@ -24,8 +24,8 @@ namespace resource_disposer
 
             virtual ~DisposableContainerInterface() noexcept = default;
 
-            virtual void push(const std::shared_ptr<DisposableInterface>& disposable) = 0;
-            virtual auto pop() noexcept -> std::shared_ptr<DisposableInterface> = 0;
+            virtual void push(std::unique_ptr<DisposableInterface>&& disposable) = 0;
+            virtual auto pop() noexcept -> std::unique_ptr<DisposableInterface> = 0;
             virtual void poison() noexcept = 0;
     };
 
@@ -35,7 +35,7 @@ namespace resource_disposer
 
             virtual ~DisposerInterface() noexcept = default;
 
-            virtual void dispose(const std::shared_ptr<DisposableInterface>& disposable) noexcept = 0;
+            virtual void dispose(std::unique_ptr<DisposableInterface>&& disposable) noexcept = 0;
     };
 
     class DisposerWorker: public virtual concurrency_base::WorkerInterface
@@ -46,7 +46,15 @@ namespace resource_disposer
 
         public:
 
-            DisposerWorker(const std::shared_ptr<DisposableContainerInterface>& disposable_container): disposable_container(disposable_container){}
+            DisposerWorker(std::shared_ptr<DisposableContainerInterface> disposable_container)
+            {
+                if (disposable_container == nullptr)
+                {
+                    throw std::invalid_argument("bad disposable container, null");
+                }
+
+                this->disposable_container = std::move(disposable_container);
+            }
 
             auto run_one_epoch() noexcept -> bool
             {
@@ -59,26 +67,25 @@ namespace resource_disposer
     {
         private:
 
-            concurrent_queue::bounded_queue::BoundedQueue<std::shared_ptr<DisposableInterface>> base;
+            concurrent_queue::bounded_queue::BoundedQueue<std::unique_ptr<DisposableInterface>> base;
         
         public:
 
             DisposableContainer(size_t container_sz): base(container_sz){}
 
-            void push(const std::shared_ptr<DisposableInterface>& disposable)
+            void push(std::unique_ptr<DisposableInterface>&& disposable)
             {
                 if (disposable == nullptr)
                 {
                     return;
                 }
 
-                auto tmp = disposable;
-                this->base.push(std::move(tmp));
+                this->base.push(std::move(disposable));
             }
 
-            auto pop() noexcept -> std::shared_ptr<DisposableInterface>
+            auto pop() noexcept -> std::unique_ptr<DisposableInterface>
             {
-                std::optional<std::shared_ptr<DisposableInterface>> result = this->base.pop();
+                std::optional<std::unique_ptr<DisposableInterface>> result = this->base.pop();
 
                 if (!result.has_value())
                 {
@@ -126,14 +133,14 @@ namespace resource_disposer
                 this->daemon = nullptr;
             }
 
-            void dispose(const std::shared_ptr<DisposableInterface>& disposable) noexcept
+            void dispose(std::unique_ptr<DisposableInterface>&& disposable) noexcept
             {
                 if (disposable == nullptr)
                 {
                     return;
                 }
 
-                this->disposable_container->push(disposable);
+                this->disposable_container->push(std::move(disposable));
             }
     };
 
@@ -165,9 +172,9 @@ namespace resource_disposer
         return SingletonObject::get().get();
     }
 
-    void dispose(const std::shared_ptr<DisposableInterface>& disposable) noexcept
+    void dispose(std::unique_ptr<DisposableInterface>&& disposable) noexcept
     {
-        get_instance()->dispose(disposable);
+        get_instance()->dispose(std::move(disposable));
     }
 
     template <class T>
@@ -176,7 +183,7 @@ namespace resource_disposer
         private:
 
             T resource;
-        
+
         public:
 
             DisposableWrapper(T resource): resource(std::move(resource)){}

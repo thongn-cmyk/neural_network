@@ -64,8 +64,10 @@ namespace concurrency_detachable_task
                     return;
                 }
 
-                this->base->interrupt();
-                resource_disposer::dispose(std::make_shared<resource_disposer::DisposableWrapper<decltype(this->base)>>(std::move(this->base)));
+                //I just think that interrupt should be here because the otherwise is a no-no
+                //this->base->interrupt();
+
+                resource_disposer::dispose(std::make_unique<resource_disposer::DisposableWrapper<decltype(this->base)>>(std::move(this->base)));
                 this->base = nullptr;
             }
     };
@@ -75,9 +77,9 @@ namespace concurrency_detachable_task
         public:
 
             template <class T>
-            auto launch(const std::shared_ptr<concurrency_task::TaskInterface<T>>& task) -> std::unique_ptr<DetachableTaskHandleInterface<T>>
+            auto launch(std::unique_ptr<concurrency_task::TaskInterface<T>> task) -> std::unique_ptr<DetachableTaskHandleInterface<T>>
             {
-                auto rs = concurrency_task::TaskLauncher{}.launch(task);
+                auto rs = concurrency_task::TaskLauncher{}.launch(std::move(task));
 
                 try
                 {

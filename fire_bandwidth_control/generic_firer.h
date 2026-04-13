@@ -32,6 +32,36 @@ namespace fire_bandwidth_control::generic_firer
         }
     };
 
+    struct ExternalGenericFirerConfig
+    {
+        std::string config_bytestream;
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector) const
+        {
+            reflector(config_bytestream);
+        }
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector)
+        {
+            reflector(config_bytestream);
+        }
+    };
+
+    auto to_external_generic_firer_config(const GenericFirerConfig& config) -> ExternalGenericFirerConfig
+    {
+        return ExternalGenericFirerConfig
+        {
+            .config_bytestream = dg::network_compact_serializer::dgstd_serialize<std::string>(config)
+        };
+    }
+
+    auto to_internal_generic_firer_config(const ExternalGenericFirerConfig& config) -> GenericFirerConfig
+    {
+        return dg::network_compact_serializer::dgstd_deserialize<GenericFirerConfig>(config.config_bytestream);
+    }
+
     class GenericFirer: public virtual FireableFirerInterface
     {
         private:
@@ -51,6 +81,8 @@ namespace fire_bandwidth_control::generic_firer
                     throw std::invalid_argument("bad firer config, dispatch code not found");
                 }
             }
+
+            GenericFirer(const ExternalGenericFirerConfig& config): GenericFirer(to_internal_generic_firer_config(config)){}
 
             void run(FireableInterface& fireable,
                      common_exception::CancellationTokenInterface& cancellation_token)

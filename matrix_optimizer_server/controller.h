@@ -114,13 +114,7 @@ namespace matrix_optimizer_server
                         throw client_box_not_found_error{};
                     }
 
-                    client_box->set_data_source(request.data_loader_config_vec);
-                    client_box->set_remote_vector(request.remote_vec);
-                    client_box->set_matrix_resource(request.matrix_resource);
-                    client_box->set_matrix_deviation_wrapper(request.matrix_deviation_wrapper_config);
-                    client_box->set_optimizer(request.optimizer_config);
-
-                    client_box->run();
+                    client_box->run(request.run_work_order);
 
                     return RunResponse
                     {

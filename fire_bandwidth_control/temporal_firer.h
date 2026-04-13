@@ -12,6 +12,7 @@
 #include <random>
 #include <algorithm>
 #include <utility>
+#include <serializer/compact_serializer.h>
 
 namespace fire_bandwidth_control::temporal_firer
 {
@@ -34,6 +35,36 @@ namespace fire_bandwidth_control::temporal_firer
             reflector(window_population, window_dur);
         }
     };
+
+    struct ExternalTemporalFirerConfig
+    {
+        std::string config_bytestream;
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector) const
+        {
+            reflector(config_bytestream);
+        }
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector)
+        {
+            reflector(config_bytestream);
+        }
+    };
+
+    auto to_external_temporal_firer_config(const TemporalFirerConfig& config) -> ExternalTemporalFirerConfig
+    {
+        return ExternalTemporalFirerConfig
+        {
+            .config_bytestream = dg::network_compact_serializer::dgstd_serialize<std::string>(config)
+        };
+    }
+
+    auto to_internal_temporal_firer_config(const ExternalTemporalFirerConfig& config) -> TemporalFirerConfig
+    {
+        return dg::network_compact_serializer::dgstd_deserialize<TemporalFirerConfig>(config.config_bytestream);
+    }
 
     struct RandomizationSeed
     {
@@ -73,6 +104,8 @@ namespace fire_bandwidth_control::temporal_firer
                 this->window_population = std::clamp(static_cast<size_t>(config.window_population), MIN_WINDOW_POPULATION, MAX_WINDOW_POPULATION);
                 this->window_dur        = std::clamp(config.window_dur, MIN_WINDOW_DUR, MAX_WINDOW_DUR);
             }
+
+            TemporalFirer(const ExternalTemporalFirerConfig& config): TemporalFirer(to_internal_temporal_firer_config(config)){}
 
             void run(FireableInterface& fireable,
                      common_exception::CancellationTokenInterface& cancellation_token)

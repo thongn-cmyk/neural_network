@@ -140,9 +140,9 @@ namespace deviation_projection_ingestion_aid_server
     {
         uint64_t client_box_id;
 
-        data_loader::source_loader::multisource_loader::MultisourceLoaderConfig data_loader_config;
+        data_loader::source_loader::multisource_loader::ExternalMultisourceLoaderConfig data_loader_config;
         std::vector<ServerSink> server_sink_vec;
-        fire_bandwidth_control::generic_firer::GenericFirerConfig token_firer_config;
+        fire_bandwidth_control::generic_firer::ExternalGenericFirerConfig token_firer_config;
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector) const

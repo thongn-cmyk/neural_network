@@ -11,6 +11,7 @@
 #include <utility>
 #include <chrono>
 #include <iostream>
+#include <filesystem>
 
 static inline constexpr char DELIM_CHAR = ',';
 static inline constexpr char EOR_CHAR   = '\0';
@@ -94,11 +95,16 @@ auto randomize_delim_config() -> data_loader::stream_reader::DelimitedStreamRead
     };
 }
 
-auto randomize_file_source_config(const std::string& file_path) -> data_loader::file_source::FileLoaderConfig
+auto randomize_external_delim_config() -> data_loader::stream_reader::ExternalDelimitedStreamReaderConfig
+{
+    return data_loader::stream_reader::to_external_delimited_stream_reader_config(randomize_delim_config());
+}
+
+auto randomize_file_loader_config(const std::string& file_path) -> data_loader::file_source::FileLoaderConfig
 {
     return 
     {
-        .delim_config               = randomize_delim_config(),
+        .delim_config               = randomize_external_delim_config(),
         .local_file_path            = file_path,
         .read_ahead_buffer_sz_hint  = (randomize_int(2) == 0u) ? std::optional<uint64_t>(std::nullopt)
                                                                : std::optional<uint64_t>(randomize_int(size_t{1} << 4)),
@@ -107,12 +113,23 @@ auto randomize_file_source_config(const std::string& file_path) -> data_loader::
     };
 }
 
+
+auto randomize_external_file_loader_config(const std::string& file_path) -> data_loader::file_source::ExternalFileLoaderConfig
+{
+    return data_loader::file_source::to_external_file_loader_config(randomize_file_loader_config(file_path));
+}
+
 auto randomize_generic_reader_config(const std::string& file_path) -> data_loader::generic_source::GenericReaderConfig
 {
     return
     {
-        .source = randomize_file_source_config(file_path)
+        .source = randomize_external_file_loader_config(file_path)
     };
+}
+
+auto randomize_external_generic_reader_config(const std::string& file_path) -> data_loader::generic_source::ExternalGenericReaderConfig
+{
+    return data_loader::generic_source::to_external_generic_reader_config(randomize_generic_reader_config(file_path));
 }
 
 auto randomize_normal_retry_config() -> data_loader::retryer_device::normal_device::RetryConfig
@@ -126,21 +143,36 @@ auto randomize_normal_retry_config() -> data_loader::retryer_device::normal_devi
     };
 }
 
+auto randomize_external_normal_retry_config() -> data_loader::retryer_device::normal_device::ExternalRetryConfig
+{
+    return data_loader::retryer_device::normal_device::to_external_retry_config(randomize_normal_retry_config());
+}
+
 auto randomize_generic_retry_config() -> data_loader::retryer_device::generic_device::GenericRetryConfig
 {
     return
     {
-        .config = randomize_normal_retry_config()
+        .config = randomize_external_normal_retry_config()
     };
+}
+
+auto randomize_external_generic_retry_config() -> data_loader::retryer_device::generic_device::ExternalGenericRetryConfig
+{
+    return data_loader::retryer_device::generic_device::to_external_generic_retry_config(randomize_generic_retry_config());
 }
 
 auto randomize_source_transaction_broker_config(const std::string& file_path) -> data_loader::source_loader::broker::SourceTransactionBrokerConfig
 {
     return
     {
-        .source_config  = randomize_generic_reader_config(file_path),
-        .retry_config   = randomize_generic_retry_config()
+        .source_config  = randomize_external_generic_reader_config(file_path),
+        .retry_config   = randomize_external_generic_retry_config()
     };
+}
+
+auto randomize_external_source_transaction_broker_config(const std::string& file_path) -> data_loader::source_loader::broker::ExternalSourceTransactionBrokerConfig
+{
+    return data_loader::source_loader::broker::to_external_source_transaction_broker_config(randomize_source_transaction_broker_config(file_path));
 }
 
 auto randomize_wait_loader_config(const std::string& file_path) -> data_loader::source_loader::wait_loader::WaitLoaderConfig
@@ -148,16 +180,26 @@ auto randomize_wait_loader_config(const std::string& file_path) -> data_loader::
     return
     {
         .tx_sz          = randomize_int(size_t{1} << 4) + 1,
-        .broker_config  = randomize_source_transaction_broker_config(file_path)
+        .broker_config  = randomize_external_source_transaction_broker_config(file_path)
     };
+}
+
+auto randomize_external_wait_loader_config(const std::string& file_path) -> data_loader::source_loader::wait_loader::ExternalWaitLoaderConfig
+{
+    return data_loader::source_loader::wait_loader::to_external_wait_loader_config(randomize_wait_loader_config(file_path));
 }
 
 auto randomize_config(const std::string& file_path) -> data_loader::source_loader::generic_loader::GenericLoaderConfig
 {
     return
     {
-        .config = randomize_wait_loader_config(file_path)
+        .config = randomize_external_wait_loader_config(file_path)
     };
+}
+
+auto randomize_external_config(const std::string& file_path) -> data_loader::source_loader::generic_loader::ExternalGenericLoaderConfig
+{
+    return data_loader::source_loader::generic_loader::to_external_generic_loader_config(randomize_config(file_path));
 }
 
 auto join_hex_token(const std::vector<std::string>& token_vec) -> std::string
@@ -194,7 +236,7 @@ void run_one_test()
     }
 
     common_exception::CancellationToken cancellation_token{};
-    data_loader::source_loader::generic_loader::GenericLoader loader(randomize_config(FILE_PATH));
+    data_loader::source_loader::generic_loader::GenericLoader loader(randomize_external_config(FILE_PATH));
 
     std::vector<std::string> rs{};
 
@@ -223,7 +265,7 @@ void run_one_test()
         std::abort();
     }
 
-    // std::filesystem::remove(FILE_PATH);
+    std::filesystem::remove(FILE_PATH);
 }
 
 void run_test()

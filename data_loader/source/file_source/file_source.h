@@ -13,6 +13,7 @@
 #include <utility>
 #include <algorithm>
 #include <data_loader/source/source_exception.h>
+#include <serializer/compact_serializer.h>
 
 namespace data_loader::file_source
 {
@@ -20,7 +21,7 @@ namespace data_loader::file_source
 
     struct FileLoaderConfig
     {
-        data_loader::stream_reader::DelimitedStreamReaderConfig delim_config;
+        data_loader::stream_reader::ExternalDelimitedStreamReaderConfig delim_config;
         std::string local_file_path;
         std::optional<uint64_t> read_ahead_buffer_sz_hint;
         std::optional<uint64_t> unit_byte_sz_hint;
@@ -44,6 +45,36 @@ namespace data_loader::file_source
         }
     };
 
+    struct ExternalFileLoaderConfig
+    {
+        std::string config_bytestream;
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector) const
+        {
+            reflector(config_bytestream);
+        }
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector)
+        {
+            reflector(config_bytestream);
+        }
+    };
+
+    auto to_external_file_loader_config(const FileLoaderConfig& config) -> ExternalFileLoaderConfig
+    {
+        return ExternalFileLoaderConfig
+        {
+            .config_bytestream = dg::network_compact_serializer::dgstd_serialize<std::string>(config)
+        };
+    }
+
+    auto to_internal_file_loader_config(const ExternalFileLoaderConfig& config) -> FileLoaderConfig
+    {
+        return dg::network_compact_serializer::dgstd_deserialize<FileLoaderConfig>(config.config_bytestream);
+    }
+
     class FileLoader: public virtual data_loader::SourceLoaderInterface
     {
         private:
@@ -63,12 +94,12 @@ namespace data_loader::file_source
             static inline constexpr size_t MIN_BUFFER_SZ    = size_t{1} << 10;
             static inline constexpr size_t MAX_BUFFER_SZ    = size_t{1} << 20;
 
-            FileLoader(FileLoaderConfig config): delim_streamer(std::make_unique<data_loader::stream_reader::DelimitedStreamReader>(config.delim_config)),
-                                                 f_stream(config.local_file_path, std::ios::binary),
-                                                 buf(nullptr),
-                                                 tx_unit_sz(1u),
-                                                 was_completed(false),
-                                                 is_bad_state(false)
+            FileLoader(const FileLoaderConfig& config): delim_streamer(std::make_unique<data_loader::stream_reader::DelimitedStreamReader>(config.delim_config)),
+                                                        f_stream(config.local_file_path, std::ios::binary),
+                                                        buf(nullptr),
+                                                        tx_unit_sz(1u),
+                                                        was_completed(false),
+                                                        is_bad_state(false)
             {
                 if (!this->f_stream.is_open())
                 {
@@ -91,6 +122,8 @@ namespace data_loader::file_source
                 this->expected_sz       = this->get_initial_file_size(this->f_stream);
                 this->total_read_bytes  = 0u;
             }
+
+            FileLoader(const ExternalFileLoaderConfig& config): FileLoader(to_internal_file_loader_config(config)){}
 
             ~FileLoader() noexcept
             {

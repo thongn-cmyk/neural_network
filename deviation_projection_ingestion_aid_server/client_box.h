@@ -30,9 +30,9 @@ namespace deviation_projection_ingestion_aid_server
 
             struct Resource
             {
-                std::optional<data_loader::source_loader::multisource_loader::MultisourceLoaderConfig> data_loader_config;
+                std::optional<data_loader::source_loader::multisource_loader::ExternalMultisourceLoaderConfig> data_loader_config;
                 std::optional<std::vector<ServerSink>> server_sink_vec;
-                std::optional<fire_bandwidth_control::generic_firer::GenericFirerConfig> token_firer_config;
+                std::optional<fire_bandwidth_control::generic_firer::ExternalGenericFirerConfig> token_firer_config;
             };
 
             Resource resource;
@@ -54,7 +54,7 @@ namespace deviation_projection_ingestion_aid_server
                 this->close(false);
             }
 
-            void set_data_source(const data_loader::source_loader::multisource_loader::MultisourceLoaderConfig& data_loader_config)
+            void set_data_source(const data_loader::source_loader::multisource_loader::ExternalMultisourceLoaderConfig& data_loader_config)
             {
                 if (this->was_explicitly_destroyed)
                 {
@@ -74,7 +74,7 @@ namespace deviation_projection_ingestion_aid_server
                 this->resource.server_sink_vec = server_sink_vec;
             }
 
-            void set_firer_config(const fire_bandwidth_control::generic_firer::GenericFirerConfig& token_firer_config)
+            void set_firer_config(const fire_bandwidth_control::generic_firer::ExternalGenericFirerConfig& token_firer_config)
             {
                 if (this->was_explicitly_destroyed)
                 {
@@ -192,6 +192,7 @@ namespace deviation_projection_ingestion_aid_server
                     }
                     else
                     {
+                        this->task_handle->interrupt();
                         this->task_handle->detach();
                     }
                 }
@@ -348,6 +349,7 @@ namespace deviation_projection_ingestion_aid_server
                         {
                             api_client_vec.push_back(std::make_unique<deviation_projection_client::NoOwned_APIClient>(sink.remote, sink.client_id));
                             api_client_vec.back()->set_retry_policy(DEFAULT_RETRY_POLICY);
+                            // api_client_vec.back()->set_multiple_request_uniqueness(true);
                         }
 
                         InternalCancellationToken arg_cancellation_token(&cancellation_token);
@@ -379,7 +381,7 @@ namespace deviation_projection_ingestion_aid_server
                                                                                                            was_explicitly_destroyed(std::make_unique<std::atomic<bool>>(false)),
                                                                                                            mtx(fair_mutex::make_unique_fair_atomic_flag()){}
 
-            void set_data_source(const data_loader::source_loader::multisource_loader::MultisourceLoaderConfig& config)
+            void set_data_source(const data_loader::source_loader::multisource_loader::ExternalMultisourceLoaderConfig& config)
             {
                 fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*this->mtx);
 
@@ -403,7 +405,7 @@ namespace deviation_projection_ingestion_aid_server
                 this->base->set_server_sink(server_sink_vec);
             }
 
-            void set_firer_config(const fire_bandwidth_control::generic_firer::GenericFirerConfig& token_firer_config)
+            void set_firer_config(const fire_bandwidth_control::generic_firer::ExternalGenericFirerConfig& token_firer_config)
             {
                 fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*this->mtx);
 

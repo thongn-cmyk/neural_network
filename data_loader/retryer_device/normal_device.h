@@ -8,7 +8,7 @@
 
 #include <data_loader/source_loader/generic_loader.h>
 #include <data_loader/exception_base.h>
-#include <fire_bandwidth_control/generic_firer.h>
+#include <common_exception/common_exception.h>
 
 #include <optional>
 #include <chrono>
@@ -48,6 +48,36 @@ namespace data_loader::retryer_device::normal_device
                       retryable_exception_vec);
         }
     };
+
+    struct ExternalRetryConfig
+    {
+        std::string config_bytestream;
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector) const
+        {
+            reflector(config_bytestream);
+        }
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector)
+        {
+            reflector(config_bytestream);
+        }
+    };
+
+    auto to_external_retry_config(const RetryConfig& config) -> ExternalRetryConfig
+    {
+        return ExternalRetryConfig
+        {
+            .config_bytestream = dg::network_compact_serializer::dgstd_serialize<std::string>(config)
+        };
+    }
+
+    auto to_internal_retry_config(const ExternalRetryConfig& config) -> RetryConfig
+    {
+        return dg::network_compact_serializer::dgstd_deserialize<RetryConfig>(config.config_bytestream);
+    }
 
     class RetryerMachine: public virtual RetryerMachineInterface
     {
@@ -99,6 +129,8 @@ namespace data_loader::retryer_device::normal_device
                     this->retryable_exception_vec = std::unordered_set<std::string>(retry_config.retryable_exception_vec->begin(), retry_config.retryable_exception_vec->end());
                 }
             }
+
+            RetryerMachine(const ExternalRetryConfig& config): RetryerMachine(to_internal_retry_config(config)){}
 
             void run(RunnableInterface& runnable,
                      common_exception::CancellationTokenInterface& cancellation_token)

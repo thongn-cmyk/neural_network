@@ -717,7 +717,7 @@ namespace dg::network_huffman_encoder::core{
             }
             
             auto fast_decode_into(const char * inp_buf, size_t bit_offs, size_t bit_last, char * op_buf) const noexcept -> std::pair<size_t, char *>{
-                
+
                 auto cursor     = this->delim_tree.get();
                 auto root       = this->delim_tree.get();
                 auto bad_bit    = bool{false};

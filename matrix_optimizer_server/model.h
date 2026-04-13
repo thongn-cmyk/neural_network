@@ -12,9 +12,12 @@
 #include <internal_rest/network_rest_frame.h>
 #include <deviation_projector/generic_matrix_wrapper_resource.h>
 #include <matrix_optimizer_subsystem/generic_matrix_optimizer.h>
+#include <fire_bandwidth_control/generic_firer.h>
 
 namespace matrix_optimizer_server
 {
+    using Remote = dg_sock::network_rest_frame::model::Remote;
+
     struct GetVersionRequest
     {
         template <class Reflector>
@@ -118,38 +121,74 @@ namespace matrix_optimizer_server
         }
     };
 
-    struct RunRequest
+    struct PullWorkOrder
     {
-        uint64_t client_box_id;
+        Remote worker_remote;
+        Remote dst_remote;
 
-        std::vector<data_loader::source_loader::multisource_loader::MultisourceLoaderConfig> data_loader_config_vec;
-        std::vector<dg_sock::network_rest_frame::model::Remote> remote_vec;
-
-        generic_matrix_factory::ExternalGenericMatrixResource matrix_resource;
-        deviation_projector::MatrixAsDeviationWrapperConfig matrix_deviation_wrapper_config;
-
-        matrix_optimizer_subsystem::GenericOptimizerConfig optimizer_config;
+        data_loader::source_loader::multisource_loader::ExternalMultisourceLoaderConfig data_loader_config;
+        fire_bandwidth_control::generic_firer::ExternalGenericFirerConfig firer_config;
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector) const
         {
-            reflector(client_box_id,
-                      data_loader_config_vec,
-                      remote_vec,
-                      matrix_resource,
-                      matrix_deviation_wrapper_config,
+            reflector(worker_remote,
+                      dst_remote,
+                      data_loader_config,
+                      firer_config);
+        }
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector)
+        {
+            reflector(worker_remote,
+                      dst_remote,
+                      data_loader_config,
+                      firer_config);
+        }
+    };
+
+    struct RunWorkOrder
+    {
+        generic_matrix_factory::ExternalGenericMatrixResource matrix;
+        std::vector<PullWorkOrder> pull_work_order_vec;
+        deviation_projector::ExternalMatrixAsDeviationWrapperConfig deviation_config;
+        matrix_optimizer_subsystem::ExternalGenericOptimizerConfig optimizer_config;
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector) const
+        {
+            reflector(matrix,
+                      pull_work_order_vec,
+                      deviation_config,
                       optimizer_config);
         }
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector)
         {
-            reflector(client_box_id,
-                      data_loader_config_vec,
-                      remote_vec,
-                      matrix_resource,
-                      matrix_deviation_wrapper_config,
+            reflector(matrix,
+                      pull_work_order_vec,
+                      deviation_config,
                       optimizer_config);
+        }
+    };
+
+    struct RunRequest
+    {
+        uint64_t client_box_id;
+        RunWorkOrder run_work_order;
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector) const
+        {
+            reflector(client_box_id, run_work_order);
+        }
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector)
+        {
+            reflector(client_box_id, run_work_order);
         }
     };
 

@@ -12,7 +12,7 @@ namespace data_loader::source_loader::multisource_loader
 {
     struct MultisourceLoaderConfig
     {
-        std::vector<data_loader::source_loader::generic_loader::GenericLoaderConfig> config_vec;
+        std::vector<data_loader::source_loader::generic_loader::ExternalGenericLoaderConfig> config_vec;
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector) const
@@ -26,6 +26,36 @@ namespace data_loader::source_loader::multisource_loader
             reflector(config_vec);
         }
     };
+
+    struct ExternalMultisourceLoaderConfig
+    {
+        std::string config_bytestream;
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector) const
+        {
+            reflector(config_bytestream);
+        }
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector)
+        {
+            reflector(config_bytestream);
+        }
+    };
+
+    auto to_external_multisource_loader_config(const MultisourceLoaderConfig& config) -> ExternalMultisourceLoaderConfig
+    {
+        return ExternalMultisourceLoaderConfig
+        {
+            .config_bytestream = dg::network_compact_serializer::dgstd_serialize<std::string>(config)
+        };
+    }
+
+    auto to_internal_multisource_loader_config(const ExternalMultisourceLoaderConfig& config) -> MultisourceLoaderConfig
+    {
+        return dg::network_compact_serializer::dgstd_deserialize<MultisourceLoaderConfig>(config.config_bytestream);
+    }
 
     class MultisourceLoader: public virtual data_loader::source_loader::UserSpaceSourceLoaderInterface
     {
@@ -44,6 +74,8 @@ namespace data_loader::source_loader::multisource_loader
                     this->base_vec.push_back(std::make_unique<data_loader::source_loader::generic_loader::GenericLoader>(sub_config));
                 }
             }
+
+            MultisourceLoader(const ExternalMultisourceLoaderConfig& config): MultisourceLoader(to_internal_multisource_loader_config(config)){}
 
             auto get(common_exception::CancellationTokenInterface& cancellation_token) -> std::optional<std::string>
             {

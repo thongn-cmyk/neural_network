@@ -17,6 +17,8 @@
 #include <deviation_projector/generic_matrix_wrapper_resource.h>
 #include <matrix_optimizer_subsystem/generic_matrix_optimizer.h>
 #include <matrix/generic_matrix_factory.h>
+#include <deviation_projection_client/deviation_projection_client.h>
+#include <deviation_projection_ingestion_aid/deviation_projection_ingestion_aid.h>
 
 namespace matrix_optimizer_server
 {
@@ -24,25 +26,12 @@ namespace matrix_optimizer_server
     {
         private:
 
-            struct Resource
-            {
-                std::optional<std::vector<data_loader::source_loader::multisource_loader::MultisourceLoaderConfig>> data_loader_config_vec;
-                std::optional<std::vector<dg_sock::network_rest_frame::model::Remote>> remote_vec;
-
-                std::optional<generic_matrix_factory::ExternalGenericMatrixResource> matrix_resource;
-                std::optional<deviation_projector::MatrixAsDeviationWrapperConfig> matrix_deviation_wrapper_config;
-
-                std::optional<matrix_optimizer_subsystem::GenericOptimizerConfig> optimizer_config;
-            };
-
-            Resource resource;
             std::unique_ptr<concurrency_detachable_task::DetachableTaskHandleInterface<generic_matrix_factory::ExternalGenericMatrixResource>> task;
             bool was_explicitly_destroyed;
 
         public:
 
-            ClientBox(): resource(),
-                         task(nullptr),
+            ClientBox(): task(nullptr),
                          was_explicitly_destroyed(false){}
 
             ~ClientBox() noexcept
@@ -50,57 +39,7 @@ namespace matrix_optimizer_server
                 this->close(false);
             }
 
-            void set_data_source(const std::vector<data_loader::source_loader::multisource_loader::MultisourceLoaderConfig>& config_vec)
-            {
-                if (this->was_explicitly_destroyed)
-                {
-                    throw destroyed_client_box_error{};
-                }
-
-                this->resource.data_loader_config_vec = config_vec;
-            }
-
-            void set_remote_vector(const std::vector<dg_sock::network_rest_frame::model::Remote>& remote_vec)
-            {
-                if (this->was_explicitly_destroyed)
-                {
-                    throw destroyed_client_box_error{};
-                }
-
-                this->resource.remote_vec = remote_vec;
-            }
-
-            void set_matrix_resource(const generic_matrix_factory::ExternalGenericMatrixResource& matrix_resource)
-            {
-                if (this->was_explicitly_destroyed)
-                {
-                    throw destroyed_client_box_error{};
-                }
-
-                this->resource.matrix_resource = matrix_resource;
-            }
-
-            void set_matrix_deviation_wrapper(const deviation_projector::MatrixAsDeviationWrapperConfig& config)
-            {
-                if (this->was_explicitly_destroyed)
-                {
-                    throw destroyed_client_box_error{};
-                }
-
-                this->resource.matrix_deviation_wrapper_config = config;
-            }
-
-            void set_optimizer(const matrix_optimizer_subsystem::GenericOptimizerConfig& config)
-            {
-                if (this->was_explicitly_destroyed)
-                {
-                    throw destroyed_client_box_error{};
-                }
-
-                this->resource.optimizer_config = config;
-            }
-
-            void run()
+            void run(const RunWorkOrder& run_work_order)
             {
                 if (this->was_explicitly_destroyed)
                 {
@@ -112,7 +51,7 @@ namespace matrix_optimizer_server
                     throw second_run_error{};
                 }
 
-                this->task  = concurrency_detachable_task::DetachableTaskLauncher{}.launch(this->make_taskable());
+                this->task  = concurrency_detachable_task::DetachableTaskLauncher{}.launch(this->make_taskable(run_work_order));
             }
 
             auto is_completed() -> bool
@@ -178,81 +117,74 @@ namespace matrix_optimizer_server
                 }
                 else
                 {
+                    this->task->interrupt();
                     this->task->detach();
                 }
             }
 
         private:
 
-            auto make_taskable() -> std::shared_ptr<concurrency_task::TaskInterface<generic_matrix_factory::ExternalGenericMatrixResource>>
+            auto make_taskable(const RunWorkOrder& run_work_order) -> std::unique_ptr<concurrency_task::TaskInterface<generic_matrix_factory::ExternalGenericMatrixResource>>
             {
-                return std::make_unique<InternalResolutor>(this->resource);
+                return std::make_unique<InternalResolutor>(run_work_order);
             }
 
             class InternalResolutor: public virtual concurrency_task::TaskInterface<generic_matrix_factory::ExternalGenericMatrixResource>
             {
                 private:
 
-                    Resource resource;
+                    RunWorkOrder work_order;
 
                 public:
 
-                    InternalResolutor(Resource resource_arg)
-                    {
-                        if (!resource_arg.data_loader_config_vec.has_value())
-                        {
-                            throw other_invalid_argument("bad datasource config, null config");
-                        }
-
-                        if (!resource_arg.remote_vec.has_value())
-                        {
-                            throw other_invalid_argument("bad url vec, null vec");
-                        }
-
-                        if (!resource_arg.matrix_resource.has_value())
-                        {
-                            throw other_invalid_argument("bad matrix resource config, null config");
-                        }
-
-                        if (!resource_arg.matrix_deviation_wrapper_config.has_value())
-                        {
-                            throw other_invalid_argument("bad matrix deviation wrapper config, null config");
-                        }
-
-                        if (!resource_arg.optimizer_config.has_value())
-                        {
-                            throw other_invalid_argument("bad optimizer config, null config");
-                        }
-
-                        this->resource  = std::move(resource_arg);
-                    }
+                    InternalResolutor(const RunWorkOrder& work_order): work_order(work_order){}
 
                     auto run(common_exception::CancellationTokenInterface& cancellation_token) -> generic_matrix_factory::ExternalGenericMatrixResource
                     {
+                        std::vector<std::unique_ptr<deviation_projection_client::APIClient>> client_vec{};
+
+                        for (const auto& remote: this->get_remote_vec())
+                        {
+                            client_vec.push_back(std::make_unique<deviation_projection_client::APIClient>(remote));
+                        }
+
+                        deviation_projection_ingestion_aid::ClientTrainingDataPiecewiseIngestor ingestor{};
+
+                        for (size_t i = 0u; i < this->work_order.pull_work_order_vec.size(); ++i)
+                        {
+                            ingestor.add(deviation_projection_ingestion_aid::PiecewiseBuilder{}.worker_remote(this->work_order.pull_work_order_vec[i].worker_remote)
+                                                                                               .client_remote(client_vec[i]->get_remote(), client_vec[i]->get_client_id())
+                                                                                               .data_loader_config(this->work_order.pull_work_order_vec[i].data_loader_config)
+                                                                                               .firer_config(this->work_order.pull_work_order_vec[i].firer_config)
+                                                                                               .build());
+                        }
+
+                        ingestor.run(cancellation_token);
+
                         return {};
-                        // std::vector<std::unique_ptr<deviation_projection_client::APIClient>> client_vec{};
-                        // std::vector<deviation_projection_client::ClientRemote> client_remote_vec{};
-
-                        // for (const auto& remote: this->resource.remote_vec.value())
-                        // {
-                        //     client_vec.push_back(std::make_unique<deviation_projection_client::APIClient>(remote));
-                        //     client_remote_vec.push_back(client_vec.back()->get_client_remote());
-                        // }
-
-                        // deviation_projection_ingestion_aid::ClientTrainingDataIngestor{}.set_client_remote(client_remote_vec)
-                        //                                                                 .set_data_source(this->resource.data_loader_config_vec.value())
-                        //                                                                 .set_cancellation_token(cancellation_token)
-                        //                                                                 .run();
-
                         // std::unique_ptr<matrix_evaluator::MatrixEvaluatorInterface> evaluator  = deviation_projection_matrix_evaluator::DistributedMatrixEvaluatorBuilder{}.set_client_remote(client_remote_vec)
-                        //                                                                                                                                                    .set_matrix_deviation_wrapper(this->resource.matrix_deviation_wrapper_config.value())
-                        //                                                                                                                                                    .build();
+                                                                                                                                                                        //    .set_matrix_deviation_wrapper(this->resource.matrix_deviation_wrapper_config.value())
+                                                                                                                                                                        //    .build();
 
                         // return matrix_optimizer::DistributedOptimizer{}.set_matrix(this->resource.matrix_resource.value())
-                        //                                                .set_evaluator(*evaluator)
-                        //                                                .set_cancellation_token(cancellation_token)
-                        //                                                .set_optimization_config(this->resource.optimizer_config.value())
-                        //                                                .optimize();
+                                                                    //    .set_evaluator(*evaluator)
+                                                                    //    .set_cancellation_token(cancellation_token)
+                                                                    //    .set_optimization_config(this->resource.optimizer_config.value())
+                                                                    //    .optimize();
+                    }
+                
+                private:
+
+                    auto get_remote_vec() -> std::vector<Remote>
+                    {
+                        std::vector<Remote> rs{};
+
+                        for (const auto& pull_wo: this->work_order.pull_work_order_vec)
+                        {
+                            rs.push_back(pull_wo.worker_remote);
+                        }
+
+                        return rs;
                     }
             };
     };
@@ -273,7 +205,7 @@ namespace matrix_optimizer_server
                                                                                                            was_explicitly_destroyed(std::make_unique<std::atomic<bool>>(false)),
                                                                                                            mtx(fair_mutex::make_unique_fair_atomic_flag()){}
 
-            void set_data_source(const std::vector<data_loader::source_loader::multisource_loader::MultisourceLoaderConfig>& config_vec)
+            void run(const RunWorkOrder& work_order)
             {
                 fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*this->mtx);
 
@@ -282,67 +214,7 @@ namespace matrix_optimizer_server
                     throw destroyed_client_box_error{};
                 }
 
-                this->base->set_data_source(config_vec);
-            }
-
-            void set_remote_vector(const std::vector<dg_sock::network_rest_frame::model::Remote>& remote_vec)
-            {
-                fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*this->mtx);
-
-                if (this->was_explicitly_destroyed->load(std::memory_order_relaxed))
-                {
-                    throw destroyed_client_box_error{};
-                }
-
-                this->base->set_remote_vector(remote_vec);
-            }
-
-            void set_matrix_resource(const generic_matrix_factory::ExternalGenericMatrixResource& matrix_resource)
-            {
-                fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*this->mtx);
-
-                if (this->was_explicitly_destroyed->load(std::memory_order_relaxed))
-                {
-                    throw destroyed_client_box_error{};
-                }
-
-                this->base->set_matrix_resource(matrix_resource);
-            }
-
-            void set_matrix_deviation_wrapper(const deviation_projector::MatrixAsDeviationWrapperConfig& config)
-            {
-                fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*this->mtx);
-
-                if (this->was_explicitly_destroyed->load(std::memory_order_relaxed))
-                {
-                    throw destroyed_client_box_error{};
-                }
-
-                this->base->set_matrix_deviation_wrapper(config);
-            }
-
-            void set_optimizer(const matrix_optimizer_subsystem::GenericOptimizerConfig& config)
-            {
-                fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*this->mtx);
-
-                if (this->was_explicitly_destroyed->load(std::memory_order_relaxed))
-                {
-                    throw destroyed_client_box_error{};
-                }
-
-                this->base->set_optimizer(config);
-            }
-
-            void run()
-            {
-                fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*this->mtx);
-
-                if (this->was_explicitly_destroyed->load(std::memory_order_relaxed))
-                {
-                    throw destroyed_client_box_error{};
-                }
-
-                this->base->run();
+                this->base->run(work_order);
             }
 
             auto is_completed() -> bool

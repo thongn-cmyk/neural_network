@@ -21,6 +21,21 @@ namespace matrix_optimizer_subsystem
             (void) reflector;
         }
     };
+
+    struct ExternalGenericOptimizerConfig
+    {
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector) const
+        {
+            (void) reflector;
+        }
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector)
+        {
+            (void) reflector;
+        }
+    };
 }
 
 #endif

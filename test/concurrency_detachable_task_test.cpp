@@ -196,6 +196,7 @@ void run_detach_test()
         std::abort();
     }
 
+    task->interrupt();
     task->detach();
 }
 
