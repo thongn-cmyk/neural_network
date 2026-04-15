@@ -381,6 +381,11 @@ namespace deviation_projection_ingestion_aid_server
                                                                                                            was_explicitly_destroyed(std::make_unique<std::atomic<bool>>(false)),
                                                                                                            mtx(fair_mutex::make_unique_fair_atomic_flag()){}
 
+            ~ConnectionBoundClientBox() noexcept
+            {
+                this->close(false);
+            }
+
             void set_data_source(const data_loader::source_loader::multisource_loader::ExternalMultisourceLoaderConfig& config)
             {
                 fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*this->mtx);

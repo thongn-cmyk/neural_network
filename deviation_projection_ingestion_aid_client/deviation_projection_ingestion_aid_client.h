@@ -35,6 +35,11 @@ namespace deviation_projection_ingestion_aid_client
                 this->client.set_retry_policy(retry_policy);
             }
 
+            void set_cancellation_token(const std::shared_ptr<common_exception::CancellationTokenInterface>& cancellation_token)
+            {
+                this->client.set_cancellation_token(cancellation_token);
+            }
+
             auto open_client_box(const Remote& remote,
                                  const connectivity_subsystem::SlaveConfiguration& connection_config) -> std::shared_ptr<Promise<uint64_t>>
             {
@@ -285,6 +290,16 @@ namespace deviation_projection_ingestion_aid_client
                 this->base.set_retry_policy(retry_policy);
             }
 
+            void set_cancellation_token(const std::shared_ptr<common_exception::CancellationTokenInterface>& cancellation_token)
+            {
+                if (!this->can_operate())
+                {
+                    throw inoperable_client_error{};
+                }
+
+                this->base.set_cancellation_token(cancellation_token);
+            }
+
             auto run(const RunPayload& payload) -> std::shared_ptr<Promise<stdx::fancy_void>>
             {
                 if (!this->can_operate())
@@ -391,6 +406,11 @@ namespace deviation_projection_ingestion_aid_client
             void set_retry_policy(dg_sock::network_rest_frame::client::retry_policy_t retry_policy)
             {
                 this->base.set_retry_policy(retry_policy);
+            }
+
+            void set_cancellation_token(const std::shared_ptr<common_exception::CancellationTokenInterface>& cancellation_token)
+            {
+                this->base.set_cancellation_token(cancellation_token);
             }
 
             auto run(const RunPayload& payload) -> std::shared_ptr<Promise<stdx::fancy_void>>

@@ -83,6 +83,11 @@ namespace deviation_projection_server
                                                                                                            was_explicitly_destroyed(std::make_unique<std::atomic<bool>>(false)),
                                                                                                            mtx(fair_mutex::make_unique_fair_atomic_flag()){}
 
+            ~ConnectionBoundClientBox() noexcept
+            {
+                this->close(false);
+            }
+
             void add_training_data(const std::string& token)
             {
                 fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*this->mtx);

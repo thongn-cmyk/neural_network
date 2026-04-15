@@ -129,6 +129,22 @@ namespace matrix_optimizer_server
                 return std::make_unique<InternalResolutor>(run_work_order);
             }
 
+            class CancellationTokenWrapper: public virtual common_exception::CancellationTokenInterface
+            {
+                private:
+
+                    common_exception::CancellationTokenInterface * base;
+                
+                public:
+
+                    CancellationTokenWrapper(common_exception::CancellationTokenInterface * base): base(stdx::safe_ptr_access(base)){}
+
+                    auto is_canceled() noexcept -> bool
+                    {
+                        return this->base->is_canceled();
+                    }
+            };
+
             class InternalResolutor: public virtual concurrency_task::TaskInterface<generic_matrix_factory::ExternalGenericMatrixResource>
             {
                 private:
@@ -161,16 +177,16 @@ namespace matrix_optimizer_server
 
                         ingestor.run(cancellation_token);
 
-                        return {};
-                        // std::unique_ptr<matrix_evaluator::MatrixEvaluatorInterface> evaluator  = deviation_projection_matrix_evaluator::DistributedMatrixEvaluatorBuilder{}.set_client_remote(client_remote_vec)
-                                                                                                                                                                        //    .set_matrix_deviation_wrapper(this->resource.matrix_deviation_wrapper_config.value())
-                                                                                                                                                                        //    .build();
+                        std::shared_ptr<matrix_evaluator::MatrixEvaluatorInterface> evaluator  = deviation_projection_matrix_evaluator::MatrixEvaluatorBuilder{}.set_client_remote(client_remote_vec)
+                                                                                                                                                                .set_exportable_matrix(this->work_order.matrix)
+                                                                                                                                                                .set_matrix_deviation_wrapper(this->work_order.deviation_config)
+                                                                                                                                                                .set_cancellation_token(std::make_shared<CancellationTokenWrapper>(&cancellation_token))
+                                                                                                                                                                .build();
 
-                        // return matrix_optimizer::DistributedOptimizer{}.set_matrix(this->resource.matrix_resource.value())
-                                                                    //    .set_evaluator(*evaluator)
-                                                                    //    .set_cancellation_token(cancellation_token)
-                                                                    //    .set_optimization_config(this->resource.optimizer_config.value())
-                                                                    //    .optimize();
+                        return matrix_optimizer::Optimizer{}.set_matrix(this->work_order.matrix)
+                                                            .set_evaluator(evaluator)
+                                                            .set_optimization_config(this->work_order.optimizer_config)
+                                                            .optimize(cancellation_token);
                     }
                 
                 private:
@@ -204,6 +220,11 @@ namespace matrix_optimizer_server
                                                                                                            base(std::make_unique<ClientBox>()),
                                                                                                            was_explicitly_destroyed(std::make_unique<std::atomic<bool>>(false)),
                                                                                                            mtx(fair_mutex::make_unique_fair_atomic_flag()){}
+
+            ~ConnectionBoundClientBox() noexcept
+            {
+                this->close(false);
+            }
 
             void run(const RunWorkOrder& work_order)
             {

@@ -16,7 +16,7 @@ namespace matrix_evaluator
 
             virtual ~MatrixEvaluatorInterface() noexcept = default;
 
-            virtual auto get_deviation(matrix_projector::MatrixProjectorInterface& matrix_projector) -> eval_float_t = 0;
+            virtual auto get_deviation(the_matrix::MatrixInterface& matrix) -> eval_float_t = 0;
     };
 }
 

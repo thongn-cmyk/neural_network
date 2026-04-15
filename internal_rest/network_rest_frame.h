@@ -5968,13 +5968,15 @@ namespace dg_sock::network_rest_frame::client
 
             std::optional<retry_policy_t> retry_policy;
             bool is_unique_request;
+            std::shared_ptr<common_exception::CancellationTokenInterface> cancellation_token;
 
             using self = RequestClient;
 
         public:
 
             RequestClient(): retry_policy(std::nullopt),
-                             is_unique_request(false){}
+                             is_unique_request(false),
+                             cancellation_token(nullptr){}
 
             auto set_retry_policy(retry_policy_t retry_policy) -> self&
             {
@@ -5991,6 +5993,13 @@ namespace dg_sock::network_rest_frame::client
                 return *this;
             }
 
+            auto set_cancellation_token(const std::shared_ptr<common_exception::CancellationTokenInterface>& cancellation_token) -> self&
+            {
+                this->cancellation_token = cancellation_token;
+
+                return *this;
+            }
+
             auto request(ClientRequest client_request) -> RequestDispatcher<>
             {
                 auto rs = RequestDispatcher<>{};
@@ -6000,6 +6009,7 @@ namespace dg_sock::network_rest_frame::client
                     rs.set_retry_policy(this->retry_policy.value());
                 }
 
+                rs.set_cancellation_token(this->cancellation_token);
                 rs.set_request(std::move(client_request));
 
                 if (this->is_unique_request)

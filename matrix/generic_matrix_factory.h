@@ -436,24 +436,38 @@ namespace generic_matrix_factory
             };
     };
 
-    using ExternalGenericMatrixResource = std::string;
-
-    class ExternalGenericMatrixLoader
+    struct ExternalGenericMatrixResource
     {
-        private:
+        std::string payload;
 
-            static inline constexpr uint32_t SECRET = 825715422UL;
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector) const
+        {
+            reflector(payload);
+        }
 
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector)
+        {
+            reflector(payload);
+        }
+    };
+
+    class ExternalGenericMatrixFactory
+    {
         public:
 
-            auto virtualize_resource(const GenericMatrixResource& resource) -> ExternalGenericMatrixResource
+            auto to_external(const GenericMatrixResource& resource) -> ExternalGenericMatrixResource
             {
-                return dg::network_compact_serializer::dgstd_serialize<ExternalGenericMatrixResource>(resource, SECRET);
+                return ExternalGenericMatrixResource
+                {
+                    .payload = dg::network_compact_serializer::dgstd_serialize<ExternalGenericMatrixResource>(resource)
+                };
             }
 
-            auto load_resource(const ExternalGenericMatrixResource& resource) -> std::unique_ptr<the_matrix::MatrixInterface>
+            auto to_internal(const ExternalGenericMatrixResource& resource) -> GenericMatrixResource
             {
-                return GenericMatrixLoader{}.load_resource(dg::network_compact_serializer::dgstd_deserialize<GenericMatrixResource>(resource, SECRET));
+                return dg::network_compact_serializer::dgstd_deserialize<GenericMatrixResource>(resource.payload);
             }
     };
 }
