@@ -8,9 +8,24 @@
 #include <serializer/compact_serializer.h>
 #include "matrix_optimizer_engine_interface.h"
 #include <optional>
+#include <matrix/tensor_model.h>
+#include <matrix/the_matrix_interface.h>
+#include <matrix/cached_matrix_projector.h>
+#include <matrix_evaluator/matrix_evaluator_interface.h>
+#include <common_exception/cancellation_token.h>
+#include <common_exception/common_exception.h>
+#include <matrix_steering_subsystem/temporal_coefficient_projector_3.h>
+#include <matrix_steering_subsystem/time_machine_optimizer_2_factory.h>
+#include <matrix_steering_subsystem/cached_time_machine.h>
+#include <general_definition/float_def.h>
+#include <stl_extension/stdx.h>
 
 namespace matrix_optimizer_subsystem
 {
+    using namespace float_def;
+
+    using tensor_std_float_t = tensor_model::tensor_std_float_t;
+
     struct CoordinatedSearchOptimizerEngineConfig
     {
         std::optional<uint64_t> matrix_cache_map_cap;
@@ -87,7 +102,7 @@ namespace matrix_optimizer_subsystem
             size_t optimization_loop_sz;
             size_t coefficient_projector_float_byte_width;
             size_t time_machine_optimizer_float_byte_width;
-            
+
             static inline constexpr size_t DEFAULT_MATRIX_CACHE_MAP_CAPACITY                = size_t{1} << 10;
             static inline constexpr size_t MIN_MATRIX_CACHE_MAP_CAPACITY                    = size_t{1} << 0;
             static inline constexpr size_t MAX_MATRIX_CACHE_MAP_CAPACITY                    = size_t{1} << 14;
@@ -123,6 +138,7 @@ namespace matrix_optimizer_subsystem
                                                                   MIN_TIME_MACHINE_CACHE_MAP_CAPACITY,
                                                                   MAX_TIME_MACHINE_CACHE_MAP_CAPACITY);
                 }
+
                 if (config.optimization_loop_sz.has_value())
                 {
                     this->optimization_loop_sz = config.optimization_loop_sz.value();
@@ -159,7 +175,7 @@ namespace matrix_optimizer_subsystem
                         std::shared_ptr<temporal_coefficient_projector::TemporalCoefficientProjectorInterface> coefficient_projector            = this->get_projector_from(best_matrix->get_coefficient_vector(), projector_container->get());
                         double projection_score                                                                                                 = 0;
 
-                        for (size_t z = 0u; z < this->space_iteration_sz; ++z)
+                        for (size_t z = 0u; z < this->optimization_loop_sz; ++z)
                         {
                             std::shared_ptr<global_optimality_approximator::TimeMachineOptimizerInterface> time_machine_optimizer = time_machine_optimizer_factory->get()->get();
 
@@ -193,7 +209,7 @@ namespace matrix_optimizer_subsystem
                         projector_container->feedback(projection_score);
                     }
 
-                    if (stdx::nan_cmp(product_evaluator->get_deviation(*tmp_matrix), product_evaluator->get_deviation(*best_matrix)) < 0)
+                    if (stdx::nan_cmp(matrix_evaluator.get_deviation(*tmp_matrix), matrix_evaluator.get_deviation(*best_matrix)) < 0)
                     {
                         best_matrix = tmp_matrix;
                     }
@@ -251,7 +267,7 @@ namespace matrix_optimizer_subsystem
                               temporal_coefficient_projector::TemporalCoefficientProjectorInterface& projector,
                               matrix_evaluator::MatrixEvaluatorInterface& deviation_extractor,
                               global_optimality_approximator::TimeMachineOptimizerInterface& time_machine_optimizer,
-                              common_exception::CancellationTokenInterface& cancellation_token)
+                              common_exception::CancellationTokenInterface& cancellation_token) -> std::vector<tensor_std_float_t>
             {
                 if (cancellation_token.is_canceled())
                 {
@@ -259,10 +275,10 @@ namespace matrix_optimizer_subsystem
                 }
 
                 std::shared_ptr<the_matrix::MatrixInterface> tmp_matrix = matrix.clone();
-                CachedMatrix cached_matrix(tmp_matrix, this->cache_map_capacity);
+                CachedMatrix cached_matrix(tmp_matrix, this->matrix_cache_map_cap);
 
                 std::unique_ptr<time_machine::TimeMachineInterface> time_machine = std::make_unique<SpecificMatrixTimeMachine>(&cached_matrix, &projector, &deviation_extractor);
-                time_machine::CachedTimeMachine cached_time_machine(std::move(time_machine), this->time_machine_cache_map_capacity);
+                time_machine::CachedTimeMachine cached_time_machine(std::move(time_machine), this->time_machine_cache_map_cap);
 
                 std_float_t t                       = time_machine_optimizer.optimize(cached_time_machine);
                 std::vector<std_float_t> coeff_vec  = projector.project(t);

@@ -36,7 +36,6 @@ namespace dg_sock::network_compact_serializer
 //alright, we'd test requests today
 //basically we've done everything we could to achieve low latency, we'd need jumbo frames or friends to achieve higher bandwidth
 
-static inline constexpr size_t SERVER_IN_CHANNEL    = 1234;
 static inline constexpr size_t CLIENT_IN_CHANNEL    = 12345;
 static inline constexpr size_t RECV_CHANNEL_MSG_CAP = size_t{1} << 16;
 

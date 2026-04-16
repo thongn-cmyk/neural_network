@@ -461,7 +461,7 @@ namespace generic_matrix_factory
             {
                 return ExternalGenericMatrixResource
                 {
-                    .payload = dg::network_compact_serializer::dgstd_serialize<ExternalGenericMatrixResource>(resource)
+                    .payload = dg::network_compact_serializer::dgstd_serialize<std::string>(resource)
                 };
             }
 

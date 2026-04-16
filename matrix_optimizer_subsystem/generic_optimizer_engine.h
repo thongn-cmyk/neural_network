@@ -5,9 +5,11 @@
 #include <stdlib.h>
 #include <memory>
 #include <string>
-#include "matrix_coordinated_search_optimizer_engine.h"
+#include "coordinated_search_optimizer_engine.h"
 #include <serializer/compact_serializer.h>
 #include "matrix_optimizer_engine_interface.h"
+#include <variant>
+#include <stl_extension/stdx.h>
 
 namespace matrix_optimizer_subsystem
 {
@@ -70,7 +72,7 @@ namespace matrix_optimizer_subsystem
             {
                 if (std::holds_alternative<ExternalCoordinatedSearchOptimizerEngineConfig>(config.config))
                 {
-                    this->base = std::make_unique<MatrixCoordinatedSearchOptimizerEngine>(std::get<ExternalCoordinatedSearchOptimizerEngineConfig>(config.config));
+                    this->base = std::make_unique<CoordinatedSearchOptimizerEngine>(std::get<ExternalCoordinatedSearchOptimizerEngineConfig>(config.config));
                 }
                 else
                 {

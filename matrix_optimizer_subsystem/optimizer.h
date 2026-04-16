@@ -3,6 +3,9 @@
 
 #include <stdint.h>
 #include <stdlib.h>
+#include <matrix/generic_matrix_factory.h>
+#include <matrix_optimizer_subsystem/generic_optimizer_engine.h>
+#include <matrix_evaluator/matrix_evaluator_interface.h>
 
 namespace  matrix_optimizer_subsystem
 {

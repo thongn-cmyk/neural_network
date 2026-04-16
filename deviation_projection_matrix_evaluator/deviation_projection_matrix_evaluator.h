@@ -8,90 +8,31 @@
 #include <deviation_projection_client/deviation_projection_client.h>
 #include <deviation_projector/generic_matrix_wrapper_resource.h>
 #include <common_exception/cancellation_token.h>
+#include <vector>
+#include <matrix/generic_matrix_factory.h>
+#include <general_definition/float_def.h>
+#include <internal_rest/network_rest_frame.h>
+#include <limits.h>
+#include <serializer/compact_serializer.h>
+#include <chrono>
+#include <connectivity_subsystem/connectivity_subsystem.h>
+#include <common_exception/common_exception.h>
 
 namespace deviation_projection_matrix_evaluator
 {
-    class MatrixEvaluator: public virtual matrix_evaluator::MatrixEvaluatorInterface
-    {
-        private:
+    using namespace float_def;
 
-            std::vector<std::unique_ptr<deviation_projection_client::NoOwned_APIClient>> api_client_vec;
-            generic_matrix_factory::ExternalGenericMatrixResource exportable_matrix;
-            deviation_projector::MatrixAsDeviationWrapperConfig matrix_deviation_wrapper_config;
+    template <class T>
+    using Promise = dg_sock::network_rest_frame::client::Promise<T>;
 
-        public:
-
-            MatrixEvaluator(std::vector<std::unique_ptr<deviation_projection_client::NoOwned_APIClient>> api_client_vec,
-                            generic_matrix_factory::ExternalGenericMatrixResource exportable_matrix,
-                            deviation_projector::MatrixAsDeviationWrapperConfig matrix_deviation_wrapper_config) noexcept: api_client_vec(std::move(api_client_vec)),
-                                                                                                                           exportable_matrix(std::move(exportable_matrix)),
-                                                                                                                           matrix_deviation_wrapper_config(std::move(matrix_deviation_wrapper_config)){}
-
-            auto get_deviation(the_matrix::MatrixInterface& matrix) -> eval_float_t
-            {
-                deviation_projector::GenericMatrixDeviationCalculatorResource deviation_resource = this->get_deviation_resource(matrix);
-                std::vector<mdc_float_t> rs = this->get_deviation_from_client_vec(deviation_resource);
-
-                return this->reduce_deviation(rs);
-            }
-
-        private:
-
-            auto get_deviation_resource(the_matrix::MatrixInterface& matrix) -> deviation_projector::GenericMatrixDeviationCalculatorResource
-            {
-                using namespace generic_matrix_factory;
-
-                std::unique_ptr<the_matrix::MatrixInterface> mutable_matrix = GenericMatrixLoader{}.load_resource(ExternalGenericMatrixFactory{}.to_internal(this->exportable_matrix));
-                mutable_matrix->set_coefficient_vector(matrix.get_coefficient_vector());
-                generic_matrix_factory::ExternalGenericMatrixResource deviation_matrix  = ExternalGenericMatrixFactory{}.to_external(GenericMatrixLoader{}.unload(mutable_matrix));
-
-                return deviation_projector::MatrixAsDeviationWrapperFactory{}.wrap(deviation_matrix, this->matrix_deviation_wrapper_config);
-            }
-
-            auto get_deviation_from_client_vec(const deviation_projector::GenericMatrixDeviationCalculatorResource& deviation_resource) -> std::vector<mdc_float_t>
-            {
-                std::vector<std::shared_ptr<Promise<std::vector<mdc_float_t>>>> promise_vec{};
-
-                for (const auto& api_client: this->api_client_vec)
-                {
-                    promise_vec.push_back(api_client->set_and_get_deviation({deviation_resource}));
-                }
-
-                std::vector<mdc_float_t> rs{};
-
-                for (const auto& promise: promise_vec)
-                {
-                    std::vector<mdc_float_t> tmp = promise->wait();
-                    rs.insert(rs.end(), tmp.begin(), tmp.end());
-                }
-
-                return rs;
-            }
-
-            auto reduce_deviation(const std::vector<mdc_float_t>& deviation_vec) -> eval_float_t
-            {
-                if (deviation_vec.size() == 0u)
-                {
-                    return std::numeric_limits<eval_float_t>::quiet_NaN();
-                }
-
-                eval_float_t rs = 0;
-
-                for (const auto& e: deviation_vec)
-                {
-                    rs += e;
-                }
-
-                return rs / static_cast<double>(deviation_vec.size());
-            }
-    };
+    using ClientRemote = deviation_projection_client::ClientRemote;
 
     class MatrixEvaluatorBuilder
     {
         private:
 
             std::optional<std::vector<ClientRemote>> client_remote_vec;
-            std::optional<generic_matrix_factory::ExternalGenericMatrixResource> matrix;
+            std::optional<generic_matrix_factory::ExternalGenericMatrixResource> exportable_matrix;
             std::optional<deviation_projector::ExternalMatrixAsDeviationWrapperConfig> deviation_wrapper_config;
             std::shared_ptr<common_exception::CancellationTokenInterface> cancellation_token;
             dg_sock::network_rest_frame::client::retry_policy_t retry_policy;
@@ -115,10 +56,10 @@ namespace deviation_projection_matrix_evaluator
         public:
 
             MatrixEvaluatorBuilder(): client_remote_vec(std::nullopt),
-                                      matrix(std::nullopt),
+                                      exportable_matrix(std::nullopt),
                                       deviation_wrapper_config(std::nullopt),
                                       cancellation_token(nullptr),
-                                      retry_policy(dg_sock::network_rest_frame::client::RetryMachineFactory<>::EXPONENTIAL_HARD),
+                                      retry_policy(dg_sock::network_rest_frame::client::RequestRetryMachineFactory<>::EXPONENTIAL_HARD),
                                       connection_config(get_default_connection_config()){}
 
             auto set_client_remote(const std::vector<ClientRemote>& client_remote_vec) -> self&
@@ -128,9 +69,9 @@ namespace deviation_projection_matrix_evaluator
                 return *this;
             }
 
-            auto set_exportable_matrix(const generic_matrix_factory::ExternalGenericMatrixResource& matrix)
+            auto set_exportable_matrix(const generic_matrix_factory::ExternalGenericMatrixResource& exportable_matrix)
             {
-                this->matrix = matrix;
+                this->exportable_matrix = exportable_matrix;
 
                 return *this;
             }
@@ -170,9 +111,9 @@ namespace deviation_projection_matrix_evaluator
                     throw std::invalid_argument("bad client remote vec, null");
                 }
 
-                if (!this->matrix.has_value())
+                if (!this->exportable_matrix.has_value())
                 {
-                    throw std::invalid_argument("bad matrix, null");
+                    throw std::invalid_argument("bad exportable matrix, null");
                 }
 
                 if (!this->deviation_wrapper_config.has_value())
@@ -187,7 +128,7 @@ namespace deviation_projection_matrix_evaluator
 
                 std::vector<std::unique_ptr<deviation_projection_client::NoOwned_APIClient>> api_client_vec{};
 
-                for (const auto& client_remote: this->client_remote_vec)
+                for (const auto& client_remote: this->client_remote_vec.value())
                 {
                     std::unique_ptr<deviation_projection_client::NoOwned_APIClient> api_client = std::make_unique<deviation_projection_client::NoOwned_APIClient>(client_remote);
 
@@ -199,9 +140,86 @@ namespace deviation_projection_matrix_evaluator
                 }
 
                 return std::make_unique<MatrixEvaluator>(std::move(api_client_vec),
-                                                         this->matrix.value(),
+                                                         this->exportable_matrix.value(),
                                                          this->deviation_wrapper_config.value());
             }
+
+        private:
+
+            class MatrixEvaluator: public virtual matrix_evaluator::MatrixEvaluatorInterface
+            {
+                private:
+
+                    std::vector<std::unique_ptr<deviation_projection_client::NoOwned_APIClient>> api_client_vec;
+                    generic_matrix_factory::ExternalGenericMatrixResource exportable_matrix;
+                    deviation_projector::ExternalMatrixAsDeviationWrapperConfig matrix_deviation_wrapper_config;
+
+                public:
+
+                    MatrixEvaluator(std::vector<std::unique_ptr<deviation_projection_client::NoOwned_APIClient>> api_client_vec,
+                                    generic_matrix_factory::ExternalGenericMatrixResource exportable_matrix,
+                                    deviation_projector::ExternalMatrixAsDeviationWrapperConfig matrix_deviation_wrapper_config) noexcept: api_client_vec(std::move(api_client_vec)),
+                                                                                                                                           exportable_matrix(std::move(exportable_matrix)),
+                                                                                                                                           matrix_deviation_wrapper_config(std::move(matrix_deviation_wrapper_config)){}
+
+                    auto get_deviation(the_matrix::MatrixInterface& matrix) -> eval_float_t
+                    {
+                        deviation_projector::GenericMatrixDeviationCalculatorResource deviation_resource = this->get_deviation_resource(matrix);
+                        std::vector<mdc_float_t> rs = this->get_deviation_from_client_vec(deviation_resource);
+
+                        return this->reduce_deviation(rs);
+                    }
+
+                private:
+
+                    auto get_deviation_resource(the_matrix::MatrixInterface& matrix) -> deviation_projector::GenericMatrixDeviationCalculatorResource
+                    {
+                        using namespace generic_matrix_factory;
+
+                        std::unique_ptr<the_matrix::MatrixInterface> mutable_matrix = GenericMatrixLoader{}.load_resource(ExternalGenericMatrixFactory{}.to_internal(this->exportable_matrix));
+                        mutable_matrix->set_coefficient_vector(matrix.get_coefficient_vector());
+                        generic_matrix_factory::ExternalGenericMatrixResource deviation_matrix  = ExternalGenericMatrixFactory{}.to_external(GenericMatrixLoader{}.unload(*mutable_matrix));
+
+                        return deviation_projector::MatrixAsDeviationWrapperFactory{}.wrap(deviation_matrix, this->matrix_deviation_wrapper_config);
+                    }
+
+                    auto get_deviation_from_client_vec(const deviation_projector::GenericMatrixDeviationCalculatorResource& deviation_resource) -> std::vector<mdc_float_t>
+                    {
+                        std::vector<std::shared_ptr<Promise<std::vector<mdc_float_t>>>> promise_vec{};
+
+                        for (const auto& api_client: this->api_client_vec)
+                        {
+                            promise_vec.push_back(api_client->set_and_get_deviation({deviation_resource}));
+                        }
+
+                        std::vector<mdc_float_t> rs{};
+
+                        for (const auto& promise: promise_vec)
+                        {
+                            std::vector<mdc_float_t> tmp = promise->wait();
+                            rs.insert(rs.end(), tmp.begin(), tmp.end());
+                        }
+
+                        return rs;
+                    }
+
+                    auto reduce_deviation(const std::vector<mdc_float_t>& deviation_vec) -> eval_float_t
+                    {
+                        if (deviation_vec.size() == 0u)
+                        {
+                            throw std::invalid_argument("bad deviation reduction operation, array size of 0");
+                        }
+
+                        eval_float_t rs = 0;
+
+                        for (const auto& e: deviation_vec)
+                        {
+                            rs += e;
+                        }
+
+                        return rs / static_cast<double>(deviation_vec.size());
+                    }
+            };
     };
 }
 

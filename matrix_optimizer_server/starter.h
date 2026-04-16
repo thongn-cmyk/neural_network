@@ -18,6 +18,7 @@ namespace matrix_optimizer_server
         dg_sock::network_rest_frame::server_instance::hook(OpenClientResolver::RESOLVABLE_PATH, wrap(std::unique_ptr<TypeBasedResolutorInterface<OpenClientRequest, OpenClientResponse>>(std::make_unique<OpenClientResolver>(client_box_manager))));
         dg_sock::network_rest_frame::server_instance::hook(CloseClientResolver::RESOLVABLE_PATH, wrap(std::unique_ptr<TypeBasedResolutorInterface<CloseClientRequest, CloseClientResponse>>(std::make_unique<CloseClientResolver>(client_box_manager))));
         dg_sock::network_rest_frame::server_instance::hook(RunResolver::RESOLVABLE_PATH, wrap(std::unique_ptr<TypeBasedResolutorInterface<RunRequest, RunResponse>>(std::make_unique<RunResolver>(client_box_manager))));
+        dg_sock::network_rest_frame::server_instance::hook(InterruptResolver::RESOLVABLE_PATH, wrap(std::unique_ptr<TypeBasedResolutorInterface<InterruptRequest, InterruptResponse>>(std::make_unique<InterruptResolver>(client_box_manager))));
         dg_sock::network_rest_frame::server_instance::hook(IsCompletedResolver::RESOLVABLE_PATH, wrap(std::unique_ptr<TypeBasedResolutorInterface<IsCompletedRequest, IsCompletedResponse>>(std::make_unique<IsCompletedResolver>(client_box_manager))));
         dg_sock::network_rest_frame::server_instance::hook(GetResultResolver::RESOLVABLE_PATH, wrap(std::unique_ptr<TypeBasedResolutorInterface<GetResultRequest, GetResultResponse>>(std::make_unique<GetResultResolver>(client_box_manager))));
     }
@@ -26,6 +27,7 @@ namespace matrix_optimizer_server
     {
         dg_sock::network_rest_frame::server_instance::unhook(GetResultResolver::RESOLVABLE_PATH);
         dg_sock::network_rest_frame::server_instance::unhook(IsCompletedResolver::RESOLVABLE_PATH);
+        dg_sock::network_rest_frame::server_instance::unhook(InterruptResolutor::RESOLVABLE_PATH);
         dg_sock::network_rest_frame::server_instance::unhook(RunResolver::RESOLVABLE_PATH);
         dg_sock::network_rest_frame::server_instance::unhook(CloseClientResolver::RESOLVABLE_PATH);
         dg_sock::network_rest_frame::server_instance::unhook(OpenClientResolver::RESOLVABLE_PATH);

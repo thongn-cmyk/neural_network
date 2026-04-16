@@ -19,6 +19,7 @@
 #include <request_extension/type_based_resolutor_interface.h>
 #include "local_exception.h"
 #include "model.h"
+#include "client_box.h"
 
 namespace deviation_projection_server
 {

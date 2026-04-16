@@ -1,5 +1,5 @@
-#ifndef __MATRIX_OPTIMIZER_SERVER_MODEL_H__
-#define __MATRIX_OPTIMIZER_SERVER_MODEL_H__
+#ifndef __MATRIX_OPTIMIZER_CLIENT_MODEL_H__
+#define __MATRIX_OPTIMIZER_CLIENT_MODEL_H__
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -14,9 +14,14 @@
 #include <matrix_optimizer_subsystem/generic_optimizer_engine.h>
 #include <fire_bandwidth_control/generic_firer.h>
 
-namespace matrix_optimizer_server
+namespace matrix_optimizer_client
 {
-    using Remote = dg_sock::network_rest_frame::model::Remote;
+    template <class T>
+    using Promise       = dg_sock::network_rest_frame::client::Promise<T>;
+
+    using Remote        = dg_sock::network_rest_frame::model::Remote;
+    using Url           = dg_sock::network_rest_frame::model::Url;
+    using ClientRequest = dg_sock::network_rest_frame::model::ClientRequest;
 
     struct GetVersionRequest
     {
@@ -35,7 +40,7 @@ namespace matrix_optimizer_server
 
     struct GetVersionResponse
     {
-        std::expected<std::string, matrix_optimizer_server::local_exception_t> response;
+        std::expected<std::string, matrix_optimizer_client::local_exception_t> response;
         std::string err_verbal_description;
 
         template <class Reflector>
@@ -70,7 +75,7 @@ namespace matrix_optimizer_server
 
     struct OpenClientResponse
     {
-        std::expected<uint64_t, matrix_optimizer_server::local_exception_t> result;
+        std::expected<uint64_t, matrix_optimizer_client::local_exception_t> result;
         std::string err_verbal_description;
 
         template <class Reflector>
@@ -105,7 +110,7 @@ namespace matrix_optimizer_server
 
     struct CloseClientResponse
     {
-        matrix_optimizer_server::local_exception_t result;
+        matrix_optimizer_client::local_exception_t result;
         std::string err_verbal_description;
 
         template <class Reflector>
@@ -194,7 +199,7 @@ namespace matrix_optimizer_server
 
     struct RunResponse
     {
-        matrix_optimizer_server::local_exception_t result;
+        matrix_optimizer_client::local_exception_t result;
         std::string err_verbal_description;
 
         template <class Reflector>
@@ -229,7 +234,7 @@ namespace matrix_optimizer_server
 
     struct InterruptResponse
     {
-        matrix_optimizer_server::local_exception_t result;
+        matrix_optimizer_client::local_exception_t result;
         std::string err_verbal_description;
 
         template <class Reflector>
@@ -264,7 +269,7 @@ namespace matrix_optimizer_server
 
     struct IsCompletedResponse
     {
-        std::expected<bool, matrix_optimizer_server::local_exception_t> result;
+        std::expected<bool, matrix_optimizer_client::local_exception_t> result;
         std::string err_verbal_description;
 
         template <class Reflector>
@@ -299,7 +304,7 @@ namespace matrix_optimizer_server
 
     struct GetResultResponse
     {
-        std::expected<generic_matrix_factory::ExternalGenericMatrixResource, matrix_optimizer_server::local_exception_t> result;
+        std::expected<generic_matrix_factory::ExternalGenericMatrixResource, matrix_optimizer_client::local_exception_t> result;
         std::string err_verbal_description;
 
         template <class Reflector>
@@ -312,6 +317,24 @@ namespace matrix_optimizer_server
         void dg_reflect(const Reflector& reflector)
         {
             reflector(result, err_verbal_description);
+        }
+    };
+
+    struct ClientRemote
+    {
+        Remote remote;
+        uint64_t client_id;
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector) const
+        {
+            reflector(remote, client_id);
+        }
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector)
+        {
+            reflector(remote, client_id);
         }
     };
 }

@@ -7,6 +7,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <functional>
+#include <chrono>
 
 void run_one_test()
 {

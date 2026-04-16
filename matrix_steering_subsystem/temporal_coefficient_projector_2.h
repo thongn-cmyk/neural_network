@@ -12,6 +12,7 @@
 #include "conventional_randomizer.h"
 #include "space_operation.h"
 #include "temporal_coefficient_projector_2_interface.h"
+#include "temporal_coefficient_projector.h"
 #include "branch_optimizer.h"
 #include "cosine_recommender_machine_x.h"
 

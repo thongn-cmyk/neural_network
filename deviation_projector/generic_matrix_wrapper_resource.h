@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <memory>
+#include "generic_resource.h"
 
 namespace deviation_projector
 {
@@ -35,6 +36,17 @@ namespace deviation_projector
         {
             (void) reflector;
         }
+    };
+
+    class MatrixAsDeviationWrapperFactory
+    {
+        public:
+
+            template <class ...Args>
+            auto wrap(Args&& ...) -> deviation_projector::GenericMatrixDeviationCalculatorResource
+            {
+                return {};
+            }
     };
 }
 

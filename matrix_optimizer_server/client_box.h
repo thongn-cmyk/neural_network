@@ -15,10 +15,11 @@
 // #include <matrix_optimizer_subsystem/matrix_optimizer_subsystem.h>
 #include <mutex_extension/fair_mutex.h>
 #include <deviation_projector/generic_matrix_wrapper_resource.h>
-#include <matrix_optimizer_subsystem/generic_matrix_optimizer.h>
+#include <matrix_optimizer_subsystem/optimizer.h>
 #include <matrix/generic_matrix_factory.h>
 #include <deviation_projection_client/deviation_projection_client.h>
 #include <deviation_projection_ingestion_aid/deviation_projection_ingestion_aid.h>
+#include <deviation_projection_matrix_evaluator/deviation_projection_matrix_evaluator.h>
 
 namespace matrix_optimizer_server
 {
@@ -129,22 +130,6 @@ namespace matrix_optimizer_server
                 return std::make_unique<InternalResolutor>(run_work_order);
             }
 
-            class CancellationTokenWrapper: public virtual common_exception::CancellationTokenInterface
-            {
-                private:
-
-                    common_exception::CancellationTokenInterface * base;
-                
-                public:
-
-                    CancellationTokenWrapper(common_exception::CancellationTokenInterface * base): base(stdx::safe_ptr_access(base)){}
-
-                    auto is_canceled() noexcept -> bool
-                    {
-                        return this->base->is_canceled();
-                    }
-            };
-
             class InternalResolutor: public virtual concurrency_task::TaskInterface<generic_matrix_factory::ExternalGenericMatrixResource>
             {
                 private:
@@ -157,7 +142,40 @@ namespace matrix_optimizer_server
 
                     auto run(common_exception::CancellationTokenInterface& cancellation_token) -> generic_matrix_factory::ExternalGenericMatrixResource
                     {
-                        std::vector<std::unique_ptr<deviation_projection_client::APIClient>> client_vec{};
+                        common_exception::ObjectLifeCancellationTokenStackHolder cancellation_token_holder(cancellation_token);
+
+                        return this->internal_run(cancellation_token_holder.get());
+                    }
+
+                private:
+
+                    auto get_remote_vec() -> std::vector<Remote>
+                    {
+                        std::vector<Remote> rs{};
+
+                        for (const auto& pull_wo: this->work_order.pull_work_order_vec)
+                        {
+                            rs.push_back(pull_wo.worker_remote);
+                        }
+
+                        return rs;
+                    }
+
+                    auto get_client_remote_vec(const std::vector<std::unique_ptr<deviation_projection_client::APIClient>>& client_vec) -> std::vector<deviation_projection_client::ClientRemote>
+                    {
+                        std::vector<deviation_projection_client::ClientRemote> client_remote_vec{};
+
+                        for (const auto& client: client_vec)
+                        {
+                            client_remote_vec.push_back(client->get_client_remote());
+                        }
+
+                        return client_remote_vec;
+                    }
+
+                    auto internal_run(const std::shared_ptr<common_exception::CancellationTokenInterface>& cancellation_token) -> generic_matrix_factory::ExternalGenericMatrixResource
+                    {
+                        std::vector<std::unique_ptr<deviation_projection_client::APIClient>> client_vec = {};
 
                         for (const auto& remote: this->get_remote_vec())
                         {
@@ -175,32 +193,18 @@ namespace matrix_optimizer_server
                                                                                                .build());
                         }
 
-                        ingestor.run(cancellation_token);
+                        ingestor.run(*cancellation_token);
 
-                        std::shared_ptr<matrix_evaluator::MatrixEvaluatorInterface> evaluator  = deviation_projection_matrix_evaluator::MatrixEvaluatorBuilder{}.set_client_remote(client_remote_vec)
+                        std::shared_ptr<matrix_evaluator::MatrixEvaluatorInterface> evaluator  = deviation_projection_matrix_evaluator::MatrixEvaluatorBuilder{}.set_client_remote(this->get_client_remote_vec(client_vec))
                                                                                                                                                                 .set_exportable_matrix(this->work_order.matrix)
                                                                                                                                                                 .set_matrix_deviation_wrapper(this->work_order.deviation_config)
-                                                                                                                                                                .set_cancellation_token(std::make_shared<CancellationTokenWrapper>(&cancellation_token))
+                                                                                                                                                                .set_cancellation_token(cancellation_token)
                                                                                                                                                                 .build();
 
-                        return matrix_optimizer::Optimizer{}.set_matrix(this->work_order.matrix)
-                                                            .set_evaluator(evaluator)
-                                                            .set_optimization_config(this->work_order.optimizer_config)
-                                                            .optimize(cancellation_token);
-                    }
-                
-                private:
-
-                    auto get_remote_vec() -> std::vector<Remote>
-                    {
-                        std::vector<Remote> rs{};
-
-                        for (const auto& pull_wo: this->work_order.pull_work_order_vec)
-                        {
-                            rs.push_back(pull_wo.worker_remote);
-                        }
-
-                        return rs;
+                        return matrix_optimizer_subsystem::Optimizer{}.set_matrix(this->work_order.matrix)
+                                                                      .set_matrix_evaluator(evaluator)
+                                                                      .set_optimization_config(this->work_order.optimizer_config)
+                                                                      .optimize(*cancellation_token);
                     }
             };
     };

@@ -26,7 +26,7 @@ namespace matrix_evaluator
                                         std::unique_ptr<matrix_deviation_calculator::MatrixDeviationCalculatorInterface> deviation_calculator) noexcept: input_output_pair_vec(std::move(input_output_pair_vec)),
                                                                                                                                                          deviation_calculator(std::move(deviation_calculator)){}
 
-            auto get_deviation(matrix_projector::MatrixProjectorInterface& matrix_projector) -> eval_float_t
+            auto get_deviation(the_matrix::MatrixInterface& matrix_projector) -> eval_float_t
             {  
                 std::vector<std::shared_ptr<tensor_model::Matrix>> projecting_vec{};
                 std::vector<std::pair<std::shared_ptr<tensor_model::Matrix>, std::shared_ptr<tensor_model::Matrix>>> result_vec{};
@@ -65,7 +65,7 @@ namespace matrix_evaluator
 
             DoubleBagDeviationExtractor(std::unique_ptr<MatrixEvaluatorInterface> base): base(std::move(base)){}
 
-            auto get_deviation(matrix_projector::MatrixProjectorInterface& matrix_projector) -> eval_float_t
+            auto get_deviation(the_matrix::MatrixInterface& matrix_projector) -> eval_float_t
             {
                 eval_float_t result_1   = this->base->get_deviation(matrix_projector);
                 eval_float_t result_2   = this->base->get_deviation(matrix_projector);

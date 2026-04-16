@@ -55,6 +55,62 @@ namespace common_exception
                 return this->lambda();
             }
     };
+
+    class ObjectLifeCancellationToken: public virtual common_exception::CancellationTokenInterface
+    {
+        private:
+
+            common_exception::CancellationTokenInterface * base;
+            std::atomic<bool> is_out_of_scope;
+
+        public:
+
+            ObjectLifeCancellationToken(common_exception::CancellationTokenInterface& base): base(&base),
+                                                                                             is_out_of_scope(false){}
+
+            auto is_canceled() noexcept -> bool
+            {
+                if (this->is_out_of_scope.load(std::memory_order_relaxed))
+                {
+                    return true;
+                }
+
+                return this->base->is_canceled();
+            }
+
+            void out_scope() noexcept
+            {
+                this->is_out_of_scope.exchange(true, std::memory_order_relaxed);
+            }
+    };
+
+    class ObjectLifeCancellationTokenStackHolder
+    {
+        private:
+
+            std::shared_ptr<ObjectLifeCancellationToken> base;
+
+            using self = ObjectLifeCancellationTokenStackHolder;
+
+        public:
+
+            ObjectLifeCancellationTokenStackHolder(common_exception::CancellationTokenInterface& base): base(std::make_shared<ObjectLifeCancellationToken>(base)){}
+
+            ObjectLifeCancellationTokenStackHolder(const self&) = delete;
+            ObjectLifeCancellationTokenStackHolder(self&&) = delete;
+            auto operator =(const self&) -> self& = delete;
+            auto operator =(self&&) -> self& = delete;
+
+            ~ObjectLifeCancellationTokenStackHolder() noexcept
+            {
+                this->base->out_scope();
+            }
+
+            auto get() -> std::shared_ptr<common_exception::CancellationTokenInterface>
+            {
+                return this->base;
+            }
+    };
 }
 
 #endif

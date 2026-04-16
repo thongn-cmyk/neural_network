@@ -5181,6 +5181,44 @@ namespace dg_sock::network_rest_frame::client
     {
         private:
 
+            class InternalCancellationToken: public virtual common_exception::CancellationTokenInterface
+            {
+                private:
+
+                    std::shared_ptr<common_exception::CancellationTokenInterface> cancellation_token_0;
+                    common_exception::CancellationToken base;
+                
+                public:
+
+                    InternalCancellationToken(std::shared_ptr<common_exception::CancellationTokenInterface> cancellation_token_0): cancellation_token_0(std::move(cancellation_token_0)),
+                                                                                                                                   base(){}
+
+                    auto is_canceled() noexcept -> bool
+                    {
+                        if (this->cancellation_token_0 != nullptr)
+                        {
+                            if (this->cancellation_token_0->is_canceled())
+                            {
+                                return true;
+                            }
+                        }
+
+                        if (this->base.is_canceled())
+                        {
+                            return true;
+                        }
+
+                        return false;
+                    }
+
+                    void cancel() noexcept
+                    {
+                        this->base.cancel();
+                    }
+            };
+
+        private:
+
             struct Bucket
             {
                 std::atomic<bool> complete_status;
@@ -5277,42 +5315,6 @@ namespace dg_sock::network_rest_frame::client
             }
 
         private:
-
-            class InternalCancellationToken: public virtual common_exception::CancellationTokenInterface
-            {
-                private:
-
-                    std::shared_ptr<common_exception::CancellationTokenInterface> cancellation_token_0;
-                    common_exception::CancellationToken base;
-                
-                public:
-
-                    InternalCancellationToken(std::shared_ptr<common_exception::CancellationTokenInterface> cancellation_token_0): cancellation_token_0(std::move(cancellation_token_0)),
-                                                                                                                                   base(){}
-
-                    auto is_canceled() noexcept -> bool
-                    {
-                        if (this->cancellation_token_0 != nullptr)
-                        {
-                            if (this->cancellation_token_0->is_canceled())
-                            {
-                                return true;
-                            }
-                        }
-
-                        if (this->base.is_canceled())
-                        {
-                            return true;
-                        }
-
-                        return false;
-                    }
-
-                    void cancel() noexcept
-                    {
-                        this->base.cancel();
-                    }
-            };
 
             class InternalCoroutine: public virtual coroutine_x::CoroutineableInterface
             {

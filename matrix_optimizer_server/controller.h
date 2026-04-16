@@ -133,6 +133,48 @@ namespace matrix_optimizer_server
             }
     };
 
+    class InterruptResolver: public virtual TypeBasedResolutorInterface<InterruptRequest, InterruptResponse>
+    {
+        private:
+
+            std::shared_ptr<ClientBoxManager> client_box_manager;
+        
+        public:
+
+            static inline constexpr std::string_view RESOLVABLE_PATH = "matrix_optimizer/interrupt";
+
+            InterruptResolver(std::shared_ptr<ClientBoxManager> client_box_manager) noexcept: client_box_manager(std::move(client_box_manager)){}
+
+            auto handle(const InterruptRequest& request) -> InterruptResponse
+            {
+                try
+                {
+                    std::shared_ptr<ConnectionBoundClientBox> client_box = this->client_box_manager->get_client_box(request.client_box_id);
+
+                    if (client_box == nullptr)
+                    {
+                        throw client_box_not_found_error{};
+                    }
+
+                    client_box->interrupt();
+
+                    return InterruptResponse
+                    {
+                        .result = matrix_optimizer_server::SUCCESS,
+                        .err_verbal_description = ""
+                    };
+                }
+                catch (...)
+                {
+                    return InterruptResponse
+                    {
+                        .result = matrix_optimizer_server::to_local_exception_error_code(std::current_exception()),
+                        .err_verbal_description = matrix_optimizer_server::verbose_exception(std::current_exception())
+                    };
+                }
+            }
+    };
+
     class IsCompletedResolver: public virtual TypeBasedResolutorInterface<IsCompletedRequest, IsCompletedResponse>
     {
         private:

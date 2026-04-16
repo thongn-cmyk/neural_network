@@ -93,9 +93,9 @@ namespace deviation_projection_ingestion_aid_client
     static inline constexpr local_exception_t SECOND_RUN_ERROR_CODE             = 5u;
     static inline constexpr local_exception_t INTERRUPTED_RUN_ERROR_CODE        = 6u;
     static inline constexpr local_exception_t INGESTION_IN_PROGRESS_ERROR_CODE  = 7u;
-    static inline constexpr local_exception_t INOPERABLE_CLIENT_ERROR_CODE      = 8u;
-    static inline constexpr local_exception_t OTHER_INVALID_ARGUMENT_CODE       = 9u;
-    static inline constexpr local_exception_t OTHER_RUNTIME_ERROR_CODE          = 10u;
+    static inline constexpr local_exception_t OTHER_INVALID_ARGUMENT_CODE       = 8u;
+    static inline constexpr local_exception_t OTHER_RUNTIME_ERROR_CODE          = 9u;
+    static inline constexpr local_exception_t INOPERABLE_CLIENT_ERROR_CODE      = 10u;
 
     auto to_local_exception_error_code(std::exception_ptr ptr) -> local_exception_t
     {

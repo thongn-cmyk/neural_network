@@ -3,8 +3,8 @@
 #ifndef __MATRIX_EVALUATOR_INTERFACE_H__
 #define __MATRIX_EVALUATOR_INTERFACE_H__
 
-#include "float_def.h"
-#include "matrix_projector_interface.h"
+#include <general_definition/float_def.h>
+#include <matrix/the_matrix_interface.h>
 
 namespace matrix_evaluator
 {

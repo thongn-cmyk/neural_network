@@ -100,7 +100,7 @@ void run_calculation_test()
     common_exception::CancellationToken cancellation_token{};
 
     size_t expected_result  = CalculationTask(SUM_ITERATION_SZ).run(cancellation_token);
-    auto task               = concurrency_task::TaskLauncher{}.launch(std::static_pointer_cast<concurrency_task::TaskInterface<size_t>>(std::make_shared<CalculationTask>(SUM_ITERATION_SZ)));
+    auto task               = concurrency_task::TaskLauncher{}.launch(std::unique_ptr<concurrency_task::TaskInterface<size_t>>(std::make_unique<CalculationTask>(SUM_ITERATION_SZ)));
     size_t actual_result    = task->wait();
 
     if (expected_result != actual_result)
@@ -134,7 +134,7 @@ class InterruptionTask: public virtual concurrency_task::TaskInterface<size_t>
 
 void run_interruption_test()
 {
-    auto task = concurrency_task::TaskLauncher{}.launch(std::static_pointer_cast<concurrency_task::TaskInterface<size_t>>(std::make_shared<InterruptionTask>()));
+    auto task = concurrency_task::TaskLauncher{}.launch(std::unique_ptr<concurrency_task::TaskInterface<size_t>>(std::make_unique<InterruptionTask>()));
 
     try
     {
@@ -163,7 +163,7 @@ void run_is_completed_test()
     common_exception::CancellationToken cancellation_token{};
 
     size_t expected_result  = CalculationTask(SUM_ITERATION_SZ).run(cancellation_token);
-    auto task               = concurrency_task::TaskLauncher{}.launch(std::static_pointer_cast<concurrency_task::TaskInterface<size_t>>(std::make_shared<CalculationTask>(SUM_ITERATION_SZ)));
+    auto task               = concurrency_task::TaskLauncher{}.launch(std::unique_ptr<concurrency_task::TaskInterface<size_t>>(std::make_unique<CalculationTask>(SUM_ITERATION_SZ)));
 
     while (!task->is_completed()){}
 

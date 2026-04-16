@@ -7,11 +7,12 @@
 #include <stdlib.h>
 #include <vector>
 #include <memory>
-#include "tensor_model.h"
-#include "the_matrix_interface.h"
+#include <matrix/tensor_model.h>
+#include <matrix/the_matrix_interface.h>
+#include <matrix_evaluator/matrix_evaluator_interface.h>
 #include <common_exception/cancellation_token.h>
 
-namespace matrix_optimizer
+namespace matrix_optimizer_subsystem
 {
     class MatrixOptimizerEngineInterface
     {

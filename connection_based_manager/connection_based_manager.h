@@ -136,17 +136,21 @@ namespace connection_based_manager
 
                 {
                     fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*this->mtx);
+
                     decltype(this->client_map) new_client_map{};
+                    decltype(this->registered_healthcheckable_set) new_registered_healthcheckable_set{};
 
                     for (const auto& [client_id, client_instance]: this->client_map)
                     {
                         if (!bad_client_id_set.contains(client_id))
                         {
                             new_client_map.insert({client_id, client_instance});
+                            new_registered_healthcheckable_set.insert(reinterpret_cast<uintptr_t>(client_instance.get()));
                         }
                     }
 
                     this->client_map = std::move(new_client_map);
+                    this->registered_healthcheckable_set = std::move(new_registered_healthcheckable_set);
                 }
             }
     };

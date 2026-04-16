@@ -19,8 +19,7 @@
 #include <exception>
 #include <affined_randomizer/affined_randomizer.h>
 #include <logging_subsystem/logging_subsystem.h>
-
-#include <concurrency_detachable_task/detachable_launcher.h>
+#include <concurrency_detachable_task/detachable_task_launcher.h>
 
 namespace deviation_projection_ingestion_aid_server
 {
@@ -96,7 +95,7 @@ namespace deviation_projection_ingestion_aid_server
                     throw second_run_error{};
                 }
 
-                std::shared_ptr<concurrency_task::TaskInterface<bool>> resolutor = std::make_unique<InternalResolutor>(this->resource);
+                std::unique_ptr<concurrency_task::TaskInterface<bool>> resolutor = std::make_unique<InternalResolutor>(this->resource);
 
                 this->task_handle   = concurrency_detachable_task::DetachableTaskLauncher{}.launch(std::move(resolutor));
                 this->was_run_broke = true;
