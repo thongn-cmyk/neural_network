@@ -17,7 +17,7 @@ namespace fire_bandwidth_control::generic_firer
 
     struct GenericFirerConfig
     {
-        std::variant<stdx::reflectible_monostate, fire_bandwidth_control::temporal_firer::TemporalFirerConfig> config;
+        std::variant<stdx::reflectible_monostate, fire_bandwidth_control::temporal_firer::ExternalTemporalFirerConfig> config;
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector) const
@@ -72,9 +72,9 @@ namespace fire_bandwidth_control::generic_firer
 
             GenericFirer(const GenericFirerConfig& config)
             {
-                if (std::holds_alternative<fire_bandwidth_control::temporal_firer::TemporalFirerConfig>(config.config))
+                if (std::holds_alternative<fire_bandwidth_control::temporal_firer::ExternalTemporalFirerConfig>(config.config))
                 {
-                    this->base = std::make_unique<fire_bandwidth_control::temporal_firer::TemporalFirer>(std::get<fire_bandwidth_control::temporal_firer::TemporalFirerConfig>(config.config));
+                    this->base = std::make_unique<fire_bandwidth_control::temporal_firer::TemporalFirer>(std::get<fire_bandwidth_control::temporal_firer::ExternalTemporalFirerConfig>(config.config));
                 }
                 else
                 {

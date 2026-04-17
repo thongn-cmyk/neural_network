@@ -3258,13 +3258,13 @@ namespace dg_sock::network_kernel_mailbox_impl1::packet_controller{
 
                 while (true){
                     if (output_arr_sz == output_arr_cap){
-                        return;
+                        break;
                     }
 
                     std::optional<Packet> nxt = this->pkt_map.get_expired_item(time_bar);
 
                     if (!nxt.has_value()){
-                        return;
+                        break;
                     }
 
                     output_arr[output_arr_sz++] = std::move(nxt.value());

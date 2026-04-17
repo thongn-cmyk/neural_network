@@ -13,6 +13,8 @@
 #include <algorithm>
 #include <utility>
 #include <serializer/compact_serializer.h>
+#include <stl_extension/hasher.h>
+#include <thread>
 
 namespace fire_bandwidth_control::temporal_firer
 {
@@ -110,18 +112,13 @@ namespace fire_bandwidth_control::temporal_firer
             void run(FireableInterface& fireable,
                      common_exception::CancellationTokenInterface& cancellation_token)
             {
-                std::chrono::time_point<std::chrono::steady_clock> window_first = std::chrono::steady_clock::now();
                 auto random_device = std::bind(std::uniform_int_distribution<size_t>{}, std::mt19937_64{this->get_seed()});
+                std::chrono::time_point<std::chrono::steady_clock> window_first = std::chrono::steady_clock::now();
 
                 while (true)
                 {
                     for (size_t i = 0u; i < this->window_population; ++i)
                     {
-                        if (cancellation_token.is_canceled())
-                        {
-                            common_exception::throw_exception(common_exception::OPERATION_CANCELED_ERROR);
-                        }
-
                         if (!fireable.fire_one(cancellation_token))
                         {
                             return;
@@ -131,9 +128,9 @@ namespace fire_bandwidth_control::temporal_firer
                     std::chrono::time_point<std::chrono::steady_clock> window_last = std::chrono::steady_clock::now();
                     std::chrono::nanoseconds lapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(window_last - window_first);
 
-                    if (lapsed < window_dur)
+                    if (lapsed < this->window_dur)
                     {
-                        std::chrono::nanoseconds wait_dur = window_dur - lapsed;
+                        std::chrono::nanoseconds wait_dur = this->window_dur - lapsed;
                         auto random_dur = this->get_random_wait_duration_whose_average(wait_dur * 2u, random_device);
                     
                         std::this_thread::sleep_for(random_dur);

@@ -275,28 +275,24 @@ namespace deviation_projection_client
             bool was_explicitly_closed;
             ClientRemote client_remote;
 
-            static auto default_master_configuration() -> connectivity_subsystem::MasterConfiguration
-            {
-                return connectivity_subsystem::MasterConfiguration
-                {
-                    .connection_timeout_dur         = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::minutes(1)),
-                    .connection_broke_dur           = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(30)),
-                    .abs_timeout_dur                = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::years(1)),
-                    .ping_retry_count               = 3,
-                    .ping_retry_break_dur_exp_s0    = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(10)),
-                    .slave_count                    = 1
-                };
-            }
-
         public:
 
             APIClient(const Remote& remote,
-                      const connectivity_subsystem::MasterConfiguration& config = default_master_configuration()): base()
+                      std::optional<connectivity_subsystem::MasterConfiguration> config = std::nullopt): base()
             {
-                auto tmp_config             = config;
-                tmp_config.slave_count      = 1u;
 
-                std::unique_ptr<connectivity_subsystem::MasterConnection> connection = std::make_unique<connectivity_subsystem::MasterConnection>(tmp_config);
+                std::unique_ptr<connectivity_subsystem::MasterConnection> connection;
+
+                if (config.has_value())
+                {
+                    auto tmp_config             = config.value();
+                    tmp_config.slave_count      = 1u;
+                    connection                  = std::make_unique<connectivity_subsystem::MasterConnection>(tmp_config);
+                }
+                else
+                {
+                    connection                  = std::make_unique<connectivity_subsystem::MasterConnection>();
+                }
 
                 uint64_t client_id          = this->base.open_client_box(remote, connection->get_slave_configuration())->wait();
                 this->connection            = std::move(connection);

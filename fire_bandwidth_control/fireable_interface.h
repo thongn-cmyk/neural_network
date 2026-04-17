@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stdlib.h>
+#include <common_exception/cancellation_token.h>
 
 namespace fire_bandwidth_control::interface
 {

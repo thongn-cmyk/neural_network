@@ -75,7 +75,7 @@ namespace deviation_projection_ingestion_aid_server
         private:
 
             std::shared_ptr<ClientBoxManager> client_box_manager;
-        
+
         public:
 
             static inline constexpr std::string_view RESOLVABLE_PATH = "deviation_projection_ingestion_aid_server/close_client";

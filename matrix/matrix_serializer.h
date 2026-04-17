@@ -10,7 +10,22 @@
 
 namespace matrix_serializer
 {
-    using GenericMatrix = std::string;
+    struct GenericMatrix
+    {
+        std::string payload;
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector) const
+        {
+            reflector(payload);
+        }
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector)
+        {
+            reflector(payload);
+        }
+    };
 
     auto serialize(const std::shared_ptr<tensor_model::Matrix>& matrix) -> GenericMatrix
     {

@@ -111,10 +111,11 @@ namespace concurrency_base::onfly_worker_controller
                 }
 
                 std::shared_ptr<std::thread> task;
+                std::shared_ptr<std::binary_semaphore> smp = std::make_shared<std::binary_semaphore>(0);
 
                 try
                 {
-                    task = this->get_thread_task(std::move(worker));
+                    task = this->get_thread_task(std::move(worker), smp);
                 }
                 catch (...)
                 {
@@ -141,6 +142,8 @@ namespace concurrency_base::onfly_worker_controller
                 {
                     std::abort();
                 }
+
+                smp->release();
 
                 return std::bit_cast<resource_id_t>(task->get_id());
             }
@@ -250,23 +253,33 @@ namespace concurrency_base::onfly_worker_controller
                 private:
 
                     std::unique_ptr<InterruptableWorkerInterface> worker;
+                    std::shared_ptr<std::binary_semaphore> init_smp;
 
                     static inline constexpr size_t CHK_INTERVAL_SZ = size_t{1} << 3;
 
                 public:
  
-                    ThreadRunnableWrapper(std::unique_ptr<InterruptableWorkerInterface>&& worker)
+                    ThreadRunnableWrapper(std::unique_ptr<InterruptableWorkerInterface>&& worker,
+                                          std::shared_ptr<std::binary_semaphore> init_smp)
                     {
                         if (worker == nullptr)
                         {
                             common_exception::throw_exception(common_exception::INVALID_ARGUMENT);
                         }
 
-                        this->worker = std::move(worker);
+                        if (init_smp == nullptr)
+                        {
+                            common_exception::throw_exception(common_exception::INVALID_ARGUMENT);
+                        }
+
+                        this->worker    = std::move(worker);
+                        this->init_smp  = std::move(init_smp);
                     }
 
                     void run(common_exception::CancellationTokenInterface& cancellation_token) noexcept
                     {
+                        this->init_smp->acquire();
+
                         while (true)
                         {
                             if (cancellation_token.is_canceled())
@@ -306,9 +319,11 @@ namespace concurrency_base::onfly_worker_controller
                     }
             };
 
-            auto get_thread_task(std::unique_ptr<InterruptableWorkerInterface>&& worker) -> std::shared_ptr<std::thread>
+            auto get_thread_task(std::unique_ptr<InterruptableWorkerInterface>&& worker,
+                                 std::shared_ptr<std::binary_semaphore> init_smp) -> std::shared_ptr<std::thread>
             {
-                std::shared_ptr<main_service::thread_service::TaskInterface> task = std::make_shared<ThreadRunnableWrapper>(std::move(worker));
+                std::shared_ptr<main_service::thread_service::TaskInterface> task = std::make_shared<ThreadRunnableWrapper>(std::move(worker),
+                                                                                                                            std::move(init_smp));
 
                 try
                 {

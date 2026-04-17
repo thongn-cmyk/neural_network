@@ -30,15 +30,7 @@ namespace deviation_projection_ingestion_aid
 
             static auto get_default_connection_config() -> connectivity_subsystem::MasterConfiguration
             {
-                return connectivity_subsystem::MasterConfiguration
-                {
-                    .connection_timeout_dur         = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::minutes(1)),
-                    .connection_broke_dur           = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(30)),
-                    .abs_timeout_dur                = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::years(1)),
-                    .ping_retry_count               = 3,
-                    .ping_retry_break_dur_exp_s0    = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(10)),
-                    .slave_count                    = 1
-                };
+                return connectivity_subsystem::MasterConnection::default_master_configuration();
             }
 
         public:
@@ -165,17 +157,9 @@ namespace deviation_projection_ingestion_aid
             void run(common_exception::CancellationTokenInterface& cancellation_token)
             {
                 using namespace deviation_projection_ingestion_aid_client;
-
                 using code_section_t = uint8_t;
 
-                constexpr code_section_t IS_COMPLETED_INITIALIZE_CODE_SECTION   = 0u;
-                constexpr code_section_t IS_COMPLETED_CHECK_CODE_SECTION        = 1u;
-                constexpr code_section_t GET_RESULT_INITIALIZE_CODE_SECTION     = 2u;
-                constexpr code_section_t GET_RESULT_CHECK_CODE_SECTION          = 3u;
-
                 std::vector<std::unique_ptr<APIClient>> api_client_vec{};
-                std::vector<std::shared_ptr<Promise<bool>>> is_completed_promise_vec{};
-                std::vector<std::shared_ptr<Promise<stdx::fancy_void>>> get_result_promise_vec{};
 
                 for (const auto& piecewise_argument: this->piecewise_argument_vec)
                 {
@@ -198,100 +182,13 @@ namespace deviation_projection_ingestion_aid
                         common_exception::throw_exception(common_exception::OPERATION_CANCELED_ERROR);
                     }
 
-                    switch (code_section)
+                    std::vector<bool> is_completed_vec  = this->wait_all(this->get_is_completed(api_client_vec));
+                    bool is_completed                   = std::find(rs.begin(), rs.end(), false) == rs.end();
+
+                    if (is_completed)
                     {
-                        case IS_COMPLETED_INITIALIZE_CODE_SECTION:
-                        {
-                            for (const auto& api_client: api_client_vec)
-                            {
-                                is_completed_promise_vec.push_back(api_client->is_completed());
-                            }
-
-                            code_section = IS_COMPLETED_CHECK_CODE_SECTION;
-                            break;
-                        }
-                        case IS_COMPLETED_CHECK_CODE_SECTION:
-                        {
-                            bool is_all_promise_completed = true;
-
-                            for (const auto& promise: is_completed_promise_vec)
-                            {
-                                if (!promise->is_completed())
-                                {
-                                    is_all_promise_completed = false;
-                                    break;
-                                }
-                            }
-
-                            if (!is_all_promise_completed)
-                            {
-                                break;
-                            }
-
-                            bool is_all_completed = true;
-
-                            for (const auto& promise: is_completed_promise_vec)
-                            {
-                                if (!promise->wait())
-                                {
-                                    is_all_completed = false;
-                                    break;
-                                }
-                            }
-
-                            is_completed_promise_vec.clear();
-
-                            if (is_all_completed)
-                            {
-                                code_section = GET_RESULT_INITIALIZE_CODE_SECTION;
-                            }
-                            else
-                            {
-                                code_section = IS_COMPLETED_INITIALIZE_CODE_SECTION;
-                            }
-
-                            break;
-                        }
-                        case GET_RESULT_INITIALIZE_CODE_SECTION:
-                        {
-                            for (const auto& api_client: api_client_vec)
-                            {
-                                get_result_promise_vec.push_back(api_client->get_result());
-                            }
-
-                            code_section = GET_RESULT_CHECK_CODE_SECTION;
-                            break;
-                        }
-                        case GET_RESULT_CHECK_CODE_SECTION:
-                        {
-                            bool is_all_promise_completed = true;
-
-                            for (const auto& promise: get_result_promise_vec)
-                            {
-                                if (!promise->is_completed())
-                                {
-                                    is_all_promise_completed = false;
-                                    break;
-                                }
-                            }
-
-                            if (!is_all_promise_completed)
-                            {
-                                break;
-                            }
-
-                            for (const auto& promise: get_result_promise_vec)
-                            {
-                                promise->wait();
-                            }
-
-                            get_result_promise_vec.clear();
-                            return;
-                        }
-                        default:
-                        {
-                            std::unreachable();
-                        }
+                        this->wait_all(this->get_result(api_client_vec));
+                        return;
                     }
 
                     std::this_thread::sleep_for(this->sleep_dur);
@@ -299,6 +196,43 @@ namespace deviation_projection_ingestion_aid
             }
 
         private:
+
+            template <class T>
+            auto wait_all(const std::vector<std::shared_ptr<Promise<T>>>& promise_vec) -> std::vector<T>
+            {
+                std::vector<T> rs_vec{};
+
+                for (const auto& promise: promise_vec)
+                {
+                    rs_vec.push_back(promise->wait());
+                }
+
+                return rs_vec;
+            }
+
+            auto get_is_completed(const std::vector<std::unique_ptr<APIClient>>& api_client_vec) -> std::vector<std::shared_ptr<Promise<bool>>>
+            {
+                std::vector<std::shared_ptr<Promise<bool>>> rs_vec{};
+
+                for (const auto& api_client: api_client_vec)
+                {
+                    rs_vec.push_back(api_client->is_completed());
+                }
+
+                return rs_vec;
+            }
+
+            auto get_result(const std::vector<std::unique_ptr<APIClient>>& api_client_vec) -> std::vector<std::shared_ptr<Promise<stdx::fancy_void>>>
+            {
+                std::vector<std::shared_ptr<Promise<stdx::fancy_void>>> rs_vec{};
+
+                for (const auto& api_client: api_client_vec)
+                {
+                    rs_vec.push_back(api_client->get_result());
+                }
+
+                return rs_vec;
+            }
 
             auto to_run_payload(const PiecewiseArgument& arg) -> deviation_projection_ingestion_aid_client::RunPayload
             {

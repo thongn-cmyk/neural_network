@@ -602,6 +602,19 @@ namespace connectivity_subsystem
 
         public:
 
+            static auto default_master_configuration() -> connectivity_subsystem::MasterConfiguration
+            {
+                return connectivity_subsystem::MasterConfiguration
+                {
+                    .connection_timeout_dur         = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::minutes(1)),
+                    .connection_broke_dur           = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(30)),
+                    .abs_timeout_dur                = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::years(1)),
+                    .ping_retry_count               = 3,
+                    .ping_retry_break_dur_exp_s0    = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(10)),
+                    .slave_count                    = 1
+                };
+            }
+
             static inline const std::chrono::nanoseconds MIN_CONNECTION_TIMEOUT_DUR         = std::chrono::nanoseconds(0);
             static inline const std::chrono::nanoseconds MAX_CONNECTION_TIMEOUT_DUR         = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::hours(1));
             static inline const std::chrono::nanoseconds MIN_CONNECTION_BROKE_DUR           = std::chrono::nanoseconds(0);
@@ -615,6 +628,8 @@ namespace connectivity_subsystem
             static inline const std::chrono::nanoseconds MAX_PING_RETRY_BREAK_DUR_EXP_S0    = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::hours(1));
             static inline const uint64_t MIN_SLAVE_COUNT                                    = 1u;
             static inline const uint64_t MAX_SLAVE_COUNT                                    = std::numeric_limits<uint64_t>::max(); 
+
+            MasterConnection(): MasterConnection(default_master_configuration()){}
 
             MasterConnection(const MasterConfiguration& config,
                              std::shared_ptr<ConnectionControllerInterface> controller = ConnectionControllerSingleton::get())
@@ -863,6 +878,9 @@ namespace connectivity_subsystem
             std::unique_ptr<fair_mutex::fair_atomic_flag> mtx;
 
         public:
+
+            ThreadSafeMasterConnection(): MasterConnection(),
+                                          mtx(fair_mutex::make_unique_fair_atomic_flag()){}
 
             ThreadSafeMasterConnection(const MasterConfiguration& config,
                                        std::shared_ptr<ConnectionControllerInterface> controller = ConnectionControllerSingleton::get()): MasterConnection(config, controller),

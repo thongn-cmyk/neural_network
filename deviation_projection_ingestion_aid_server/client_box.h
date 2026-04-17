@@ -210,7 +210,7 @@ namespace deviation_projection_ingestion_aid_server
                     bool is_loader_completed;
                     size_t client_offset;
 
-                    static inline constexpr size_t DEFAULT_CONCURRENT_REQUEST_SZ = size_t{1} << 10;
+                    static inline constexpr size_t DEFAULT_CONCURRENT_REQUEST_SZ = size_t{1} << 8;
 
                 public:
 
@@ -228,6 +228,11 @@ namespace deviation_projection_ingestion_aid_server
                             common_exception::throw_exception(common_exception::OPERATION_CANCELED_ERROR);
                         }
 
+                        if (this->api_client_vec->empty())
+                        {
+                            return false;
+                        }
+
                         if (this->is_loader_completed)
                         {
                             this->wait_all_promise_vec();
@@ -240,7 +245,7 @@ namespace deviation_projection_ingestion_aid_server
                             this->promise_vec.pop_front();
                         }
 
-                        std::optional<std::string> nxt_token = this->source_loader->get(cancellation_token); //I would like to actually CPU-wait this operation, and automatic retry performed on our side, because wait() by hardware has 0 latency and we are doing batch operations
+                        std::optional<std::string> nxt_token = this->source_loader->get(cancellation_token);
 
                         if (!nxt_token.has_value())
                         {

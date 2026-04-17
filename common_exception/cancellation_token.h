@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <atomic>
+#include <memory>
 
 namespace common_exception
 {

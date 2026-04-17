@@ -106,6 +106,11 @@ namespace dg_sock::ticket_system
                     return;
                 }
 
+                if (sz == 0u)
+                {
+                    return;
+                }
+
                 std::fill(exception_arr, std::next(exception_arr, sz), dg_sock::network_exception::SUCCESS);
                 std::binary_semaphore smp(0);
 
@@ -135,6 +140,8 @@ namespace dg_sock::ticket_system
                         .smp                = &smp
                     }));
                 }
+
+                //TODOs: we'd need to fix the lags of push|pop here
 
                 //this can wait forever, this is a dangerous operation, because we'd have to make sure that the waiting size is less than that of the operatable size
                 //we'll improvise
@@ -480,7 +487,7 @@ namespace dg_sock::ticket_system
             size_t tentative_consume_sz     = concurrent_request_cap >> 4;
             size_t MIN_CONSUME_SZ           = 1u;
             size_t actual_consume_sz        = std::max(tentative_consume_sz, MIN_CONSUME_SZ);
-            
+
             size_t max_wait_sz              = actual_consume_sz;
             size_t concurrent_request_cap_2 = concurrent_request_cap + max_wait_sz;
 

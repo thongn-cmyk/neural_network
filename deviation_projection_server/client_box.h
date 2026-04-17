@@ -54,6 +54,12 @@ namespace deviation_projection_server
                 }
             }
 
+            //I've been thinking hard about whether to make this sequential, the answer is yes but on a different channel
+            //because this is CPU-bound, not network-bound, so we'd have to process this sequentially, serially (with the aid of cuda and seqpar_async) to make sure
+            //that we are being optimally fair
+
+            //this is given the assumption that the caller constraints themselves into a work-scope and the projection load is reasonable
+
             auto get() -> std::vector<mdc_float_t>
             {
                 std::vector<mdc_float_t> rs_vec{};

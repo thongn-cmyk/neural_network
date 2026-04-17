@@ -42,15 +42,7 @@ namespace deviation_projection_matrix_evaluator
 
             static auto get_default_connection_config() -> connectivity_subsystem::MasterConfiguration
             {
-                return connectivity_subsystem::MasterConfiguration
-                {
-                    .connection_timeout_dur         = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::minutes(1)),
-                    .connection_broke_dur           = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(30)),
-                    .abs_timeout_dur                = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::years(1)),
-                    .ping_retry_count               = 3,
-                    .ping_retry_break_dur_exp_s0    = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(10)),
-                    .slave_count                    = 1
-                };
+                return connectivity_subsystem::MasterConnection::default_master_configuration();
             }
 
         public:
