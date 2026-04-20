@@ -7,7 +7,6 @@
 
 namespace matrix_projection_server
 {
-
     void start_server()
     {
         using namespace request_extension::resolutor;

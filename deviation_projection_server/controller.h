@@ -68,20 +68,12 @@ namespace deviation_projection_server
                         .err_verbal_description = ""
                     };
                 }
-                catch (std::invalid_argument& e)
+                catch (...)
                 {
                     return OpenClientResponse
                     {
-                        .result = std::unexpected(INVALID_ARGUMENT_ERROR_CODE),
-                        .err_verbal_description = std::string(e.what())
-                    };
-                }
-                catch (std::exception& e)
-                {
-                    return OpenClientResponse
-                    {
-                        .result = std::unexpected(RUNTIME_ERROR_CODE),
-                        .err_verbal_description = std::string(e.what())
+                        .result = std::unexpected(to_local_exception_error_code(std::current_exception())),
+                        .err_verbal_description = verbose_exception(std::current_exception())
                     };
                 }
             }
@@ -125,44 +117,30 @@ namespace deviation_projection_server
 
             auto handle(const AddTrainingDataRequest& request) -> AddTrainingDataResponse
             {
-                std::shared_ptr<ConnectionBoundClientBox> client_box = this->client_manager->get_client_box(request.client_id);
+                try
+                {
+                    std::shared_ptr<ConnectionBoundClientBox> client_box = this->client_manager->get_client_box(request.client_id);
 
-                if (client_box == nullptr)
+                    if (client_box == nullptr)
+                    {
+                        throw client_box_not_found_error{};
+                    }
+
+                    client_box->add_training_data(request.token);
+
+                    return AddTrainingDataResponse
+                    {
+                        .result = SUCCESS,
+                        .err_verbal_description = ""
+                    };
+                }
+                catch (...)
                 {
                     return AddTrainingDataResponse
                     {
-                        .result = CLIENT_NOT_FOUND_ERROR_CODE,
-                        .err_verbal_description = "client not found"
+                        .result = to_local_exception_error_code(std::current_exception()),
+                        .err_verbal_description = verbose_exception(std::current_exception())
                     };
-                }
-                else
-                {
-                    try
-                    {
-                        client_box->add_training_data(request.token);
-
-                        return AddTrainingDataResponse
-                        {
-                            .result = SUCCESS,
-                            .err_verbal_description = ""
-                        };
-                    }
-                    catch (std::invalid_argument& e)
-                    {
-                        return AddTrainingDataResponse
-                        {
-                            .result = INVALID_ARGUMENT_ERROR_CODE,
-                            .err_verbal_description = std::string(e.what())
-                        };
-                    }
-                    catch (std::exception& e)
-                    {
-                        return AddTrainingDataResponse
-                        {
-                            .result = RUNTIME_ERROR_CODE,
-                            .err_verbal_description = std::string(e.what())
-                        };
-                    }
                 }
             }
     };
@@ -181,36 +159,30 @@ namespace deviation_projection_server
 
             auto handle(const ClearTrainingDataRequest& request) -> ClearTrainingDataResponse
             {
-                std::shared_ptr<ConnectionBoundClientBox> client_box = this->client_manager->get_client_box(request.client_id);
+                try
+                {
+                    std::shared_ptr<ConnectionBoundClientBox> client_box = this->client_manager->get_client_box(request.client_id);
 
-                if (client_box == nullptr)
+                    if (client_box == nullptr)
+                    {
+                        throw client_box_not_found_error{};
+                    }
+
+                    client_box->clear_training_data();
+
+                    return ClearTrainingDataResponse
+                    {
+                        .result = SUCCESS,
+                        .err_verbal_description = ""
+                    };
+                }
+                catch (...)
                 {
                     return ClearTrainingDataResponse
                     {
-                        .result = CLIENT_NOT_FOUND_ERROR_CODE,
-                        .err_verbal_description = "client not found"
+                        .result = to_local_exception_error_code(std::current_exception()),
+                        .err_verbal_description = verbose_exception(std::current_exception())
                     };
-                }
-                else
-                {
-                    try
-                    {
-                        client_box->clear_training_data();
-
-                        return ClearTrainingDataResponse
-                        {
-                            .result = SUCCESS,
-                            .err_verbal_description = ""
-                        };
-                    }
-                    catch (std::exception& e)
-                    {
-                        return ClearTrainingDataResponse
-                        {
-                            .result = RUNTIME_ERROR_CODE,
-                            .err_verbal_description = std::string(e.what())
-                        };
-                    }
                 }
             }
     };
@@ -229,44 +201,30 @@ namespace deviation_projection_server
 
             auto handle(const SetMatrixResourceRequest& request) -> SetMatrixResourceResponse
             {
-                std::shared_ptr<ConnectionBoundClientBox> client_box = this->client_manager->get_client_box(request.client_id);
+                try
+                {
+                    std::shared_ptr<ConnectionBoundClientBox> client_box = this->client_manager->get_client_box(request.client_id);
 
-                if (client_box == nullptr)
+                    if (client_box == nullptr)
+                    {
+                        throw client_box_not_found_error{};
+                    }
+
+                    client_box->set_matrix_resource(request.matrix_resource_vec);
+
+                    return SetMatrixResourceResponse
+                    {
+                        .result = SUCCESS,
+                        .err_verbal_description = ""
+                    };
+                }
+                catch (...)
                 {
                     return SetMatrixResourceResponse
                     {
-                        .result = CLIENT_NOT_FOUND_ERROR_CODE,
-                        .err_verbal_description = "client not found"
+                        .result = to_local_exception_error_code(std::current_exception()),
+                        .err_verbal_description = verbose_exception(std::current_exception())
                     };
-                }
-                else
-                {
-                    try
-                    {
-                        client_box->set_matrix_resource(request.matrix_resource_vec);
-
-                        return SetMatrixResourceResponse
-                        {
-                            .result = SUCCESS,
-                            .err_verbal_description = ""
-                        };
-                    }
-                    catch (std::invalid_argument& e)
-                    {
-                        return SetMatrixResourceResponse
-                        {
-                            .result = INVALID_ARGUMENT_ERROR_CODE,
-                            .err_verbal_description = std::string(e.what())
-                        };
-                    }
-                    catch (std::exception& e)
-                    {
-                        return SetMatrixResourceResponse
-                        {
-                            .result = RUNTIME_ERROR_CODE,
-                            .err_verbal_description = std::string(e.what())  
-                        };
-                    }
                 }
             }
     };
@@ -285,42 +243,28 @@ namespace deviation_projection_server
 
             auto handle(const GetDeviationRequest& request) -> GetDeviationResponse
             {
-                std::shared_ptr<ConnectionBoundClientBox> client_box = this->client_manager->get_client_box(request.client_id);
+                try
+                {
+                    std::shared_ptr<ConnectionBoundClientBox> client_box = this->client_manager->get_client_box(request.client_id);
 
-                if (client_box == nullptr)
+                    if (client_box == nullptr)
+                    {
+                        throw client_box_not_found_error{};
+                    }
+
+                    return GetDeviationResponse
+                    {
+                        .result = client_box->get(),
+                        .err_verbal_description = ""
+                    };
+                }
+                catch (...)
                 {
                     return GetDeviationResponse
                     {
-                        .result = std::unexpected(CLIENT_NOT_FOUND_ERROR_CODE),
-                        .err_verbal_description = "client not found"
+                        .result = std::unexpected(to_local_exception_error_code(std::current_exception())),
+                        .err_verbal_description = verbose_exception(std::current_exception())
                     };
-                }
-                else
-                {
-                    try
-                    {
-                        return GetDeviationResponse
-                        {
-                            .result = client_box->get(),
-                            .err_verbal_description = ""
-                        };
-                    }
-                    catch (std::invalid_argument& e)
-                    {
-                        return GetDeviationResponse
-                        {
-                            .result = std::unexpected(INVALID_ARGUMENT_ERROR_CODE),
-                            .err_verbal_description = std::string(e.what())
-                        };
-                    }
-                    catch (std::exception& e)
-                    {
-                        return GetDeviationResponse
-                        {
-                            .result = std::unexpected(RUNTIME_ERROR_CODE),
-                            .err_verbal_description = std::string(e.what())
-                        };
-                    }
                 }
             }
     };
@@ -339,19 +283,15 @@ namespace deviation_projection_server
 
             auto handle(const SetAndGetDeviationRequest& request) -> SetAndGetDeviationResponse
             {
-                std::shared_ptr<ConnectionBoundClientBox> client_box = this->client_manager->get_client_box(request.client_id);
-
-                if (client_box == nullptr)
-                {
-                    return SetAndGetDeviationResponse
-                    {
-                        .result = std::unexpected(CLIENT_NOT_FOUND_ERROR_CODE),
-                        .err_verbal_description = "client not found"
-                    };
-                }
-
                 try
                 {
+                    std::shared_ptr<ConnectionBoundClientBox> client_box = this->client_manager->get_client_box(request.client_id);
+
+                    if (client_box == nullptr)
+                    {
+                        throw client_box_not_found_error{};
+                    }
+
                     client_box->set_matrix_resource(request.matrix_resource_vec);
 
                     return SetAndGetDeviationResponse
@@ -360,20 +300,12 @@ namespace deviation_projection_server
                         .err_verbal_description = ""
                     };
                 }
-                catch (std::invalid_argument& e)
+                catch (...)
                 {
                     return SetAndGetDeviationResponse
                     {
-                        .result = std::unexpected(INVALID_ARGUMENT_ERROR_CODE),
-                        .err_verbal_description = std::string(e.what())
-                    };
-                }
-                catch (std::exception& e)
-                {
-                    return SetAndGetDeviationResponse
-                    {
-                        .result = std::unexpected(RUNTIME_ERROR_CODE),
-                        .err_verbal_description = std::string(e.what())
+                        .result = std::unexpected(to_local_exception_error_code(std::current_exception())),
+                        .err_verbal_description = verbose_exception(std::current_exception())
                     };
                 }
             }

@@ -966,11 +966,11 @@ namespace stdx
         return result_vec;
     }
 
-    template <class ...Args>
-    inline void high_resolution_sleep(std::chrono::duration<Args...> dur)
-    {
-        std::this_thread::sleep_for(dur);
-    }
+    // template <class ...Args>
+    // inline void high_resolution_sleep(std::chrono::duration<Args...> dur)
+    // {
+    //     std::this_thread::sleep_for(dur);
+    // }
 
     template <class T, class Allocator = std::allocator<char>>
     using transparent_vector = std::vector<T, typename std::allocator_traits<Allocator>::template rebind_alloc<T>>;
@@ -1099,6 +1099,25 @@ namespace stdx
             memtransaction_guard& operator =(const memtransaction_guard&) = delete;
             memtransaction_guard& operator =(memtransaction_guard&&) = delete;
     };
+
+    template <class ...Args>
+    void high_resolution_sleep_for(std::chrono::duration<Args...> dur)
+    {
+        constexpr intmax_t MIN_NANO_TICK    = 0;
+        constexpr intmax_t MAX_NANO_TICK    = 999'999'999LL;
+
+        std::chrono::nanoseconds nano_dur   = std::chrono::duration_cast<std::chrono::nanoseconds>(dur);
+
+        intmax_t nano_tick                  = nano_dur.count();
+        intmax_t actual_nano_tick           = std::clamp(nano_tick, MIN_NANO_TICK, MAX_NANO_TICK);
+
+        struct timespec request             = {};
+        request.tv_nsec                     = actual_nano_tick;
+
+        struct timespec remaining;
+
+        clock_nanosleep(CLOCK_MONOTONIC, 0, &request, &remaining);
+    }
 }
 
 #endif

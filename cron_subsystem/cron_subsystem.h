@@ -12,6 +12,7 @@
 #include <type_traits>
 #include <deque>
 #include <concurrency_base/concurrency_base.h>
+#include <algorithm_extension/short_heap.h>
 
 namespace cron_subsystem
 {
@@ -137,6 +138,16 @@ namespace cron_subsystem
             }
     };
 
+    class HighResolutionSleeper: public virtual SleepingMachineInterface
+    {
+        public:
+
+            void sleep_for(std::chrono::nanoseconds dur) noexcept
+            {
+                stdx::high_resolution_sleep_for(dur);
+            }
+    };
+
     class PeriodicUpdateWorker: public virtual concurrency_base::WorkerInterface
     {
         private:
@@ -214,7 +225,7 @@ namespace cron_subsystem
                 PeriodicCronJob base_job;
                 std::chrono::time_point<std::chrono::system_clock> expiry;
             };
-
+ 
             std::vector<CronBucket> periodic_cron_bucket_vec;
             std::deque<WaitBucket> wait_bucket_vec;
             bool was_poisoned;
@@ -222,12 +233,12 @@ namespace cron_subsystem
             
             auto get_periodic_cron_bucket_comparator()
             {
-                auto greater = [](const CronBucket& lhs, const CronBucket& rhs)
+                auto cmp_func = [](const CronBucket& lhs, const CronBucket& rhs)
                 {
-                    return lhs.expiry > rhs.expiry;
+                    return lhs.expiry <= rhs.expiry;
                 };
 
-                return greater;
+                return cmp_func;
             }
 
         public:
@@ -274,7 +285,7 @@ namespace cron_subsystem
                     std::abort();
                 }
 
-                std::push_heap(this->periodic_cron_bucket_vec.begin(), this->periodic_cron_bucket_vec.end(), this->get_periodic_cron_bucket_comparator());
+                algorithm_extension::push_heap(this->periodic_cron_bucket_vec.begin(), this->periodic_cron_bucket_vec.end(), this->get_periodic_cron_bucket_comparator());
             }
 
             auto pop() noexcept -> PeriodicCronJob
@@ -299,7 +310,7 @@ namespace cron_subsystem
                         if (this->periodic_cron_bucket_vec.front().expiry < std::chrono::system_clock::now())
                         {
                             auto item = std::move(this->periodic_cron_bucket_vec.front().base_job);
-                            std::pop_heap(this->periodic_cron_bucket_vec.begin(), this->periodic_cron_bucket_vec.end(), this->get_periodic_cron_bucket_comparator());
+                            algorithm_extension::pop_heap(this->periodic_cron_bucket_vec.begin(), this->periodic_cron_bucket_vec.end(), this->get_periodic_cron_bucket_comparator());
                             this->periodic_cron_bucket_vec.pop_back();
 
                             return item;
@@ -353,7 +364,7 @@ namespace cron_subsystem
                     this->wait_bucket_vec.pop_front();
                     auto fetchable  = std::move(this->periodic_cron_bucket_vec.front().base_job);
 
-                    std::pop_heap(this->periodic_cron_bucket_vec.begin(), this->periodic_cron_bucket_vec.end(), this->get_periodic_cron_bucket_comparator());
+                    algorithm_extension::pop_heap(this->periodic_cron_bucket_vec.begin(), this->periodic_cron_bucket_vec.end(), this->get_periodic_cron_bucket_comparator());
                     this->periodic_cron_bucket_vec.pop_back();
 
                     *waitable.waiting_addr = std::move(fetchable);
@@ -646,7 +657,7 @@ namespace cron_subsystem
                     return std::make_unique<BusySleeper>();
                 }
 
-                return std::make_unique<StdSleeper>();
+                return std::make_unique<HighResolutionSleeper>();
             }
 
             auto get_shared_daemon_container(const std::vector<std::shared_ptr<void>> daemon_vec) -> std::shared_ptr<void>

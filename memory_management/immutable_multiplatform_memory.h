@@ -10,6 +10,7 @@
 #include <chrono>
 #include <random>
 #include <memory>
+#include <algorithm_extension/short_heap.h>
 
 namespace immutable_multiplatform_memory
 {
@@ -458,12 +459,12 @@ namespace immutable_multiplatform_memory
 
             auto get_lifetime_bucket_comparator()
             {
-                auto greater = [](const std::unique_ptr<LifetimeBucket>& lhs, const std::unique_ptr<LifetimeBucket>& rhs)
+                auto cmp_func = [](const std::unique_ptr<LifetimeBucket>& lhs, const std::unique_ptr<LifetimeBucket>& rhs)
                 {
-                    return lhs->expiry > rhs->expiry;
+                    return lhs->expiry <= rhs->expiry;
                 };
 
-                return greater;
+                return cmp_func;
             }
 
         public:
@@ -495,7 +496,7 @@ namespace immutable_multiplatform_memory
                     );
 
                     LifetimeBucket * bucket_reference = this->lifetime_bucket_vec.back().get();
-                    std::push_heap(this->lifetime_bucket_vec.begin(), this->lifetime_bucket_vec.end(), this->get_lifetime_bucket_comparator());
+                    algorithm_extension::push_heap(this->lifetime_bucket_vec.begin(), this->lifetime_bucket_vec.end(), this->get_lifetime_bucket_comparator());
 
                     try
                     {
@@ -535,7 +536,7 @@ namespace immutable_multiplatform_memory
                         uintptr_t reference_addr = reinterpret_cast<uintptr_t>(this->lifetime_bucket_vec.front()->immutable_reference.get());
                         this->reverse_map.erase(reference_addr);
 
-                        std::pop_heap(this->lifetime_bucket_vec.begin(), this->lifetime_bucket_vec.end(), this->get_lifetime_bucket_comparator());
+                        algorithm_extension::pop_heap(this->lifetime_bucket_vec.begin(), this->lifetime_bucket_vec.end(), this->get_lifetime_bucket_comparator());
                         auto loose_bucket = std::move(this->lifetime_bucket_vec.back());
                         this->lifetime_bucket_vec.pop_back();
                         result.push_back(std::move(loose_bucket->immutable_reference));

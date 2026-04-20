@@ -20,7 +20,8 @@ namespace deviation_projection_ingestion_aid_client
                     .remote_addr    = remote.addr,
                     .resource_addr  = dg_sock::string(resource_addr),
                     .channel        = remote.channel
-                };            }
+                };
+            }
 
             static auto get_close_client_box_url(const Remote& remote) -> Url
             {

@@ -3230,13 +3230,13 @@ namespace dg_sock::network_rest_frame::client_impl1
     {
         private:
 
-            dg_sock::pow2_cyclic_queue<dg_sock::vector<model::InternalRequest>> producer_queue;
+            dg_sock::deque<dg_sock::vector<model::InternalRequest>> producer_queue;
             dg_sock::pow2_cyclic_queue<std::pair<std::binary_semaphore *, std::optional<dg_sock::vector<model::InternalRequest>> *>> waiting_queue;
             std::unique_ptr<stdxx::fair_atomic_flag> mtx;
-        
+
         public:
 
-            NonBlockingRequestContainer(dg_sock::pow2_cyclic_queue<dg_sock::vector<model::InternalRequest>> producer_queue,
+            NonBlockingRequestContainer(dg_sock::deque<dg_sock::vector<model::InternalRequest>> producer_queue,
                                         dg_sock::pow2_cyclic_queue<std::pair<std::binary_semaphore *, std::optional<dg_sock::vector<model::InternalRequest>> *>> waiting_queue,
                                         std::unique_ptr<stdxx::fair_atomic_flag> mtx) noexcept: producer_queue(std::move(producer_queue)),
                                                                                                 waiting_queue(std::move(waiting_queue)),
@@ -3257,12 +3257,7 @@ namespace dg_sock::network_rest_frame::client_impl1
                     return dg_sock::network_exception::SUCCESS;
                 }
 
-                if (this->producer_queue.size() == this->producer_queue.capacity())
-                {
-                    return dg_sock::network_exception::QUEUE_FULL;
-                }
-
-                dg_sock::network_exception_handler::nothrow_log(this->producer_queue.push_back(std::move(request)));
+                this->producer_queue.push_back(std::move(request));
 
                 return dg_sock::network_exception::SUCCESS;
             }
@@ -4527,23 +4522,10 @@ namespace dg_sock::network_rest_frame::client_impl1
     {
         public:
 
-            static auto get_non_blocking_request_container(size_t queue_cap,
-                                                           size_t recv_concurrency_queue_sz) -> std::unique_ptr<RequestContainerInterface>
+            static auto get_non_blocking_request_container(size_t recv_concurrency_queue_sz) -> std::unique_ptr<RequestContainerInterface>
             {
-                const size_t MIN_QUEUE_CAP                  = 1u;
-                const size_t MAX_QUEUE_CAP                  = size_t{1} << 30;
                 const size_t MIN_RECV_CONCURRENCY_QUEUE_SZ  = 1u;
                 const size_t MAX_RECV_CONCURRENCY_QUEUE_SZ  = size_t{1} << 30;
-
-                if (std::clamp(queue_cap, MIN_QUEUE_CAP, MAX_QUEUE_CAP) != queue_cap)
-                {
-                    dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
-                }
-
-                if (!stdxx::is_pow2(queue_cap))
-                {
-                    dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
-                }
 
                 if (std::clamp(recv_concurrency_queue_sz, MIN_RECV_CONCURRENCY_QUEUE_SZ, MAX_RECV_CONCURRENCY_QUEUE_SZ) != recv_concurrency_queue_sz)
                 {
@@ -4555,7 +4537,7 @@ namespace dg_sock::network_rest_frame::client_impl1
                     dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
                 }
 
-                return std::make_unique<NonBlockingRequestContainer>(dg_sock::pow2_cyclic_queue<dg_sock::vector<model::InternalRequest>>(stdxx::ulog2(queue_cap)),
+                return std::make_unique<NonBlockingRequestContainer>(dg_sock::deque<dg_sock::vector<model::InternalRequest>>(),
                                                                      dg_sock::pow2_cyclic_queue<std::pair<std::binary_semaphore *, std::optional<dg_sock::vector<model::InternalRequest>> *>>(stdxx::ulog2(recv_concurrency_queue_sz)),
                                                                      stdxx::make_unique_fair_atomic_flag());
             }
@@ -4807,7 +4789,7 @@ namespace dg_sock::network_rest_frame::client_instance
                                outbound_worker_sz(DEFAULT_OUTBOUND_WORKER_SZ),
                                inbound_worker_sz(DEFAULT_INBOUND_WORKER_SZ),
                                expiry_worker_sz(DEFAULT_EXPIRY_WORKER_SZ),
-                               is_wait_request(true){}
+                               is_wait_request(false){}
 
             auto set_wait_request() -> SolutionBuilder&
             {
@@ -4976,8 +4958,7 @@ namespace dg_sock::network_rest_frame::client_instance
                                                                                  stdxx::ceil2(this->system_thread_count));
                 }
 
-                return client_impl1::ComponentFactory::get_non_blocking_request_container(stdxx::ceil2(this->concurrent_request_cap),
-                                                                                          stdxx::ceil2(this->system_thread_count));
+                return client_impl1::ComponentFactory::get_non_blocking_request_container(stdxx::ceil2(this->system_thread_count));
 
             }
 

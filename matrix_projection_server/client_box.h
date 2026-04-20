@@ -60,7 +60,7 @@ namespace matrix_projection_server
 
                 if (this->was_explicitly_destroyed->load(std::memory_order_relaxed))
                 {
-                    throw other_runtime_error("invalid operation, closed client box");
+                    throw destroyed_client_box_error{};
                 }
 
                 this->base->set_matrix(matrix_resource);
@@ -72,7 +72,7 @@ namespace matrix_projection_server
 
                 if (this->was_explicitly_destroyed->load(std::memory_order_relaxed))
                 {
-                    throw other_runtime_error("invalid operation, closed client box");
+                    throw destroyed_client_box_error{};
                 }
 
                 return this->base->project(generic_in_matrix);

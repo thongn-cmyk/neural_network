@@ -35,17 +35,13 @@ namespace deviation_projection_ingestion_aid_server
             };
 
             Resource resource;
-            std::shared_ptr<concurrency_detachable_task::DetachableTaskHandleInterface<bool>> task_handle;
-            bool was_run_broke;
-            bool was_wait_broke;
+            std::shared_ptr<concurrency_detachable_task::DetachableTaskHandleInterface<bool>> task;
             bool was_explicitly_destroyed;
 
         public:
 
             ClientBox(): resource(),
-                         task_handle(nullptr),
-                         was_run_broke(false),
-                         was_wait_broke(false),
+                         task(nullptr),
                          was_explicitly_destroyed(false){}
 
             ~ClientBox() noexcept
@@ -90,35 +86,28 @@ namespace deviation_projection_ingestion_aid_server
                     throw destroyed_client_box_error{};
                 }
 
-                if (this->was_run_broke)
+                if (this->task != nullptr)
                 {
                     throw second_run_error{};
                 }
 
                 std::unique_ptr<concurrency_task::TaskInterface<bool>> resolutor = std::make_unique<InternalResolutor>(this->resource);
-
-                this->task_handle   = concurrency_detachable_task::DetachableTaskLauncher{}.launch(std::move(resolutor));
-                this->was_run_broke = true;
+                this->task  = concurrency_detachable_task::DetachableTaskLauncher{}.launch(std::move(resolutor));
             }
 
             auto is_completed() -> bool
             {
-                if (!this->was_run_broke)
-                {
-                    throw run_not_invoked_error{};
-                }
-
                 if (this->was_explicitly_destroyed)
                 {
                     return true;
                 }
 
-                if (this->task_handle == nullptr)
+                if (this->task == nullptr)
                 {
-                    std::abort();
+                    throw run_not_invoked_error{};
                 }
 
-                return this->task_handle->is_completed();
+                return this->task->is_completed();
             }
 
             void interrupt() noexcept
@@ -128,12 +117,12 @@ namespace deviation_projection_ingestion_aid_server
                     return;
                 }
 
-                if (this->task_handle == nullptr)
+                if (this->task == nullptr)
                 {
                     return;
                 }
 
-                this->task_handle->interrupt();
+                this->task->interrupt();
             }
 
             void wait()
@@ -143,22 +132,12 @@ namespace deviation_projection_ingestion_aid_server
                     throw destroyed_client_box_error{};
                 }
 
-                if (!this->was_run_broke)
+                if (this->task == nullptr)
                 {
                     throw run_not_invoked_error{};
                 }
 
-                if (std::exchange(this->was_wait_broke, true))
-                {
-                    throw second_wait_error{};
-                }
-
-                if (this->task_handle == nullptr)
-                {
-                    std::abort();
-                }
-
-                bool rs = this->task_handle->wait();
+                bool rs = this->task->wait();
 
                 if (!rs)
                 {
@@ -173,26 +152,15 @@ namespace deviation_projection_ingestion_aid_server
                     return;
                 }
 
-                if (!this->was_run_broke)
+                if (this->task != nullptr)
                 {
-                    return;
-                }
-
-                if (!this->was_wait_broke)
-                {
-                    if (this->task_handle == nullptr)
-                    {
-                        std::abort();
-                    }
-
                     if (hard_close)
                     {
-                        this->task_handle = nullptr;
+                        this->task = nullptr;
                     }
                     else
                     {
-                        this->task_handle->interrupt();
-                        this->task_handle->detach();
+                        this->task->detach();
                     }
                 }
             }
@@ -340,6 +308,7 @@ namespace deviation_projection_ingestion_aid_server
                     auto run(common_exception::CancellationTokenInterface& cancellation_token) -> bool
                     {
                         this->internal_run(cancellation_token);
+
                         return true;
                     }
 

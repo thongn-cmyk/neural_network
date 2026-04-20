@@ -65,8 +65,8 @@ namespace concurrency_detachable_task
                 }
 
                 //I just think that interrupt should be here because the otherwise is a no-no
-                //this->base->interrupt();
 
+                this->base->interrupt();
                 resource_disposer::dispose(std::make_unique<resource_disposer::DisposableWrapper<decltype(this->base)>>(std::move(this->base)));
                 this->base = nullptr;
             }

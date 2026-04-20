@@ -568,7 +568,7 @@ namespace stdxx
         inplace_hdi_container(const std::in_place_t, Args&& ...args) noexcept(std::is_nothrow_constructible_v<T, Args&&...>): value(std::forward<Args>(args)...){}
     };
 
-    void high_resolution_sleep(std::chrono::nanoseconds dur) noexcept
+    void high_resolution_sleep_for(std::chrono::nanoseconds dur) noexcept
     {
         std::this_thread::sleep_for(dur);
     }

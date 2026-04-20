@@ -118,7 +118,6 @@ namespace matrix_optimizer_server
                 }
                 else
                 {
-                    this->task->interrupt();
                     this->task->detach();
                 }
             }

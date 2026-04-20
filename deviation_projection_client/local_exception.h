@@ -13,12 +13,23 @@ namespace deviation_projection_client
     using local_exception_t = uint8_t;
 
     static inline constexpr local_exception_t SUCCESS                               = 0u;
-    static inline constexpr local_exception_t SERVER_INVALID_ARGUMENT_ERROR_CODE    = 1u;
-    static inline constexpr local_exception_t SERVER_RUNTIME_ERROR_CODE             = 2u;
-    static inline constexpr local_exception_t CLIENT_NOT_FOUND_ERROR_CODE           = 3u;
-    static inline constexpr local_exception_t INOPERABLE_CLIENT_ERROR_CODE          = 4u;
+    static inline constexpr local_exception_t DESTROYED_CLIENT_BOX_ERROR_CODE       = 1u;
+    static inline constexpr local_exception_t CLIENT_BOX_NOT_FOUND_ERROR_CODE       = 2u;
+    static inline constexpr local_exception_t OTHER_INVALID_ARGUMENT_CODE           = 3u;
+    static inline constexpr local_exception_t OTHER_RUNTIME_ERROR_CODE              = 4u;
+    static inline constexpr local_exception_t INOPERABLE_CLIENT_ERROR_CODE          = 5u;
 
-    struct server_invalid_argument: std::invalid_argument
+    struct destroyed_client_box_error: std::invalid_argument
+    {
+        destroyed_client_box_error(): std::invalid_argument("bad client box operation, client box was destroyed"){}
+    };
+
+    struct client_box_not_found_error: std::invalid_argument
+    {
+        client_box_not_found_error(): std::invalid_argument("bad client box, client box not found"){}
+    };
+
+    struct other_invalid_argument: std::invalid_argument
     {
         private:
 
@@ -26,10 +37,8 @@ namespace deviation_projection_client
         
         public:
 
-            server_invalid_argument(std::string_view msg_arg): std::invalid_argument("invalid argument"),
-                                                               msg(msg_arg){}
-
-            server_invalid_argument(): server_invalid_argument("invalid argument"){}
+            other_invalid_argument(std::string_view msg_arg): std::invalid_argument(""),
+                                                              msg(msg_arg){}
 
             virtual auto what() const noexcept -> const char *
             {
@@ -37,7 +46,7 @@ namespace deviation_projection_client
             }
     };
 
-    struct server_runtime_error: std::runtime_error
+    struct other_runtime_error: std::runtime_error
     {
         private:
 
@@ -45,10 +54,8 @@ namespace deviation_projection_client
 
         public:
 
-            server_runtime_error(std::string_view msg_arg): std::runtime_error("runtime error"),
-                                                            msg(msg_arg){}
-
-            server_runtime_error(): server_runtime_error("runtime error"){}
+            other_runtime_error(std::string_view msg_arg): std::runtime_error(""),
+                                                           msg(msg_arg){}
 
             virtual auto what() const noexcept -> const char *
             {
@@ -56,42 +63,9 @@ namespace deviation_projection_client
             }
     };
 
-    struct server_client_not_found_error: std::invalid_argument
+    struct inoperable_client_error: std::invalid_argument
     {
-        private:
-
-            std::string msg;
-        
-        public:
-
-            server_client_not_found_error(std::string_view msg_arg): std::invalid_argument("invalid argument"),
-                                                                     msg(msg_arg){}
-
-            server_client_not_found_error(): server_client_not_found_error("bad client_box, client_box id not found"){}
-
-            virtual auto what() const noexcept -> const char *
-            {
-                return this->msg.c_str();
-            }
-    };
-
-    struct inoperable_client_error: std::runtime_error
-    {
-        private:
-
-            std::string msg;
-
-        public:
-
-            inoperable_client_error(std::string_view msg_arg): std::runtime_error("runtime error"),
-                                                               msg(msg_arg){}
-
-            inoperable_client_error(): inoperable_client_error("corrupted client, client is in inoperatable state"){}
-
-            virtual auto what() const noexcept -> const char *
-            {
-                return this->msg.c_str();
-            }
+        inoperable_client_error(): std::invalid_argument("bad client operation, client in in inoperable state"){}
     };
 
     void throw_error_code(local_exception_t err_code, std::string_view msg_arg)
@@ -102,25 +76,29 @@ namespace deviation_projection_client
             {
                 break;
             }
-            case SERVER_INVALID_ARGUMENT_ERROR_CODE:
+            case DESTROYED_CLIENT_BOX_ERROR_CODE:
             {
-                throw server_invalid_argument(msg_arg);
+                throw destroyed_client_box_error();
             }
-            case SERVER_RUNTIME_ERROR_CODE:
+            case CLIENT_BOX_NOT_FOUND_ERROR_CODE:
             {
-                throw server_runtime_error(msg_arg);
-            }
-            case CLIENT_NOT_FOUND_ERROR_CODE:
-            {
-                throw server_client_not_found_error(msg_arg);
+                throw client_box_not_found_error();
             }
             case INOPERABLE_CLIENT_ERROR_CODE:
             {
-                throw inoperable_client_error(msg_arg);
+                throw inoperable_client_error{};
+            }
+            case OTHER_INVALID_ARGUMENT_CODE:
+            {
+                throw other_invalid_argument(msg_arg);
+            }
+            case OTHER_RUNTIME_ERROR_CODE:
+            {
+                throw other_runtime_error(msg_arg);
             }
             default:
             {
-                throw std::runtime_error("invalid error code");
+                throw other_runtime_error(msg_arg);
             }
         }
     }

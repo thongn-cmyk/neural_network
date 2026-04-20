@@ -17,6 +17,7 @@
 #include <cron_subsystem/cron_subsystem.h>
 #include <concurrency_base/concurrency_base.h>
 #include <common_exception/common_exception.h>
+#include <algorithm_extension/short_heap.h>
 
 namespace coroutine_x
 {
@@ -160,16 +161,16 @@ namespace coroutine_x
 
             auto get_priority_bucket_comparator()
             {
-                auto greater = [](const PriorityBucket& lhs, const PriorityBucket& rhs)
+                auto cmp_func = [](const PriorityBucket& lhs, const PriorityBucket& rhs)
                 {
-                    return lhs.wakeup_time > rhs.wakeup_time;
+                    return lhs.wakeup_time <= rhs.wakeup_time;
                 };
 
-                return greater;
+                return cmp_func;
             }
 
         public:
-            
+
             CoroutineableManager(): coroutineable_vec(),
                                     priority_vec(),
                                     wait_bucket_vec(),
@@ -216,7 +217,7 @@ namespace coroutine_x
                         }
                     );
 
-                    std::push_heap(this->priority_vec.begin(), this->priority_vec.end(), this->get_priority_bucket_comparator());
+                    algorithm_extension::push_heap(this->priority_vec.begin(), this->priority_vec.end(), this->get_priority_bucket_comparator());
                 }
             }
 
@@ -280,7 +281,7 @@ namespace coroutine_x
                     }
 
                     std::shared_ptr<InternalCoroutineableInterface> item = std::move(this->priority_vec.front().item);
-                    std::pop_heap(this->priority_vec.begin(), this->priority_vec.end(), this->get_priority_bucket_comparator());
+                    algorithm_extension::pop_heap(this->priority_vec.begin(), this->priority_vec.end(), this->get_priority_bucket_comparator());
                     this->priority_vec.pop_back();
 
                     if (!this->wait_bucket_vec.empty())

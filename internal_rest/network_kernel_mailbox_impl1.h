@@ -7897,7 +7897,7 @@ namespace dg_sock::network_kernel_mailbox_impl1::worker{
                         dg_sock::network_log_stackdump::error_fast_optional(dg_sock::network_exception::verbose(err));
                     }
 
-                    // stdxx::high_resolution_sleep(transmit_period);
+                    // stdxx::high_resolution_sleep_for(transmit_period);
                 }
             };
     };

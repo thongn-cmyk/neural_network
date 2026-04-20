@@ -13,6 +13,11 @@ namespace matrix_projection_client
 {
     using local_exception_t = uint8_t;
 
+    struct destroyed_client_box_error: std::invalid_argument
+    {
+        destroyed_client_box_error(): std::invalid_argument("bad client box operation, client box was destroyed"){}
+    };
+
     struct client_box_not_found_error: std::invalid_argument
     {
         client_box_not_found_error(): std::invalid_argument("bad client box, client box not found"){}
@@ -44,22 +49,27 @@ namespace matrix_projection_client
         }
     };
 
-    struct inoperable_client_error: std::runtime_error
+    struct inoperable_client_error: std::invalid_argument
     {
-        inoperable_client_error(): std::runtime_error("bad client operation, client is in operable state"){}
+        inoperable_client_error(): std::invalid_argument("bad client operation, client is in operable state"){}
     };
 
     static inline constexpr local_exception_t SUCCESS                           = 0u;
-    static inline constexpr local_exception_t CLIENT_BOX_NOT_FOUND_ERROR_CODE   = 1u;
-    static inline constexpr local_exception_t OTHER_INVALID_ARGUMENT_CODE       = 2u;
-    static inline constexpr local_exception_t OTHER_RUNTIME_ERROR_CODE          = 3u;
-    static inline constexpr local_exception_t INOPERABLE_CLIENT_ERROR_CODE      = 4u;
+    static inline constexpr local_exception_t DESTROYED_CLIENT_BOX_ERROR_CODE   = 1u;
+    static inline constexpr local_exception_t CLIENT_BOX_NOT_FOUND_ERROR_CODE   = 2u;
+    static inline constexpr local_exception_t OTHER_INVALID_ARGUMENT_CODE       = 3u;
+    static inline constexpr local_exception_t OTHER_RUNTIME_ERROR_CODE          = 4u;
+    static inline constexpr local_exception_t INOPERABLE_CLIENT_ERROR_CODE      = 5u;
 
     auto to_local_exception_error_code(std::exception_ptr ptr) -> local_exception_t
     {
         try
         {
             std::rethrow_exception(ptr);
+        }
+        catch (destroyed_client_box_error& e)
+        {
+            return DESTROYED_CLIENT_BOX_ERROR_CODE;
         }
         catch (client_box_not_found_error& e)
         {
@@ -114,6 +124,10 @@ namespace matrix_projection_client
             case SUCCESS:
             {
                 return;
+            }
+            case DESTROYED_CLIENT_BOX_ERROR_CODE:
+            {
+                throw destroyed_client_box_error{};
             }
             case CLIENT_BOX_NOT_FOUND_ERROR_CODE:
             {
