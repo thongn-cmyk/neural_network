@@ -429,10 +429,10 @@ namespace tensor_matrix_operation
             const auto& suffix_arr = (*focal_dictionary)[stdx::access_guard(i, focal_dictionary->size())];
             std::shared_ptr<std::shared_ptr<BeingUnit>[]> rs = std::allocate_shared<std::shared_ptr<BeingUnit>[]>(allocator, matrix_vec[i]->being_vec_sz);
 
-            for (size_t i = 0u; i < matrix_vec[i]->being_vec_sz; ++i)
+            for (size_t j = 0u; j < matrix_vec[i]->being_vec_sz; ++j)
             {
-                size_t suffix   = suffix_arr[stdx::access_guard(i, suffix_arr.size())];
-                rs[i]           = matrix_vec[i]->being_vec[stdx::access_guard(suffix, matrix_vec[i]->being_vec_sz)];
+                size_t suffix   = suffix_arr[stdx::access_guard(j, suffix_arr.size())];
+                rs[j]           = matrix_vec[i]->being_vec[stdx::access_guard(suffix, matrix_vec[i]->being_vec_sz)];
             }
 
             std::shared_ptr<tensor_model::Matrix> org_matrix = std::allocate_shared<tensor_model::Matrix>(allocator,

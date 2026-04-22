@@ -27,7 +27,7 @@ namespace matrix_optimizer_server
     {
         dg_sock::network_rest_frame::server_instance::unhook(GetResultResolver::RESOLVABLE_PATH);
         dg_sock::network_rest_frame::server_instance::unhook(IsCompletedResolver::RESOLVABLE_PATH);
-        dg_sock::network_rest_frame::server_instance::unhook(InterruptResolutor::RESOLVABLE_PATH);
+        dg_sock::network_rest_frame::server_instance::unhook(InterruptResolver::RESOLVABLE_PATH);
         dg_sock::network_rest_frame::server_instance::unhook(RunResolver::RESOLVABLE_PATH);
         dg_sock::network_rest_frame::server_instance::unhook(CloseClientResolver::RESOLVABLE_PATH);
         dg_sock::network_rest_frame::server_instance::unhook(OpenClientResolver::RESOLVABLE_PATH);

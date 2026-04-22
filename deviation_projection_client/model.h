@@ -7,7 +7,7 @@
 #include <expected>
 #include <string>
 #include <connectivity_subsystem/connectivity_subsystem.h>
-#include <deviation_projector/generic_resource.h>
+#include <deviation_projector/generic_matrix_deviation_calculator.h>
 
 namespace deviation_projection_client
 {
@@ -197,7 +197,7 @@ namespace deviation_projection_client
     struct SetMatrixResourceRequest
     {
         uint64_t client_id;
-        std::vector<deviation_projector::GenericMatrixDeviationCalculatorResource> matrix_resource_vec;
+        std::vector<deviation_projector::ExternalGenericMatrixDeviationCalculatorResource> matrix_resource_vec;
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector) const
@@ -268,7 +268,7 @@ namespace deviation_projection_client
     struct SetAndGetDeviationRequest
     {
         uint64_t client_id;
-        std::vector<deviation_projector::GenericMatrixDeviationCalculatorResource> matrix_resource_vec;
+        std::vector<deviation_projector::ExternalGenericMatrixDeviationCalculatorResource> matrix_resource_vec;
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector) const

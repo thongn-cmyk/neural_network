@@ -9,7 +9,7 @@
 #include <memory>
 #include <internal_rest/network_rest_frame.h>
 #include <deviation_projector/generic_matrix_deviation_calculator_interface.h>
-#include <deviation_projector/generic_resource.h>
+#include <deviation_projector/generic_matrix_deviation_calculator.h>
 #include <connectivity_subsystem/connectivity_subsystem.h>
 #include <connection_based_manager/connection_based_manager.h>
 #include <string>

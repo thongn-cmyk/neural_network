@@ -63,7 +63,7 @@ namespace  matrix_optimizer_subsystem
                     throw std::invalid_argument("bad optimizer engine config, null");
                 }
 
-                generic_matrix_factory::GenericMatrixResource internal_resource = generic_matrix_factory::ExternalGenericMatrixFactory{}.to_internal(this->matrix_resource.value());
+                generic_matrix_factory::GenericMatrixResource internal_resource = generic_matrix_factory::GenericMatrixExternalizer{}.to_internal(this->matrix_resource.value());
                 std::unique_ptr<the_matrix::MatrixInterface> matrix             = generic_matrix_factory::GenericMatrixLoader{}.load_resource(internal_resource);
                 std::shared_ptr<the_matrix::MatrixInterface> optimized_matrix   = GenericOptimizerEngine(this->optimizer_engine_config.value()).optimize(*matrix,
                                                                                                                                                          *this->matrix_evaluator,
@@ -71,7 +71,7 @@ namespace  matrix_optimizer_subsystem
 
                 matrix->set_coefficient_vector(optimized_matrix->get_coefficient_vector());
 
-                return generic_matrix_factory::ExternalGenericMatrixFactory{}.to_external(generic_matrix_factory::GenericMatrixLoader{}.unload(*matrix));
+                return generic_matrix_factory::GenericMatrixExternalizer{}.to_external(generic_matrix_factory::GenericMatrixLoader{}.unload(*matrix));
 
             }
     };

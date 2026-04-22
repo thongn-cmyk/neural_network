@@ -453,7 +453,7 @@ namespace generic_matrix_factory
         }
     };
 
-    class ExternalGenericMatrixFactory
+    class GenericMatrixExternalizer
     {
         public:
 

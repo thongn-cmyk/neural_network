@@ -23,6 +23,7 @@
 #include "network_ticket_timeout_manager.h"
 #include <cron_subsystem/cron_subsystem.h>
 #include <common_exception/cancellation_token.h>
+#include <stacktrace>
 
 namespace dg_sock::network_rest_frame::model
 {
@@ -3057,10 +3058,9 @@ namespace dg_sock::network_rest_frame::client_impl1
 
         public:
 
-            BatchRequestResponseBase(size_t resp_sz): atomic_smp(std::in_place_t{}, -static_cast<intmax_t>(stdxx::zero_throw(resp_sz)) + 1),
+            BatchRequestResponseBase(size_t resp_sz): atomic_smp(std::in_place_t{}, 1 - static_cast<intmax_t>(stdxx::zero_throw(resp_sz))),
                                                       resp_vec(stdxx::zero_throw(resp_sz), std::unexpected(dg_sock::network_exception::EXPECTED_NOT_INITIALIZED)),
                                                       is_response_invoked(std::in_place_t{}, false){}
-
 
             auto is_completed() noexcept -> bool
             {
@@ -4429,8 +4429,8 @@ namespace dg_sock::network_rest_frame::client_impl1
 
             static auto internal_make_internal_request(std::move_iterator<model::ClientRequest *> request_arr, ticket_id_t * ticket_id_arr, size_t request_arr_sz) noexcept -> std::expected<dg_sock::vector<model::InternalRequest>, exception_t>
             {
-                model::ClientRequest * base_request_arr                             = request_arr.base();
-                std::expected<dg_sock::vector<model::InternalRequest>, exception_t> rs   = dg_sock::network_exception::cstyle_initialize<dg_sock::vector<model::InternalRequest>>(request_arr_sz);
+                model::ClientRequest * base_request_arr                                 = request_arr.base();
+                std::expected<dg_sock::vector<model::InternalRequest>, exception_t> rs  = dg_sock::network_exception::cstyle_initialize<dg_sock::vector<model::InternalRequest>>(request_arr_sz);
 
                 if (!rs.has_value())
                 {
@@ -4593,7 +4593,7 @@ namespace dg_sock::network_rest_frame::client_impl1
             static auto get_ticket_controller(size_t ticket_cap) -> std::unique_ptr<TicketControllerInterface>
             {
                 const size_t MIN_TICKET_CAP = 1u;
-                const size_t MAX_TICKET_CAP = size_t{1} << 30;
+                const size_t MAX_TICKET_CAP = std::numeric_limits<size_t>::max();
                 const size_t MIN_CONSUME_SZ = 1u;
 
                 if (std::clamp(ticket_cap, MIN_TICKET_CAP, MAX_TICKET_CAP) != ticket_cap)
@@ -4770,7 +4770,7 @@ namespace dg_sock::network_rest_frame::client_instance
             uint64_t expiry_worker_sz;
             bool is_wait_request;
 
-            static inline constexpr size_t DEFAULT_BASE_TICKET_CAP                  = size_t{1} << 16;
+            static inline constexpr size_t DEFAULT_BASE_TICKET_CAP                  = std::numeric_limits<size_t>::max();
             static inline constexpr size_t DEFAULT_TICKET_CONTROLLER_CONCURRENCY_SZ = 1u;
             static inline constexpr size_t DEFAULT_CONCURRENT_REQUEST_CAP           = size_t{1} << 10;
             static inline const std::chrono::nanoseconds DEFAULT_MAX_WAIT_DUR       = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::hours(1));

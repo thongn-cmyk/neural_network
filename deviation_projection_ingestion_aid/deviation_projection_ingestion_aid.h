@@ -157,7 +157,6 @@ namespace deviation_projection_ingestion_aid
             void run(common_exception::CancellationTokenInterface& cancellation_token)
             {
                 using namespace deviation_projection_ingestion_aid_client;
-                using code_section_t = uint8_t;
 
                 std::vector<std::unique_ptr<APIClient>> api_client_vec{};
 
@@ -173,8 +172,6 @@ namespace deviation_projection_ingestion_aid
                     api_client_vec.back()->run(this->to_run_payload(piecewise_argument))->wait();
                 }
 
-                code_section_t code_section = IS_COMPLETED_INITIALIZE_CODE_SECTION;
-
                 while (true)
                 {
                     if (cancellation_token.is_canceled())
@@ -183,7 +180,7 @@ namespace deviation_projection_ingestion_aid
                     }
 
                     std::vector<bool> is_completed_vec  = this->wait_all(this->get_is_completed(api_client_vec));
-                    bool is_completed                   = std::find(rs.begin(), rs.end(), false) == rs.end();
+                    bool is_completed                   = std::find(is_completed_vec.begin(), is_completed_vec.end(), false) == is_completed_vec.end();
 
                     if (is_completed)
                     {
@@ -210,7 +207,7 @@ namespace deviation_projection_ingestion_aid
                 return rs_vec;
             }
 
-            auto get_is_completed(const std::vector<std::unique_ptr<APIClient>>& api_client_vec) -> std::vector<std::shared_ptr<Promise<bool>>>
+            auto get_is_completed(const std::vector<std::unique_ptr<deviation_projection_ingestion_aid_client::APIClient>>& api_client_vec) -> std::vector<std::shared_ptr<Promise<bool>>>
             {
                 std::vector<std::shared_ptr<Promise<bool>>> rs_vec{};
 
@@ -222,7 +219,7 @@ namespace deviation_projection_ingestion_aid
                 return rs_vec;
             }
 
-            auto get_result(const std::vector<std::unique_ptr<APIClient>>& api_client_vec) -> std::vector<std::shared_ptr<Promise<stdx::fancy_void>>>
+            auto get_result(const std::vector<std::unique_ptr<deviation_projection_ingestion_aid_client::APIClient>>& api_client_vec) -> std::vector<std::shared_ptr<Promise<stdx::fancy_void>>>
             {
                 std::vector<std::shared_ptr<Promise<stdx::fancy_void>>> rs_vec{};
 

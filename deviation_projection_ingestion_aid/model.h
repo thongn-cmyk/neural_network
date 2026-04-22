@@ -12,8 +12,12 @@
 
 namespace deviation_projection_ingestion_aid
 {
-    using Remote = dg_sock::network_rest_frame::model::Remote;
-    using ClientRemote = deviation_projection_client::ClientRemote;
+    template <class T>
+    using Promise       = dg_sock::network_rest_frame::client::Promise<T>;
+
+    using Remote        = dg_sock::network_rest_frame::model::Remote;
+    using Url           = dg_sock::network_rest_frame::model::Url;
+    using ClientRemote  = deviation_projection_client::ClientRemote;
 
     struct PiecewiseArgument
     {

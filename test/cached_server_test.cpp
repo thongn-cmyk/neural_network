@@ -32,6 +32,10 @@
 #include <data_loader/hex_encoder/hex_encoder.h>
 #include <main_service/main_service.h>
 #include <deviation_projection_ingestion_aid/deviation_projection_ingestion_aid.h>
+#include <serializer/trivial_serializer.h>
+
+using namespace dg_sock::network_rest_frame::model;
+using ResponseInterface = dg_sock::network_rest_frame::client::ResponseInterface;
 
 static inline constexpr char DELIM_CHAR = ',';
 static inline constexpr char EOR_CHAR   = '\0';
@@ -49,8 +53,6 @@ class IPSiever: public virtual dg_sock::network_kernel_mailbox_impl1::external_i
 static inline constexpr size_t CLIENT_IN_CHANNEL    = 5000;
 static inline constexpr size_t RECV_CHANNEL_MSG_CAP = size_t{1} << 16;
 
-using Remote = dg_sock::network_rest_frame::model::Remote;
-
 void init_concurrency()
 {
     using namespace dg_sock::network_concurrency;
@@ -59,7 +61,7 @@ void init_concurrency()
 
     std::vector<WorkerInformation> worker_info_vec{};
 
-    for (size_t i = 0u; i < 4u; ++i)
+    for (size_t i = 0u; i < 12u; ++i)
     {
         worker_info_vec.push_back(WorkerInformation{.cpu_id = std::nullopt, .daemon = MAILBOX_UNIT_DAEMON});
     }
@@ -187,14 +189,14 @@ void init_mailbox()
 
     auto base_socket_config = dg_sock::network_kernel_mailbox_impl1::Config
     {
-        .num_kernel_inbound_worker = 1,
+        .num_kernel_inbound_worker = 4,
         .num_process_inbound_worker = 1,
-        .num_outbound_worker = 1,
+        .num_outbound_worker = 4,
         .num_kernel_rescue_worker = 0,
         .num_retry_worker = 1,
 
-        .inbound_socket_concurrency_sz = 1,
-        .outbound_socket_concurrency_sz = 1,
+        .inbound_socket_concurrency_sz = 4,
+        .outbound_socket_concurrency_sz = 4,
         .sin_fam = AF_INET,
         .comm = SOCK_DGRAM,
         .protocol = 0,
@@ -450,6 +452,67 @@ void init_rest_client()
     dg_sock::network_rest_frame::client_instance::init(std::move(controller), addr);
 }
 
+class Dictionary
+{
+    private:
+
+        std::unordered_map<dg_sock::string, size_t> counter_map;
+        std::unique_ptr<fair_mutex::fair_atomic_flag> mtx;
+    
+    public:
+
+        Dictionary(): counter_map(),
+                      mtx(fair_mutex::make_unique_fair_atomic_flag()){}
+
+        auto add(const dg_sock::string& e) -> bool
+        {
+            fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*this->mtx);
+
+            this->counter_map[e] += 1;
+            return true;
+        }
+
+        auto get(const dg_sock::string& e) -> size_t
+        {
+            fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*this->mtx);
+
+            return this->counter_map[e];
+        }
+
+        void clear() noexcept
+        {
+            fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*this->mtx);
+
+            this->counter_map.clear();
+        }
+};
+
+class CachedServerTest: public virtual dg_sock::network_rest_frame::server::OneRequestHandlerInterface
+{
+    private:
+
+        std::shared_ptr<Dictionary> dictionary;
+
+    public:
+
+        static inline constexpr std::string_view RESOLVABLE_PATH = "cached_server_test";
+
+        using Request   = dg_sock::network_rest_frame::model::Request;
+        using Response  = dg_sock::network_rest_frame::model::Response;
+
+        CachedServerTest(std::shared_ptr<Dictionary> dictionary): dictionary(std::move(dictionary)){}
+
+        auto handle(const Request& request) -> Response
+        {
+            bool rs = this->dictionary->add(request.payload);
+
+            return Response
+            {
+                .response = dg::network_compact_serializer::dgstd_serialize<dg_sock::string>(rs)
+            };
+        }
+};
+
 void initialize_resource()
 {
     init_basic();
@@ -460,11 +523,11 @@ void initialize_resource()
     std::cout << "initializing connectivity subsystem...\n";
     connectivity_subsystem::init();
 
-    std::cout << "starting deviation projection server...\n";
-    deviation_projection_server::start_server();
+    // std::cout << "starting deviation projection server...\n";
+    // deviation_projection_server::start_server();
 
-    std::cout << "starting deviation projection ingestion aid server...\n";
-    deviation_projection_ingestion_aid_server::start_server();
+    // std::cout << "starting deviation projection ingestion aid server...\n";
+    // deviation_projection_ingestion_aid_server::start_server();
 
     std::cout << "initializing resource disposer...\n";
     resource_disposer::init();
@@ -497,253 +560,6 @@ auto randomize_string(size_t sz) -> std::string
     return rs;
 }
 
-auto generate_random_token() -> std::string
-{
-    size_t STR_SZ_RANGE = size_t{1} << 4;
-
-    return randomize_string(randomize_int(STR_SZ_RANGE));
-}
-
-auto generate_random_token_vec() -> std::vector<std::string>
-{
-    size_t TOKEN_VEC_SZ_RANGE   = size_t{1} << 4;
-    size_t TOKEN_VEC_SZ         = randomize_int(TOKEN_VEC_SZ_RANGE);
-    std::vector<std::string> rs = {};
-
-    for (size_t i = 0u; i < TOKEN_VEC_SZ; ++i)
-    {
-        rs.push_back(generate_random_token());
-    }
-
-    return rs;
-}
-
-auto hex_encode_token(const std::string& inp) -> std::string
-{
-    return data_loader::hex_encoder::hex_encode(inp);
-}
-
-auto hex_decode_token(const std::string& inp) -> std::string
-{
-    return data_loader::hex_encoder::hex_decode(inp);
-}
-
-auto join(const std::vector<std::string>& data, char c) -> std::string
-{
-    if (data.empty())
-    {
-        return {};
-    }
-
-    std::string rs = data[0];
-
-    for (size_t i = 1u; i < data.size(); ++i)
-    {
-        rs += c;
-        rs += data[i];
-    }
-
-    return rs;
-}
-
-auto randomize_delim_config() -> data_loader::stream_reader::DelimitedStreamReaderConfig
-{
-    return
-    {
-        .delim_char     = DELIM_CHAR,
-        .eor_char       = EOR_CHAR,
-        .max_token_sz   = (randomize_int(2) == 0u) ? std::optional<uint64_t>(std::nullopt)
-                                                   : std::optional<uint64_t>(std::numeric_limits<uint64_t>::max())
-    };
-}
-
-auto randomize_external_delim_config() -> data_loader::stream_reader::ExternalDelimitedStreamReaderConfig
-{
-    return data_loader::stream_reader::to_external_delimited_stream_reader_config(randomize_delim_config());
-}
-
-auto randomize_file_loader_config(const std::string& file_path) -> data_loader::file_source::FileLoaderConfig
-{
-    return 
-    {
-        .delim_config               = randomize_external_delim_config(),
-        .local_file_path            = file_path,
-        .read_ahead_buffer_sz_hint  = (randomize_int(2) == 0u) ? std::optional<uint64_t>(std::nullopt)
-                                                               : std::optional<uint64_t>(randomize_int(size_t{1} << 4)),
-        .unit_byte_sz_hint          = (randomize_int(2) == 0u) ? std::optional<uint64_t>(std::nullopt)
-                                                               : std::optional<uint64_t>(randomize_int(size_t{1} << 4))
-    };
-}
-
-auto randomize_external_file_loader_config(const std::string& file_path) -> data_loader::file_source::ExternalFileLoaderConfig
-{
-    return data_loader::file_source::to_external_file_loader_config(randomize_file_loader_config(file_path));
-}
-
-auto randomize_generic_reader_config(const std::string& file_path) -> data_loader::generic_source::GenericReaderConfig
-{
-    return
-    {
-        .source = randomize_external_file_loader_config(file_path)
-    };
-}
-
-auto randomize_external_generic_reader_config(const std::string& file_path) -> data_loader::generic_source::ExternalGenericReaderConfig
-{
-    return data_loader::generic_source::to_external_generic_reader_config(randomize_generic_reader_config(file_path));
-}
-
-auto randomize_normal_retry_config() -> data_loader::retryer_device::normal_device::RetryConfig
-{
-    return
-    {
-        .base_wait_time             = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(1)),
-        .exponential_base           = randomize_int(2) + 2,
-        .max_retry_count            = randomize_int(size_t{1} << 2),
-        .retryable_exception_vec    = std::nullopt
-    };
-}
-
-auto randomize_external_normal_retry_config() -> data_loader::retryer_device::normal_device::ExternalRetryConfig
-{
-    return data_loader::retryer_device::normal_device::to_external_retry_config(randomize_normal_retry_config());
-}
-
-auto randomize_generic_retry_config() -> data_loader::retryer_device::generic_device::GenericRetryConfig
-{
-    return
-    {
-        .config = randomize_external_normal_retry_config()
-    };
-}
-
-auto randomize_external_generic_retry_config() -> data_loader::retryer_device::generic_device::ExternalGenericRetryConfig
-{
-    return data_loader::retryer_device::generic_device::to_external_generic_retry_config(randomize_generic_retry_config());
-}
-
-auto randomize_source_transaction_broker_config(const std::string& file_path) -> data_loader::source_loader::broker::SourceTransactionBrokerConfig
-{
-    return
-    {
-        .source_config  = randomize_external_generic_reader_config(file_path),
-        .retry_config   = randomize_external_generic_retry_config()
-    };
-}
-
-auto randomize_external_source_transaction_broker_config(const std::string& file_path) -> data_loader::source_loader::broker::ExternalSourceTransactionBrokerConfig
-{
-    return data_loader::source_loader::broker::to_external_source_transaction_broker_config(randomize_source_transaction_broker_config(file_path));
-}
-
-auto randomize_wait_loader_config(const std::string& file_path) -> data_loader::source_loader::wait_loader::WaitLoaderConfig
-{
-    return
-    {
-        .tx_sz          = randomize_int(size_t{1} << 4) + 1,
-        .broker_config  = randomize_external_source_transaction_broker_config(file_path)
-    };
-}
-
-auto randomize_external_wait_loader_config(const std::string& file_path) -> data_loader::source_loader::wait_loader::ExternalWaitLoaderConfig
-{
-    return data_loader::source_loader::wait_loader::to_external_wait_loader_config(randomize_wait_loader_config(file_path));
-}
-
-auto randomize_config(const std::string& file_path) -> data_loader::source_loader::generic_loader::GenericLoaderConfig
-{
-    return
-    {
-        .config = randomize_external_wait_loader_config(file_path)
-    };
-}
-
-auto randomize_external_config(const std::string& file_path) -> data_loader::source_loader::generic_loader::ExternalGenericLoaderConfig
-{
-    return data_loader::source_loader::generic_loader::to_external_generic_loader_config(randomize_config(file_path));
-}
-
-auto randomize_multisource_config(const std::string& file_path) -> data_loader::source_loader::multisource_loader::MultisourceLoaderConfig
-{
-    return
-    {
-        .config_vec = {randomize_external_config(file_path)}
-    };
-}
-
-auto randomize_external_multisource_config(const std::string& file_path) -> data_loader::source_loader::multisource_loader::ExternalMultisourceLoaderConfig
-{
-    return data_loader::source_loader::multisource_loader::to_external_multisource_loader_config(randomize_multisource_config(file_path));
-}
-
-auto join_hex_token(const std::vector<std::string>& token_vec) -> std::string
-{
-    if (token_vec.empty())
-    {
-        return "";
-    }
-
-    return join(token_vec, DELIM_CHAR) + EOR_CHAR;
-}
-
-auto randomize_tx_hint_size() -> uint64_t
-{
-    return randomize_int(size_t{1} << 4);
-}
-
-auto randomize_hex_token_file() -> std::string
-{
-    std::vector<std::string> org_vec    = generate_random_token_vec();
-    std::vector<std::string> token_vec  = {};
-
-    for (const auto& str: org_vec)
-    {
-        token_vec.push_back(hex_encode_token(str));
-    }
-
-    std::string file_output = join_hex_token(token_vec);
-    std::string FILE_PATH   = "/home/ubuntu/SeriousBillionDollarProject/src/test/data_loader_file_source_test.bin";
-
-    {
-        std::ofstream out_file(FILE_PATH, std::ios::binary);
-        out_file.write(file_output.data(), file_output.size());
-    }
-
-    return FILE_PATH;
-}
-
-auto remove_file_path(const std::string& fp)
-{
-    std::filesystem::remove(fp);
-}
-
-auto get_random_temporal_firer_config() -> fire_bandwidth_control::temporal_firer::TemporalFirerConfig
-{
-    return 
-    {
-        .window_population  = static_cast<uint64_t>(randomize_int(size_t{1} << 2)),
-        .window_dur         = std::chrono::nanoseconds(randomize_int(size_t{1} << 20))
-    };
-}
-
-auto get_random_external_temporal_firer_config() -> fire_bandwidth_control::temporal_firer::ExternalTemporalFirerConfig
-{
-    return fire_bandwidth_control::temporal_firer::to_external_temporal_firer_config(get_random_temporal_firer_config());
-}
-
-auto get_random_generic_firer_config() -> fire_bandwidth_control::generic_firer::GenericFirerConfig
-{
-    return
-    {
-        .config = get_random_external_temporal_firer_config()
-    };
-}
-
-auto get_random_external_generic_firer_config() -> fire_bandwidth_control::generic_firer::ExternalGenericFirerConfig
-{
-    return fire_bandwidth_control::generic_firer::to_external_generic_firer_config(get_random_generic_firer_config());
-}
-
 auto get_local_remote() -> Remote
 {
     return Remote
@@ -757,54 +573,161 @@ auto get_local_remote() -> Remote
     };
 }
 
-auto get_random_ingestion_aid_run_payload(const std::string& fp, const deviation_projection_client::ClientRemote& client_remote) -> deviation_projection_ingestion_aid_client::RunPayload
+auto get_requestee_url() -> ResourceAddress
 {
-    return
+    return ResourceAddress
     {
-        .data_loader_config = randomize_external_multisource_config(fp),
-        .server_sink_vec    = {deviation_projection_ingestion_aid_client::ServerSink{.remote = client_remote.remote, .client_id = client_remote.client_id}},
-        .token_firer_config = get_random_external_generic_firer_config()  
+        .remote_addr    = get_local_remote().addr,
+        .resource_addr  = dg_sock::string("cached_server_test"),
+        .channel        = get_local_remote().channel
     };
 }
 
-void wait_client(deviation_projection_ingestion_aid_client::APIClient * client)
+auto get_requestor() -> Address
 {
-    while (true)
+    return get_local_remote().addr;
+}
+
+auto get_designated_request_id() -> request_id_t
+{
+    request_id_t rs{};
+    dg_sock::network_rest_frame::client_instance::get_instance()->get_designated_request_id(1u, &rs);
+
+    static request_id_t previous_rs{};
+
+    if (trivial_serializer::reflectible_is_equal(rs, previous_rs))
     {
-        if (client->is_completed()->wait())
+        std::cout << "designated request id went wrong\n";
+        std::abort();
+    }
+
+    previous_rs = rs;
+    return rs;
+}
+
+auto randomize_request() -> ClientRequest
+{
+    std::string tmp = randomize_string(randomize_int(size_t{1} << 4));
+    // std::string tmp = "hello";
+
+    return ClientRequest
+    {
+        .requestee_url                  = get_requestee_url(),
+        .requestor                      = get_requestor(),
+        .payload                        = dg_sock::string(tmp),
+        .payload_serialization_format   = {},
+        .client_timeout_dur             = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(10)),
+        .server_abs_timeout             = std::nullopt,
+        .designated_request_id          = get_designated_request_id()
+    };
+}
+
+auto randomize_unique_request() -> std::vector<ClientRequest>
+{
+    const size_t UNIQUE_REQUEST_RANGE   = size_t{1} << 2;
+    ClientRequest request               = randomize_request();
+    const size_t unique_request_sz      = randomize_int(UNIQUE_REQUEST_RANGE);
+    std::vector<ClientRequest> rs       = {};
+
+    for (size_t i = 0u; i < unique_request_sz; ++i)
+    {
+        rs.push_back(request);
+    }
+
+    return rs;
+}
+
+template <class T>
+auto shuffle_vector(const std::vector<T>& arg) -> std::vector<T>
+{
+    static auto randomizer = std::mt19937_64{static_cast<uint32_t>(std::chrono::high_resolution_clock::now().time_since_epoch().count())};
+
+    auto tmp = arg;
+    std::shuffle(tmp.begin(), tmp.end(), randomizer);
+
+    return tmp;
+}
+
+auto randomize_client_request_vec() -> std::vector<ClientRequest>
+{
+    size_t request_sz = randomize_int(size_t{1} << 6);
+    std::vector<ClientRequest> rs{};
+
+    for (size_t i = 0u; i < request_sz; ++i)
+    {
+        if (randomize_int(2) == 0u)
         {
-            client->get_result()->wait();
-            return;
-            // std::this_thread::sleep_for(std::chrono::seconds(100));
-            // std::abort();
+            std::vector<ClientRequest> same_id_request = randomize_unique_request();
+            rs.insert(rs.end(), same_id_request.begin(), same_id_request.end());
+        }
+        else
+        {
+            rs.push_back(randomize_request());
+        }
+    }
+
+    return shuffle_vector(rs);
+}
+
+auto get_expected_dictionary(const std::vector<ClientRequest>& client_request_vec) -> std::unordered_map<dg_sock::string, size_t>
+{
+    std::unordered_map<dg_sock::string, std::unordered_set<dg_sock::string>> counter_map{};
+    std::unordered_map<dg_sock::string, size_t> result_map{};
+
+    for (const auto& client_request: client_request_vec)
+    {
+        counter_map[client_request.payload].insert(dg::network_compact_serializer::serialize<dg_sock::string>(client_request.designated_request_id));
+        // result_map[client_request.payload] += 1;
+    }
+
+    for (const auto& [key, counter_set]: counter_map)
+    {
+        result_map[key] = counter_set.size();
+    }
+
+    return result_map;
+}
+
+void run_one_test(const std::shared_ptr<Dictionary>& dictionary)
+{
+    std::vector<ClientRequest> client_request_vec                   = randomize_client_request_vec();
+    std::unordered_map<dg_sock::string, size_t> expected_dictionary = get_expected_dictionary(client_request_vec);
+    std::vector<std::shared_ptr<ResponseInterface>> response_vec    = {};
+
+    // std::cout << "requesting > " << client_request_vec.size() << "\n";
+
+    for (auto& client_request: client_request_vec)
+    {
+        auto tmp = dg_sock::network_rest_frame::client_instance::get_instance()->request(std::move(client_request));
+
+        if (!tmp.has_value())
+        {
+            std::cout << "mayday, bad request!\n";
+            std::abort();
         }
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        response_vec.push_back(std::move(tmp.value()));
     }
-}
 
-void test_ingestion_aid()
-{
-    using namespace deviation_projection_ingestion_aid;
+    for (const auto& response: response_vec)
+    {
+        response->response();
+    }
 
-    deviation_projection_client::APIClient client(get_local_remote());
-    std::string fp = randomize_hex_token_file();
+    for (const auto& [key, counter]: expected_dictionary)
+    {
+        if (dictionary->get(key) != counter)
+        {
+            std::cout << "payload test," << std::string_view(key) << ",\n";
 
-    PiecewiseArgument arg = PiecewiseBuilder{}.worker_remote(get_local_remote())
-                                              .client_remote(client.get_client_remote().remote, client.get_client_remote().client_id)
-                                              .data_loader_config(randomize_external_multisource_config(fp))
-                                              .firer_config(get_random_external_generic_firer_config())
-                                              .build();
+            std::cout << "mayday, mismatched counter value\n";
+            std::cout << dictionary->get(key) << "<>" << counter << "\n";
 
-    auto cancellation_token = common_exception::CancellationToken();
-    ClientTrainingDataPiecewiseIngestor{}.add(arg).run(cancellation_token);
+            std::abort();
+        }
+    }
 
-    remove_file_path(fp);
-}
-
-void run_one_test()
-{
-    test_ingestion_aid();
+    dictionary->clear();
 }
 
 class TestWorker: public virtual concurrency_base::WorkerInterface
@@ -813,14 +736,19 @@ class TestWorker: public virtual concurrency_base::WorkerInterface
 
         auto run_one_epoch() noexcept -> bool
         {
-            const size_t TEST_SZ    = size_t{1} << 10;
-            const size_t COUT_SZ    = size_t{1} << 0;
+            const size_t TEST_SZ    = size_t{1} << 20;
+            const size_t COUT_SZ    = size_t{1} << 4;
 
             std::cout << "__BEGIN_DEVIATION_PROJECTION_INGESTION_AID_CLIENT_TEST__\n";
 
+            std::cout << "starting cached server...\n";
+
+            std::shared_ptr<Dictionary> dictionary = std::make_shared<Dictionary>();
+            dg_sock::network_rest_frame::server_instance::hook(CachedServerTest::RESOLVABLE_PATH, std::make_unique<CachedServerTest>(dictionary));
+
             for (size_t i = 0u; i < TEST_SZ; ++i)
             {
-                run_one_test();
+                run_one_test(dictionary);
 
                 if (i % COUT_SZ == 0u)
                 {

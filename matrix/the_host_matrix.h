@@ -327,196 +327,183 @@ namespace the_host_matrix
             static inline const std::vector<std::vector<size_t>> LOW_TRANSFORMATION_SHAPE_VEC = 
             {
                 {
-                    tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ,
-                    tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
+                    size_t{1} << 1,
                     2,
-                    2
+                    tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
+                    tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
                 },
 
                 {
-                    tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ,
-                    tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
+                    size_t{1} << 2,
                     2,
-                    2 * (size_t{1} << 3)
+                    tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
+                    tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
                 },
 
                 {
-                    tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ,
-                    tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
+                    size_t{1} << 4,
                     2,
-                    2 * (size_t{1} << 6)
+                    tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
+                    tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
                 },
 
                 {
-                    tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ,
-                    tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
+                    size_t{1} << 8,
                     2,
-                    2 * (size_t{1} << 9)
+                    tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
+                    tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
                 },
 
                 {
-                    tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ,
-                    tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
+                    size_t{1} << 16,
                     2,
-                    2 * (size_t{1} << 12)
-                },
-
-                {
-                    tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ,
                     tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
-                    2,
-                    2 * (size_t{1} << 15)
+                    tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
                 }
             };
 
             static inline const std::vector<std::vector<size_t>> MID_TRANSFORMATION_SHAPE_VEC = 
             {
                 {
-                    tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ,
+                    size_t{1} << 1,
+                    2,
                     tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
-                    8,
-                    2
+                    tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
                 },
 
                 {
-                    tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ,
+                    size_t{1} << 2,
+                    2,
                     tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
-                    8,
-                    2 * (size_t{1} << 3)
+                    tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
                 },
 
                 {
-                    tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ,
+                    size_t{1} << 4,
+                    2,
                     tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
-                    8,
-                    2 * (size_t{1} << 6)
+                    tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
                 },
 
                 {
-                    tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ,
+                    size_t{1} << 8,
+                    2,
                     tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
-                    8,
-                    2 * (size_t{1} << 9)
+                    tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
                 },
 
                 {
-                    tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ,
+                    size_t{1} << 16,
+                    2,
                     tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
-                    8,
-                    2 * (size_t{1} << 12)
-                },
-
-                {
-                    tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ,
-                    tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
-                    8,
-                    2 * (size_t{1} << 15)
+                    tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
                 }
             };
 
             static inline const std::vector<std::vector<size_t>> HIGH_TRANSFORMATION_SHAPE_VEC =
             {
                 {
-                    tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ,
+                    size_t{1} << 1,
+                    2,
                     tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
-                    32,
-                    2
+                    tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
                 },
 
                 {
-                    tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ,
+                    size_t{1} << 2,
+                    2,
                     tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
-                    32,
-                    2 * (size_t{1} << 3)
+                    tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
                 },
 
                 {
-                    tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ,
+                    size_t{1} << 4,
+                    2,
                     tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
-                    32,
-                    2 * (size_t{1} << 6)
+                    tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
                 },
 
                 {
-                    tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ,
+                    size_t{1} << 8,
+                    2,
                     tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
-                    32,
-                    2 * (size_t{1} << 9)
+                    tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
                 },
 
                 {
-                    tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ,
+                    size_t{1} << 16,
+                    2,
                     tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
-                    32,
-                    2 * (size_t{1} << 12)
-                },
-
-                {
-                    tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ,
-                    tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
-                    32,
-                    2 * (size_t{1} << 15)
+                    tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
                 }
             };
+
+            //it's hard, that we are cell-based creature, such is that we only want the matrix transformation to be balanced which is nxn for n is an integer >= 2
+            //so we'd have to pack EVERYTHING into that one-cell to be "productive" in the sense of diffracting context into other cells
 
             static inline const std::vector<std::vector<size_t>> LOW_TRANSFORMATION_FOCAL_VEC = 
             {
                 {},
-                {8},
-                {8, 8},
-                {8, 8, 8},
-                {8, 8, 8, 8},
-                {8, 8, 8, 8, 8}
+                {size_t{1} << 1},
+                {size_t{1} << 2, size_t{1} << 1},
+                {size_t{1} << 4, size_t{1} << 2, size_t{1} << 1},
+                {size_t{1} << 8, size_t{1} << 4, size_t{1} << 2, size_t{1} << 1}
             };
 
             static inline const std::vector<std::vector<size_t>> MID_TRANSFORMATION_FOCAL_VEC = 
             {
                 {},
-                {8},
-                {8, 8},
-                {8, 8, 8},
-                {8, 8, 8, 8},
-                {8, 8, 8, 8, 8}
+                {size_t{1} << 1},
+                {size_t{1} << 2, size_t{1} << 1},
+                {size_t{1} << 4, size_t{1} << 2, size_t{1} << 1},
+                {size_t{1} << 8, size_t{1} << 4, size_t{1} << 2, size_t{1} << 1}
             };
 
             static inline const std::vector<std::vector<size_t>> HIGH_TRANSFORMATION_FOCAL_VEC = 
             {
                 {},
-                {8},
-                {8, 8},
-                {8, 8, 8},
-                {8, 8, 8, 8},
-                {8, 8, 8, 8, 8}
+                {size_t{1} << 1},
+                {size_t{1} << 2, size_t{1} << 1},
+                {size_t{1} << 4, size_t{1} << 2, size_t{1} << 1},
+                {size_t{1} << 8, size_t{1} << 4, size_t{1} << 2, size_t{1} << 1}
             };
 
             static inline const std::vector<std::vector<size_t>> LOW_TRANSFORMATION_ROTATION_VEC = 
             {
                 {},
-                {4},
-                {4, 2},
-                {4, 2, 2},
-                {4, 2, 2, 2},
-                {4, 2, 2, 2, 2}
+                {0},
+                {2, 0},
+                {2, 2, 0},
+                {2, 2, 2, 0}
             };
 
             static inline const std::vector<std::vector<size_t>> MID_TRANSFORMATION_ROTATION_VEC = 
             {
                 {},
-                {4},
-                {4, 2},
-                {4, 2, 2},
-                {4, 2, 2, 2},
-                {4, 2, 2, 2, 2}
+                {0},
+                {2, 0},
+                {2, 2, 0},
+                {2, 2, 2, 0}
             };
 
             static inline const std::vector<std::vector<size_t>> HIGH_TRANSFORMATION_ROTATION_VEC = 
             {
                 {},
-                {4},
-                {4, 2},
-                {4, 2, 2},
-                {4, 2, 2, 2},
-                {4, 2, 2, 2, 2}
+                {0},
+                {2, 0},
+                {2, 2, 0},
+                {2, 2, 2, 0}
+            };
+
+            static inline const double PARAMETER_BOUND_RATIO        = 0.8;
+            static inline const double PE_AMPLITUDE_DISCRETE_UNIT   = 0.1;
+            static inline const size_t TENTATIVE_PE_SZ              = 4;
+
+            static inline const std::unordered_map<uint8_t, std::optional<size_t>> CONCURRENT_WORKER_MAP =
+            {
+                {LOW_COMPUTE, std::optional<size_t>(std::nullopt)},
+                {MID_COMPUTE, std::optional<size_t>(8)},
+                {HIGH_COMPUTE, std::optional<size_t>(64)}
             };
 
         public:
@@ -676,20 +663,53 @@ namespace the_host_matrix
                 throw std::invalid_argument("bad size, max operatable size reached");
             }
 
-            void get_uniform_focal_map_helper(std::unordered_map<size_t, std::unordered_map<size_t, std::vector<std::vector<size_t>>>>& focal_rule_map,
-                                              const std::vector<size_t>& focal_vec,
-                                              const std::vector<size_t>& rotation_vec,
-                                              const std::vector<size_t>& matrix_shape,
-                                              size_t focal_idx)
+            auto get_row_based_suffix_rule(size_t flat_sz) -> std::vector<size_t>
             {
-                if (focal_vec.empty())
+                std::vector<size_t> rs(flat_sz);
+                std::iota(rs.begin(), rs.end(), 0u);
+
+                return rs;
+            }
+
+            auto get_col_based_suffix_rule(size_t flat_sz) -> std::vector<size_t>
+            {
+                size_t sqrt_sz = std::sqrt(flat_sz);
+                std::vector<size_t> rs(flat_sz);
+
+                for (size_t i = 0u; i < sqrt_sz; ++i)
                 {
-                    return;
+                    for (size_t j = 0u; j < sqrt_sz; ++j)
+                    {
+                        size_t virtual_idx  = j * sqrt_sz + i;
+                        size_t actual_idx   = i * sqrt_sz + j;
+                        rs[actual_idx]      = virtual_idx;
+                    }
                 }
 
-                if (rotation_vec.empty())
+                return rs;
+            }
+
+            auto recurse_matrix_shape(const std::vector<size_t>& matrix_shape) -> std::vector<size_t>
+            {
+                auto rs = matrix_shape;
+
+                if (rs.empty())
                 {
-                    throw std::invalid_argument("bad rotation vector access, out of bound access");
+                    std::abort();
+                }
+
+                rs.front() = std::sqrt(rs.front());
+
+                return rs;
+            }
+
+            void get_uniform_focal_map_helper(std::unordered_map<size_t, std::unordered_map<size_t, std::vector<std::vector<size_t>>>>& focal_rule_map, //<matrix_array_sz> <rotation_idx> -> <matrix_array_suffix_arr>
+                                              const std::vector<size_t>& rotation_vec,
+                                              const std::vector<size_t>& matrix_shape)
+            {
+                if (rotation_vec.empty() || rotation_vec.front() == 0u)
+                {
+                    return;
                 }
 
                 if (matrix_shape.empty())
@@ -697,28 +717,34 @@ namespace the_host_matrix
                     throw std::invalid_argument("bad matrix shape access, out of bound access");
                 }
 
-                size_t focal_group_sz       = focal_vec.front();
                 size_t rotation_group_sz    = rotation_vec.front();
-                size_t flat_sz              = matrix_shape.back();
+                size_t flat_sz              = matrix_shape.front();
 
-                //this is way too complicated, let's say that we have 4x4x4x4, then 4x4x4x4 would recurse into 4x4x4 would recurse into 4x4 then 4, but how do we deal with this?
-                //so the way we do things is that we'd want to stablize the transforming knowledge by confining that to a box of multidimensions
-                //the knowledge at the time must take a part of the entire matrix, carrying a meaningful contribution to the next transformation
-                //that meaningful semantics is the reason we'd want to increase the spikyness of the projection and the sigma number of the projection (which we'd prove later)
+                for (size_t i = 0u; i < rotation_group_sz; ++i)
+                {
+                    if (i % 2 == 0u)
+                    {
+                        focal_rule_map[flat_sz][i] = {get_row_based_suffix_rule(flat_sz)};
+                    }
+                    else
+                    {
+                        focal_rule_map[flat_sz][i] = {get_col_based_suffix_rule(flat_sz)};
+                    }
+                }
+
+                this->get_uniform_focal_map_helper(focal_rule_map,
+                                                   {std::next(rotation_vec.begin()), rotation_vec.end()},
+                                                   this->recurse_matrix_shape(matrix_shape));
             }
 
-            auto get_uniform_focal_map(const std::vector<size_t>& focal_vec,
-                                       const std::vector<size_t>& rotation_vec,
+            auto get_uniform_focal_map(const std::vector<size_t>& rotation_vec,
                                        const std::vector<size_t>& matrix_shape) -> std::unordered_map<size_t, std::unordered_map<size_t, std::vector<std::vector<size_t>>>>
             {
                 std::unordered_map<size_t, std::unordered_map<size_t, std::vector<std::vector<size_t>>>> rs{};
-                size_t focal_idx = 0u;
 
                 this->get_uniform_focal_map_helper(rs,
-                                                   focal_vec,
                                                    rotation_vec,
-                                                   matrix_shape,
-                                                   focal_idx);
+                                                   matrix_shape);
 
                 return rs;
             }
@@ -771,8 +797,7 @@ namespace the_host_matrix
 
             auto get_focal_suffix_map() -> std::unordered_map<size_t, std::unordered_map<size_t, std::vector<std::vector<size_t>>>>
             {
-                return this->get_uniform_focal_map(this->get_focal_size_vector(),
-                                                   this->get_rotation_size_vector(),
+                return this->get_uniform_focal_map(this->get_rotation_size_vector(),
                                                    this->get_matrix_shape());
             }
 
@@ -829,7 +854,7 @@ namespace the_host_matrix
 
             auto get_parameter_bound_ratio_vector() -> std::vector<double>
             {
-                return std::vector<double>(this->get_focal_size_vector().size(), 0.8);
+                return std::vector<double>(this->get_focal_size_vector().size(), PARAMETER_BOUND_RATIO);
             }
 
             auto get_pe_frequency_multiplier() -> tensor_model::tensor_std_float_t
@@ -839,13 +864,12 @@ namespace the_host_matrix
 
             auto get_pe_amplitude_discrete_unit() -> tensor_model::tensor_std_float_t
             {
-                return 0.1;
+                return PE_AMPLITUDE_DISCRETE_UNIT;
             }
 
             auto get_pe_dedicated_pe_size() -> size_t
             {
                 constexpr size_t PROCESS_GROUP_LOGIT_SZ = tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ * tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ;
-                constexpr size_t TENTATIVE_PE_SZ        = 4u;
 
                 return std::min(TENTATIVE_PE_SZ, PROCESS_GROUP_LOGIT_SZ);
             }
@@ -890,27 +914,9 @@ namespace the_host_matrix
                 return true;
             }
 
-            auto get_projection_concurrent_size() -> size_t
+            auto get_projection_concurrent_size() -> std::optional<size_t>
             {
-                switch (this->compute_option)
-                {
-                    case LOW_COMPUTE:
-                    {
-                        return 1;
-                    }
-                    case MID_COMPUTE:
-                    {
-                        return 32;
-                    }
-                    case HIGH_COMPUTE:
-                    {
-                        return 1024;
-                    }
-                    default:
-                    {
-                        std::abort();
-                    }
-                }
+                return CONCURRENT_WORKER_MAP.at(this->compute_option);
             }
 
             static auto shape_to_size(const std::vector<size_t>& shape) -> size_t

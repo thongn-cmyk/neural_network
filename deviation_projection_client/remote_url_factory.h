@@ -95,7 +95,6 @@ namespace deviation_projection_client
                 };
             }
     };
-
 }
 
 #endif

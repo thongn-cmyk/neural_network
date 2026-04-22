@@ -11,28 +11,60 @@
 #include <deviation_projector/matrix_deviation_calculator_factory.h>
 #include <deviation_projector/generic_matrix_deviation_calculator_interface.h>
 #include <stl_extension/stdx.h>
+#include <global_string_encoder/generic_encoder.h>
 
 namespace deviation_projector::host_wrapper
 {
     using tensor_std_float_t = tensor_model::tensor_std_float_t;
 
-    struct GenericResource
+    struct GenericHostMatrixDeviationCalculatorResource
     {
+        global_string_encoder::StringTransformationRule str_transformation_rule;
         deviation_projector::NoTransformDeviationCalculatorResource deviation_resource;
-        generic_matrix_factory::GenericMatrixResource matrix_resource;
+        generic_matrix_factory::ExternalGenericMatrixResource matrix_resource;
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector) const
         {
-            reflector(deviation_resource, matrix_resource);
+            reflector(str_transformation_rule, deviation_resource, matrix_resource);
         }
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector)
         {
-            reflector(deviation_resource, matrix_resource);
+            reflector(str_transformation_rule, deviation_resource, matrix_resource);
         }
     };
+
+    struct ExternalGenericHostMatrixDeviationCalculatorResource
+    {
+        std::string config_bytestream;
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector) const
+        {
+            reflector(config_bytestream);
+        }
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector)
+        {
+            reflector(config_bytestream);
+        }
+    };
+
+    auto to_external_generic_host_matrix_deviation_calculator_resource(const GenericHostMatrixDeviationCalculatorResource& arg) -> ExternalGenericHostMatrixDeviationCalculatorResource
+    {
+        return ExternalGenericHostMatrixDeviationCalculatorResource
+        {
+            .config_bytestream = dg::network_compact_serializer::dgstd_serialize<std::string>(arg)
+        };
+    }
+
+    auto to_internal_generic_host_matrix_deviation_projector_resource(const ExternalGenericHostMatrixDeviationCalculatorResource& arg) -> GenericHostMatrixDeviationCalculatorResource
+    {
+        return dg::network_compact_serializer::dgstd_deserialize<GenericHostMatrixDeviationCalculatorResource>(arg.config_bytestream);
+    }
 
     struct MatrixSerializable
     {
@@ -125,18 +157,23 @@ namespace deviation_projector::host_wrapper
                                                                    training_token.out.logit_vec)};
     }
 
-    class DeviationCalculator: public virtual deviation_projector::GenericMatrixDeviationCalculatorInterface
+    class GenericHostMatrixDeviationCalculator: public virtual deviation_projector::GenericMatrixDeviationCalculatorInterface
     {
         private:
 
+            std::unique_ptr<global_string_encoder::EncoderInterface> string_encoder;
             std::unique_ptr<deviation_projector::MatrixDeviationCalculatorInterface> deviation_calculator;
             std::unique_ptr<the_matrix::MatrixInterface> matrix;
 
-        public:
-
-            DeviationCalculator(std::unique_ptr<deviation_projector::MatrixDeviationCalculatorInterface>&& deviation_calculator,
-                                std::unique_ptr<the_matrix::MatrixInterface>&& matrix)
+            GenericHostMatrixDeviationCalculator(std::unique_ptr<global_string_encoder::EncoderInterface>&& string_encoder,
+                                                 std::unique_ptr<deviation_projector::MatrixDeviationCalculatorInterface>&& deviation_calculator,
+                                                 std::unique_ptr<the_matrix::MatrixInterface>&& matrix)
             {
+                if (string_encoder == nullptr)
+                {
+                    throw std::invalid_argument("bad string encoder, null");
+                }
+
                 if (deviation_calculator == nullptr)
                 {
                     throw std::invalid_argument("bad deviation calculator, null");
@@ -147,9 +184,18 @@ namespace deviation_projector::host_wrapper
                     throw std::invalid_argument("bad matrix, null");
                 }
 
+                this->string_encoder        = std::move(string_encoder);
                 this->deviation_calculator  = std::move(deviation_calculator);
                 this->matrix                = std::move(matrix);
             }
+
+        public:
+
+            GenericHostMatrixDeviationCalculator(const GenericHostMatrixDeviationCalculatorResource& arg): GenericHostMatrixDeviationCalculator(std::make_unique<global_string_encoder::GenericEncoder>(arg.str_transformation_rule),
+                                                                                                                                                deviation_projector::NoTransformDeviationCalculatorLoader{}.load(arg.deviation_resource),
+                                                                                                                                                generic_matrix_factory::GenericMatrixLoader{}.load_resource(generic_matrix_factory::GenericMatrixExternalizer{}.to_internal(arg.matrix_resource))){}
+
+            GenericHostMatrixDeviationCalculator(const ExternalGenericHostMatrixDeviationCalculatorResource& arg): GenericHostMatrixDeviationCalculator(to_internal_generic_host_matrix_deviation_projector_resource(arg)){}
 
             auto get_deviation(const std::vector<std::shared_ptr<std::string>>& training_token_vec) -> mdc_float_t
             {
@@ -166,7 +212,7 @@ namespace deviation_projector::host_wrapper
                         throw std::invalid_argument("bad training token, null");
                     }
 
-                    auto [lhs, rhs] = decode_training_token(*training_token);
+                    auto [lhs, rhs] = decode_training_token(this->string_encoder->encode(*training_token));
 
                     projecting_vec.push_back(lhs);
                     expected_vec.push_back(rhs);
@@ -188,17 +234,6 @@ namespace deviation_projector::host_wrapper
                 }
 
                 return this->deviation_calculator->get_deviation(tensor_pair_vec);
-            }
-    };
-
-    class GenericMatrixDeviationCalculatorResourceLoader
-    {
-        public:
-
-            auto load(const GenericResource& resource) -> std::unique_ptr<deviation_projector::GenericMatrixDeviationCalculatorInterface>
-            {
-                return std::make_unique<DeviationCalculator>(deviation_projector::NoTransformDeviationCalculatorLoader{}.load(resource.deviation_resource),
-                                                             generic_matrix_factory::GenericMatrixLoader{}.load_resource(resource.matrix_resource));
             }
     };
 }

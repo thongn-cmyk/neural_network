@@ -14,7 +14,7 @@
 #include <stl_extension/stdx.h>
 #include <exception>
 #include <stdexcept>
-#include <deviation_projector/generic_resource.h>
+#include <deviation_projector/generic_matrix_deviation_calculator.h>
 #include <expected>
 #include <connectivity_subsystem/connectivity_subsystem.h>
 #include "local_exception.h"
@@ -169,7 +169,7 @@ namespace deviation_projection_client
             }
 
             auto set_matrix_resource(const Remote& remote, uint64_t client_id,
-                                     const std::vector<deviation_projector::GenericMatrixDeviationCalculatorResource>& matrix_resource_vec) -> std::shared_ptr<Promise<stdx::fancy_void>>
+                                     const std::vector<deviation_projector::ExternalGenericMatrixDeviationCalculatorResource>& matrix_resource_vec) -> std::shared_ptr<Promise<stdx::fancy_void>>
             {
                 using namespace dg_sock::network_rest_frame::client;
 
@@ -232,7 +232,7 @@ namespace deviation_projection_client
             }
 
             auto set_and_get_deviation(const Remote& remote, uint64_t client_id,
-                                       const std::vector<deviation_projector::GenericMatrixDeviationCalculatorResource>& matrix_resource_vec) -> std::shared_ptr<Promise<std::vector<mdc_float_t>>>
+                                       const std::vector<deviation_projector::ExternalGenericMatrixDeviationCalculatorResource>& matrix_resource_vec) -> std::shared_ptr<Promise<std::vector<mdc_float_t>>>
             {
                 using namespace dg_sock::network_rest_frame::client;
 
@@ -360,7 +360,7 @@ namespace deviation_projection_client
                 return this->base.clear_training_data(this->client_remote.remote, this->client_remote.client_id);
             }
 
-            auto set_matrix_resource(const std::vector<deviation_projector::GenericMatrixDeviationCalculatorResource>& matrix_resource_vec) -> std::shared_ptr<Promise<stdx::fancy_void>>
+            auto set_matrix_resource(const std::vector<deviation_projector::ExternalGenericMatrixDeviationCalculatorResource>& matrix_resource_vec) -> std::shared_ptr<Promise<stdx::fancy_void>>
             {
                 if (!this->can_operate())
                 {
@@ -380,7 +380,7 @@ namespace deviation_projection_client
                 return this->base.get_deviation(this->client_remote.remote, this->client_remote.client_id);
             }
 
-            auto set_and_get_deviation(const std::vector<deviation_projector::GenericMatrixDeviationCalculatorResource>& matrix_resource_vec) -> std::shared_ptr<Promise<std::vector<mdc_float_t>>>
+            auto set_and_get_deviation(const std::vector<deviation_projector::ExternalGenericMatrixDeviationCalculatorResource>& matrix_resource_vec) -> std::shared_ptr<Promise<std::vector<mdc_float_t>>>
             {
                 if (!this->can_operate())
                 {
@@ -488,7 +488,7 @@ namespace deviation_projection_client
                 return this->base.clear_training_data(this->client_remote.remote, this->client_remote.client_id);
             }
 
-            auto set_matrix_resource(const std::vector<deviation_projector::GenericMatrixDeviationCalculatorResource>& matrix_resource_vec) -> std::shared_ptr<Promise<stdx::fancy_void>>
+            auto set_matrix_resource(const std::vector<deviation_projector::ExternalGenericMatrixDeviationCalculatorResource>& matrix_resource_vec) -> std::shared_ptr<Promise<stdx::fancy_void>>
             {
                 return this->base.set_matrix_resource(this->client_remote.remote, this->client_remote.client_id, matrix_resource_vec);
             }
@@ -498,7 +498,7 @@ namespace deviation_projection_client
                 return this->base.get_deviation(this->client_remote.remote, this->client_remote.client_id);
             }
 
-            auto set_and_get_deviation(const std::vector<deviation_projector::GenericMatrixDeviationCalculatorResource>& matrix_resource_vec) -> std::shared_ptr<Promise<std::vector<mdc_float_t>>>
+            auto set_and_get_deviation(const std::vector<deviation_projector::ExternalGenericMatrixDeviationCalculatorResource>& matrix_resource_vec) -> std::shared_ptr<Promise<std::vector<mdc_float_t>>>
             {
                 return this->base.set_and_get_deviation(this->client_remote.remote, this->client_remote.client_id, matrix_resource_vec);
             }

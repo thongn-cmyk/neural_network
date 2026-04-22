@@ -26,7 +26,7 @@ namespace matrix_projection_server
 
             void set_matrix(const generic_matrix_factory::ExternalGenericMatrixResource& matrix_resource)
             {
-                this->matrix = generic_matrix_factory::GenericMatrixLoader{}.load_resource(generic_matrix_factory::ExternalGenericMatrixFactory{}.to_internal(matrix_resource));
+                this->matrix = generic_matrix_factory::GenericMatrixLoader{}.load_resource(generic_matrix_factory::GenericMatrixExternalizer{}.to_internal(matrix_resource));
             }
 
             auto project(const matrix_serializer::GenericMatrix& generic_in_matrix) -> matrix_serializer::GenericMatrix

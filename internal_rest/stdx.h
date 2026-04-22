@@ -23,18 +23,21 @@
 #include "assert.h"
 #include <sys/syscall.h>
 #include <mutex_extension/fair_mutex.h>
+#include <emmintrin.h>
 
 namespace stdxx
 {
-    static inline constexpr bool IS_SAFE_INTEGER_CONVERSION_ENABLED                             = true;
-    static inline constexpr bool IS_ATOMIC_FLAG_AS_SPINLOCK                                     = true;
+    static inline constexpr bool IS_SAFE_INTEGER_CONVERSION_ENABLED = true;
 
     using namespace fair_mutex;
 
     template <class Lambda>
     inline void busy_wait(Lambda&& lambda)
     {
-        (void) lambda;
+        while (!lambda())
+        {
+            _mm_pause();
+        }
     }
 
     class seq_cst_guard

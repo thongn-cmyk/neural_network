@@ -310,7 +310,7 @@ void init_mailbox()
     {
         .factory_addr = {.ip = dg_sock::network_kernel_mailbox_impl1::utility::ipv4_std_formatted_str_to_compact("127.0.0.1").value(),
                          .port = 5001},
-        .packetizer_segment_bsz = size_t{1} << 0,
+        .packetizer_segment_bsz = size_t{1} << 7,
         .packetizer_max_bsz = size_t{1} << 20,
         .packetizer_has_integrity_transmit = false,
 

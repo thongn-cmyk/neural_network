@@ -14,7 +14,7 @@
 #include <connection_based_manager/connection_based_manager.h>
 // #include <matrix_optimizer_subsystem/matrix_optimizer_subsystem.h>
 #include <mutex_extension/fair_mutex.h>
-#include <deviation_projector/generic_matrix_wrapper_resource.h>
+#include <deviation_projector/generic_matrix_as_deviation_wrapper.h>
 #include <matrix_optimizer_subsystem/optimizer.h>
 #include <matrix/generic_matrix_factory.h>
 #include <deviation_projection_client/deviation_projection_client.h>

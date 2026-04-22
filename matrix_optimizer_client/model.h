@@ -10,7 +10,7 @@
 #include <data_loader/source_loader/multisource_loader.h>
 #include <matrix/generic_matrix_factory.h>
 #include <internal_rest/network_rest_frame.h>
-#include <deviation_projector/generic_matrix_wrapper_resource.h>
+#include <deviation_projector/generic_matrix_as_deviation_wrapper.h>
 #include <matrix_optimizer_subsystem/generic_optimizer_engine.h>
 #include <fire_bandwidth_control/generic_firer.h>
 
@@ -157,7 +157,7 @@ namespace matrix_optimizer_client
     {
         generic_matrix_factory::ExternalGenericMatrixResource matrix;
         std::vector<PullWorkOrder> pull_work_order_vec;
-        deviation_projector::ExternalMatrixAsDeviationWrapperConfig deviation_config;
+        deviation_projector::ExternalGenericMatrixAsDeviationWrapperConfig deviation_config;
         matrix_optimizer_subsystem::ExternalGenericOptimizerEngineConfig optimizer_config;
 
         template <class Reflector>
