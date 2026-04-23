@@ -33,8 +33,12 @@ namespace generic_matrix_factory
         incompatible_exception(): invalid_argument("incompatible exception"){}
     };
 
-    //-------
+    struct device_not_available_exception: std::invalid_argument
+    {
+        device_not_available_exception(const char * msg): std::invalid_argument(msg){}
+    };
 
+    //-------
     //the problem is that we provide an interface for an abstraction of matrix resource, the below is just one sub-radix of that, but the interface for loader remains, it's subjected to change if there are time and resource on the matter
 
     struct TheHostMatrixResource
@@ -77,28 +81,30 @@ namespace generic_matrix_factory
         }
     };
 
-    struct TheCudaIfPossibleMatrixResource
+    struct TheHipMatrixResource
     {
-        TheHostMatrixResource host_resource;
-        TheCudaMatrixResource cuda_resource;
+        uint8_t entropy_option;
+        uint8_t compute_option;
+        uint64_t vector_sz;
+        std::vector<tensor_model::tensor_std_float_t> logit_vec;
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector) const
         {
-            reflector(host_resource, cuda_resource);
+            reflector(entropy_option, compute_option, vector_sz, logit_vec);
         }
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector)
         {
-            reflector(host_resource, cuda_resource);
+            reflector(entropy_option, compute_option, vector_sz, logit_vec);
         }
     };
 
     struct GenericMatrixResource
     {
         std::string version_control;
-        std::variant<stdx::reflectible_monostate, TheHostMatrixResource, TheCudaMatrixResource, TheCudaIfPossibleMatrixResource> resource;
+        std::variant<stdx::reflectible_monostate, TheHostMatrixResource, TheCudaMatrixResource, TheHipMatrixResource> resource;
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector) const
@@ -258,33 +264,67 @@ namespace generic_matrix_factory
             };
     };
 
+    //__external_linkage__
     class TheCudaMatrixLoader
     {
         public:
 
             auto load_from_resource(const TheCudaMatrixResource& resource) -> std::unique_ptr<the_matrix::MatrixInterface>
             {
-                return {};
+                #ifdef __CUDACC__
+                {
+                    return {};
+                }
+                #else
+                {
+                    throw device_not_available_exception("hip device not supported");
+                }
+                #endif
             }
 
             auto unload(the_matrix::MatrixInterface& matrix) -> TheCudaMatrixResource
             {
-                return {};
+                #ifdef __CUDACC__
+                {
+                    return {};
+                }
+                #else
+                {
+                    throw device_not_available_exception("cuda device not supported");
+                }
+                #endif
             }
     };
 
-    class TheHostCudaMatrixLoader
+    //__external_linkage__
+    class TheHipMatrixLoader
     {
         public:
 
-            auto load_from_resource(const TheCudaIfPossibleMatrixResource& resource) -> std::unique_ptr<the_matrix::MatrixInterface>
+            auto load_from_resource(const TheHipMatrixResource& resource) -> std::unique_ptr<the_matrix::MatrixInterface>
             {
-                return {};
+                #ifdef __HIP_PLATFORM_AMD__
+                {
+                    return {};
+                }
+                #else
+                {
+                    throw device_not_available_exception("hip device not supported");
+                }
+                #endif
             }
 
-            auto unload(the_matrix::MatrixInterface& matrix) -> TheCudaIfPossibleMatrixResource
+            auto unload(the_matrix::MatrixInterface& matrix) -> TheHipMatrixResource
             {
-                return {};
+                #ifdef __HIP_PLATFORM_AMD__
+                {
+                    return {};
+                }
+                #else
+                {
+                    throw device_not_available_exception("hip device not supported");
+                }
+                #endif
             }
     };
 
@@ -292,9 +332,9 @@ namespace generic_matrix_factory
     {
         private:
 
-            static inline constexpr uint8_t THE_HOST_MATRIX_VARIANT             = 0u;
-            static inline constexpr uint8_t THE_CUDA_MATRIX_VARIANT             = 1u;
-            static inline constexpr uint8_t THE_CUDA_IF_POSSIBLE_MATRIX_VARIANT = 2u;
+            static inline constexpr uint8_t THE_HOST_MATRIX_VARIANT     = 0u;
+            static inline constexpr uint8_t THE_CUDA_MATRIX_VARIANT     = 1u;
+            static inline constexpr uint8_t THE_HIP_MATRIX_VARIANT      = 2u;
 
         public:
 
@@ -316,14 +356,14 @@ namespace generic_matrix_factory
                 };
             }
 
-            // auto virtualize_resource(const TheCudaIfPossibleMatrixResource& resource) -> GenericMatrixResource
-            // {
-            //     return GenericMatrixResource
-            //     {
-            //         .version_control    = VERSION_CONTROL,
-            //         .resource           = resource
-            //     };
-            // }
+            auto virtualize_resource(const TheHipMatrixResource& resource) -> GenericMatrixResource
+            {
+                return GenericMatrixResource
+                {
+                    .version_control    = VERSION_CONTROL,
+                    .resource           = resource
+                };
+            }
 
             auto load_resource(const GenericMatrixResource& resource) -> std::unique_ptr<the_matrix::MatrixInterface>
             {
@@ -347,11 +387,11 @@ namespace generic_matrix_factory
                     return std::make_unique<InternalFancyMatrix>(THE_CUDA_MATRIX_VARIANT,
                                                                  TheCudaMatrixLoader{}.load_from_resource(std::get<TheCudaMatrixResource>(resource.resource)));
                 }
-                // else if (std::holds_alternative<TheCudaIfPossibleMatrixResource>(resource.resource))
-                // {
-                //     return std::make_unique<InternalFancyMatrix>(THE_CUDA_IF_POSSIBLE_MATRIX_VARIANT,
-                //                                                  TheCudaIfPossibleMatrixLoader{}.load_from_resource(std::get<TheCudaIfPossibleMatrixResource>(resource.resource)));
-                // }
+                else if (std::holds_alternative<TheHipMatrixResource>(resource.resource))
+                {
+                    return std::make_unique<InternalFancyMatrix>(THE_HIP_MATRIX_VARIANT,
+                                                                 TheHipMatrixLoader{}.load_from_resource(std::get<TheHipMatrixResource>(resource.resource)));
+                }
                 else
                 {
                     throw bad_format_exception();
@@ -377,10 +417,10 @@ namespace generic_matrix_factory
                     {
                         return this->virtualize_resource(TheCudaMatrixLoader{}.unload(*fancy_matrix->get_base()));
                     }
-                    // case THE_CUDA_IF_POSSIBLE_MATRIX_VARIANT:
-                    // {
-                    //     return this->virtualize_resource(TheCudaIfPossibleMatrixLoader{}.unload(*fancy_matrix->get_base()));
-                    // }
+                    case THE_HIP_MATRIX_VARIANT:
+                    {
+                        return this->virtualize_resource(TheHipMatrixLoader{}.unload(*fancy_matrix->get_base()));
+                    }
                     default:
                     {
                         std::abort();

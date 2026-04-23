@@ -5,6 +5,11 @@
 #include <stdlib.h>
 #include <matrix/generic_matrix_factory.h>
 #include "model.h"
+#include <string>
+#include <string_view>
+#include <memory>
+#include <mutex_extension/fair_mutex.h>
+#include <stl_extension/stdx.h>
 
 namespace matrix_broker_server::global_matrix_broker
 {
@@ -117,23 +122,23 @@ namespace matrix_broker_server::global_matrix_broker
                     {
                         throw std::invalid_argument("bad matrix entropy option, enumeration out of range");
                     }
-
-                    auto matrix = loader.get_matrix();
-
-                    return ClientMatrixResult
-                    {
-                        .projection_argument = 
-                        {
-                            .projection_argument = FixedProjectionArgument
-                            {
-                                .inp_matrix_shape   = stdx::to_castable_vector_initializer(loader.get_matrix_shape()),
-                                .out_matrix_shape   = stdx::to_castable_vector_initializer(loader.get_matrix_shape())
-                            }
-                        },
-
-                        .resource = Externalizer{}.to_external(GenericLoader{}.virtualize_resource(loader.unload(*matrix)))
-                    };
                 }
+
+                auto matrix = loader.get_matrix();
+
+                return ClientMatrixResult
+                {
+                    .projection_argument = 
+                    {
+                        .projection_argument = FixedProjectionArgument
+                        {
+                            .inp_matrix_shape   = stdx::to_castable_vector_initializer(loader.get_matrix_shape()),
+                            .out_matrix_shape   = stdx::to_castable_vector_initializer(loader.get_matrix_shape())
+                        }
+                    },
+
+                    .matrix_resource = Externalizer{}.to_external(GenericLoader{}.virtualize_resource(loader.unload(*matrix)))
+                };
             }
     };
 

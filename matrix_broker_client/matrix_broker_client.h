@@ -39,7 +39,7 @@ namespace matrix_broker_client
 
             void set_unique_request(bool is_unique_request)
             {
-                this->client.set_unique_request(is_unique_request);
+                this->client.set_multiple_request_uniqueness(is_unique_request);
             }
 
             void set_retry_policy(dg_sock::network_rest_frame::client::retry_policy_t retry_policy)

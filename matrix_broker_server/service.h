@@ -7,6 +7,7 @@
 #include "local_exception.h"
 #include <string>
 #include <string_view>
+#include "global_matrix_broker.h"
 
 namespace matrix_broker_server
 {
