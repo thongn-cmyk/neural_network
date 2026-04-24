@@ -19,6 +19,7 @@ namespace branch_optimizer
         public:
 
             virtual ~BranchPredictionResultInterface() = default;
+
             virtual auto get_enumeration() -> size_t = 0;
             virtual void feedback(branch_float_t score) = 0;
     };
@@ -28,6 +29,7 @@ namespace branch_optimizer
         public:
 
             virtual ~BranchPredictorInterface() noexcept = default;
+
             virtual auto next() -> std::unique_ptr<BranchPredictionResultInterface> = 0;
             virtual auto size() -> size_t = 0;
     };
@@ -119,12 +121,17 @@ namespace branch_optimizer
                 size_t total_count;
             };
 
-            size_t enumeration_range;
-            size_t evaluation_count;
-            size_t reevaluation_window;
+            struct Resource
+            {
+                std::vector<StatisticalBucket> good_statistic_table;
+                std::vector<branch_float_t> distribution_table;
 
-            std::shared_ptr<std::vector<StatisticalBucket>> good_statistic_table;
-            std::vector<branch_float_t> distribution_table;
+                size_t enumeration_range;
+                size_t evaluation_count;
+                size_t reevaluation_window;
+            };
+
+            std::shared_ptr<Resource> resource;
 
             UniformRandomizer randomizer;
             conventional_randomizer::RandomizerObject uint_randomizer;
@@ -144,27 +151,26 @@ namespace branch_optimizer
                     throw std::invalid_argument("bad enumeration range, out of bound");
                 }
 
-                this->enumeration_range     = enumeration_range;
-                this->evaluation_count      = 0u;
-                this->reevaluation_window   = std::clamp(reevaluation_window, size_t{1}, MAX_REEVALUATION_WINDOW);
-                this->good_statistic_table  = std::make_shared<std::vector<StatisticalBucket>>(std::vector<StatisticalBucket>(enumeration_range, StatisticalBucket{.total_score = static_cast<branch_float_t>(0), .total_count = 0u}));
-                this->distribution_table    = this->make_initial_distribution_table_for_size_of(enumeration_range);
+                this->resource              = std::make_shared<Resource>(Resource
+                {
+                    .good_statistic_table   = std::vector<StatisticalBucket>(enumeration_range, StatisticalBucket{.total_score = static_cast<branch_float_t>(0), .total_count = 0u}),
+                    .distribution_table     = this->make_initial_distribution_table_for_size_of(enumeration_range),
+                    
+                    .enumeration_range      = enumeration_range,
+                    .evaluation_count       = size_t{0u},
+                    .reevaluation_window    = std::clamp(reevaluation_window, size_t{1}, MAX_REEVALUATION_WINDOW)
+                });
             }
 
             BranchPredictor(const BranchPredictor&) = delete;
             BranchPredictor& operator =(const BranchPredictor&) = delete;
 
+            BranchPredictor(BranchPredictor&&) = delete;
+            BranchPredictor& operator=(BranchPredictor&&) = delete;
+
             auto next() -> std::unique_ptr<BranchPredictionResultInterface>
             {
-                if (this->evaluation_count == this->reevaluation_window)
-                {
-                    this->reevaluate_distribution_table();
-                    this->defaultize_statistic_table();
-                    this->evaluation_count = 0u;
-                }
-
-                this->evaluation_count      += 1; //hard to do state management
-                size_t test_value           = this->uint_randomizer.randomize_uint(0u, RANDOMIZATION_CHANCE);
+                size_t test_value = this->uint_randomizer.randomize_uint(0u, RANDOMIZATION_CHANCE);
 
                 if (test_value == 0u)
                 {
@@ -178,7 +184,7 @@ namespace branch_optimizer
 
             auto size() -> size_t
             {
-                return this->enumeration_range;
+                return this->resource->enumeration_range;
             }
 
         private:
@@ -203,108 +209,10 @@ namespace branch_optimizer
                 return result;
             }
 
-            auto get_score(branch_float_t total_score, size_t total_count) -> branch_float_t
-            {
-                return StatelessScorer{}(total_score, total_count);
-            }
-
-            void defaultize_statistic_table()
-            {
-                std::fill(this->good_statistic_table->begin(), this->good_statistic_table->end(), StatisticalBucket{.total_score = static_cast<branch_float_t>(0), .total_count = 0u});
-            }
-
-            auto get_percentage_table() -> std::vector<branch_float_t>
-            {
-                std::optional<branch_float_t> good_normalization_value = std::nullopt;
-
-                for (const StatisticalBucket& bucket: *this->good_statistic_table)
-                {
-                    if (bucket.total_count == 0u)
-                    {
-                        continue;
-                    }
-
-                    if (!good_normalization_value.has_value())
-                    {
-                        good_normalization_value = this->get_score(bucket.total_score, bucket.total_count);
-                        continue;
-                    }
-
-                    good_normalization_value.value() += this->get_score(bucket.total_score, bucket.total_count);
-                }
-
-                if (!good_normalization_value.has_value())
-                {
-                    if (this->good_statistic_table->empty())
-                    {
-                        return {};
-                    }
-
-                    return std::vector<branch_float_t>(this->good_statistic_table->size(), static_cast<branch_float_t>(1) / this->good_statistic_table->size());
-                }
-
-                std::vector<branch_float_t> result{};
-
-                for (const StatisticalBucket& bucket: *this->good_statistic_table)
-                {
-                    if (bucket.total_count == 0u)
-                    {
-                        result.push_back(0);
-                        continue;
-                    }
-
-                    branch_float_t good_perc    = this->get_score(bucket.total_score, bucket.total_count);
-                    branch_float_t perc         = good_perc / good_normalization_value.value();
-
-                    result.push_back(perc);
-                }
-
-                return result;
-            }
-
-            void reevaluate_distribution_table()
-            {
-                std::vector<branch_float_t> percentage_table = this->get_percentage_table();
-                branch_float_t first = 0;
-                std::vector<branch_float_t> nxt_distribution_table(percentage_table.size());
-
-                for (size_t i = 0u; i < percentage_table.size(); ++i)
-                {
-                    nxt_distribution_table[i] = first;
-                    first += percentage_table[i];
-                }
-
-                //let's do another validation of increasing sequence
-
-                try
-                {
-                    for (size_t i = 0u; i < nxt_distribution_table.size(); ++i)
-                    {
-                        if (std::isnan(nxt_distribution_table[i]))
-                        {
-                            throw std::runtime_error("unexpected result");
-                        }
-
-                        if (i != 0u)
-                        {
-                            if (nxt_distribution_table[i] < nxt_distribution_table[i - 1])
-                            {
-                                throw std::runtime_error("unexpected result");
-                            }
-                        }
-                    }
-
-                    this->distribution_table = std::move(nxt_distribution_table);
-                }
-                catch (...)
-                {
-                    return;
-                }
-            }
-
             auto random_next() -> std::unique_ptr<BranchPredictionResultInterface>
             {
-                size_t result = this->uint_randomizer.randomize_uint(0u, this->distribution_table.size());
+                size_t result = this->uint_randomizer.randomize_uint(0u, this->resource->distribution_table.size());
+
                 return this->make_branch_prediction_result(result);
             }
 
@@ -320,15 +228,15 @@ namespace branch_optimizer
             {
                 private:
 
-                    std::shared_ptr<std::vector<StatisticalBucket>> good_statistic_table;
+                    std::shared_ptr<Resource> resource;
                     size_t enumeration_idx;
                     bool was_feedback_received;
 
                 public:
 
-                    BranchPredictionResult(std::shared_ptr<std::vector<StatisticalBucket>> good_statistic_table,
+                    BranchPredictionResult(std::shared_ptr<Resource> resource,
                                            size_t enumeration_idx,
-                                           bool was_feedback_received) noexcept: good_statistic_table(std::move(good_statistic_table)),
+                                           bool was_feedback_received) noexcept: resource(std::move(resource)),
                                                                                  enumeration_idx(enumeration_idx),
                                                                                  was_feedback_received(was_feedback_received){}
 
@@ -344,19 +252,127 @@ namespace branch_optimizer
                             return;
                         }
 
-                        (*this->good_statistic_table)[this->enumeration_idx].total_score    += FloatRangeClamper<branch_float_t>(MIN_SCORE_VALUE, MAX_SCORE_VALUE).normalize(x);
-                        (*this->good_statistic_table)[this->enumeration_idx].total_count    += 1;
+                        if (this->resource->evaluation_count == this->resource->reevaluation_window)
+                        {
+                            this->reevaluate_distribution_table();
+                            this->defaultize_statistic_table();
+
+                            this->resource->evaluation_count = 0u;
+                        }
+
+                        this->resource->good_statistic_table[this->enumeration_idx].total_score     += FloatRangeClamper<branch_float_t>(MIN_SCORE_VALUE, MAX_SCORE_VALUE).normalize(x);
+                        this->resource->good_statistic_table[this->enumeration_idx].total_count     += 1;
+
+                        this->resource->evaluation_count                                            += 1;
+                    }
+
+                private:
+
+                    auto get_score(branch_float_t total_score, size_t total_count) -> branch_float_t
+                    {
+                        return StatelessScorer{}(total_score, total_count);
+                    }
+
+                    void defaultize_statistic_table()
+                    {
+                        std::fill(this->resource->good_statistic_table.begin(),
+                                  this->resource->good_statistic_table.end(),
+                                  StatisticalBucket{.total_score = static_cast<branch_float_t>(0), .total_count = 0u});
+                    }
+
+                    auto get_percentage_table() -> std::vector<branch_float_t>
+                    {
+                        std::optional<branch_float_t> good_normalization_value = std::nullopt;
+
+                        for (const StatisticalBucket& bucket: this->resource->good_statistic_table)
+                        {
+                            if (bucket.total_count == 0u)
+                            {
+                                continue;
+                            }
+
+                            if (!good_normalization_value.has_value())
+                            {
+                                good_normalization_value = this->get_score(bucket.total_score, bucket.total_count);
+                                continue;
+                            }
+
+                            good_normalization_value.value() += this->get_score(bucket.total_score, bucket.total_count);
+                        }
+
+                        if (!good_normalization_value.has_value())
+                        {
+                            if (this->resource->good_statistic_table.empty())
+                            {
+                                return {};
+                            }
+
+                            return std::vector<branch_float_t>(this->resource->good_statistic_table.size(), static_cast<branch_float_t>(1) / this->resource->good_statistic_table.size());
+                        }
+
+                        std::vector<branch_float_t> result{};
+
+                        for (const StatisticalBucket& bucket: this->resource->good_statistic_table)
+                        {
+                            if (bucket.total_count == 0u)
+                            {
+                                result.push_back(0);
+                                continue;
+                            }
+
+                            branch_float_t good_perc    = this->get_score(bucket.total_score, bucket.total_count);
+                            branch_float_t perc         = good_perc / good_normalization_value.value();
+
+                            result.push_back(perc);
+                        }
+
+                        return result;
+                    }
+
+                    void reevaluate_distribution_table()
+                    {
+                        std::vector<branch_float_t> percentage_table = this->get_percentage_table();
+                        branch_float_t first = 0;
+                        std::vector<branch_float_t> nxt_distribution_table(percentage_table.size());
+
+                        for (size_t i = 0u; i < percentage_table.size(); ++i)
+                        {
+                            nxt_distribution_table[i] = first;
+                            first += percentage_table[i];
+                        }
+
+                        //let's do another validation of increasing sequence
+
+                        try
+                        {
+                            for (size_t i = 0u; i < nxt_distribution_table.size(); ++i)
+                            {
+                                if (std::isnan(nxt_distribution_table[i]))
+                                {
+                                    throw std::runtime_error("unexpected result");
+                                }
+
+                                if (i != 0u)
+                                {
+                                    if (nxt_distribution_table[i] < nxt_distribution_table[i - 1])
+                                    {
+                                        throw std::runtime_error("unexpected result");
+                                    }
+                                }
+                            }
+
+                            this->resource->distribution_table = std::move(nxt_distribution_table);
+                        }
+                        catch (...)
+                        {
+                            return;
+                        }
                     }
             };
 
             auto make_branch_prediction_result(size_t enumeration_idx) -> std::unique_ptr<BranchPredictionResultInterface>
             {
-                if (enumeration_idx >= this->good_statistic_table->size())
-                {
-                    std::abort();
-                }
-
-                return std::make_unique<BranchPredictionResult>(this->good_statistic_table, enumeration_idx, false);
+                return std::make_unique<BranchPredictionResult>(this->resource, enumeration_idx, false);
             }
 
             //this is complicated
@@ -382,7 +398,7 @@ namespace branch_optimizer
                 size_t mid_sz       = range_sz / 2;
                 size_t mid_point    = first + mid_sz;
 
-                branch_float_t cand = this->distribution_table[mid_point];
+                branch_float_t cand = this->resource->distribution_table[mid_point];
 
                 if (cand > prob)
                 {
@@ -413,7 +429,7 @@ namespace branch_optimizer
                 }
 
                 size_t first    = 0u;
-                size_t last     = this->distribution_table.size();
+                size_t last     = this->resource->distribution_table.size();
 
                 if (first == last)
                 {
@@ -426,12 +442,12 @@ namespace branch_optimizer
                     return first;
                 }
 
-                if (prob < this->distribution_table.front())
+                if (prob < this->resource->distribution_table.front())
                 {
                     std::abort();
                 }
 
-                if (prob >= this->distribution_table.back())
+                if (prob >= this->resource->distribution_table.back())
                 {
                     return last - 1;
                 }
@@ -451,12 +467,17 @@ namespace branch_optimizer
                 size_t total_count;
             };
 
-            size_t enumeration_range;
-            size_t evaluation_count;
-            size_t reevaluation_window;
+            struct Resource
+            {
+                std::vector<StatisticalBucket> good_statistic_table;
+                std::vector<branch_float_t> distribution_table;
 
-            std::shared_ptr<std::vector<StatisticalBucket>> good_statistic_table;
-            std::vector<branch_float_t> distribution_table;
+                size_t enumeration_range;
+                size_t evaluation_count;
+                size_t reevaluation_window;
+            };
+
+            std::shared_ptr<Resource> resource;
 
             UniformRandomizer randomizer;
             conventional_randomizer::RandomizerObject uint_randomizer;
@@ -477,32 +498,26 @@ namespace branch_optimizer
                     throw std::invalid_argument("bad enumeration range, out of bound");
                 }
 
-                this->enumeration_range     = enumeration_range;
-                this->evaluation_count      = 0u;
-                this->reevaluation_window   = std::clamp(reevaluation_window, size_t{1}, MAX_REEVALUATION_WINDOW);
-                this->good_statistic_table  = std::make_shared<std::vector<StatisticalBucket>>(std::vector<StatisticalBucket>(enumeration_range, StatisticalBucket{.total_score = static_cast<branch_float_t>(0), .total_count = 0u}));
-                this->distribution_table    = this->make_initial_distribution_table_for_size_of(enumeration_range);
+                this->resource              = std::make_shared<Resource>(Resource
+                {
+                    .good_statistic_table   = std::vector<StatisticalBucket>(enumeration_range, StatisticalBucket{.total_score = static_cast<branch_float_t>(0), .total_count = 0u}),
+                    .distribution_table     = this->make_initial_distribution_table_for_size_of(enumeration_range),
+                    
+                    .enumeration_range      = enumeration_range,
+                    .evaluation_count       = size_t{0u},
+                    .reevaluation_window    = std::clamp(reevaluation_window, size_t{1}, MAX_REEVALUATION_WINDOW)
+                });
             }
 
             StubbornBranchPredictor(const StubbornBranchPredictor&) = delete;
             StubbornBranchPredictor& operator =(const StubbornBranchPredictor&) = delete;
 
+            StubbornBranchPredictor(StubbornBranchPredictor&&) = delete;
+            StubbornBranchPredictor& operator=(StubbornBranchPredictor&&) = delete;
+
             auto next() -> std::unique_ptr<BranchPredictionResultInterface>
             {
-                if (this->evaluation_count == this->reevaluation_window)
-                {
-                    this->reevaluate_distribution_table();
-
-                    if (this->is_statistic_table_full())
-                    {
-                        this->defaultize_statistic_table();
-                    }
-
-                    this->evaluation_count = 0u;
-                }
-
-                this->evaluation_count      += 1; //hard to do state management
-                size_t test_value           = this->uint_randomizer.randomize_uint(0u, RANDOMIZATION_CHANCE);
+                size_t test_value = this->uint_randomizer.randomize_uint(0u, RANDOMIZATION_CHANCE);
 
                 if (test_value == 0u)
                 {
@@ -516,23 +531,10 @@ namespace branch_optimizer
 
             auto size() -> size_t
             {
-                return this->enumeration_range;
+                return this->resource->enumeration_range;
             }
 
         private:
-
-            auto is_statistic_table_full() -> bool
-            {
-                for (const StatisticalBucket& bucket: *this->good_statistic_table)
-                {
-                    if (bucket.total_count >= RESET_THRESHOLD)
-                    {
-                        return true;
-                    }
-                }
-
-                return false;
-            }
 
             auto make_initial_distribution_table_for_size_of(size_t sz) -> std::vector<branch_float_t>
             {
@@ -554,108 +556,10 @@ namespace branch_optimizer
                 return result;
             }
 
-            auto get_score(branch_float_t total_score, size_t total_count) -> branch_float_t
-            {
-                return StatelessScorer{}(total_score, total_count);
-            }
-
-            void defaultize_statistic_table()
-            {
-                std::fill(this->good_statistic_table->begin(), this->good_statistic_table->end(), StatisticalBucket{.total_score = static_cast<branch_float_t>(0), .total_count = 0u});
-            }
-
-            auto get_percentage_table() -> std::vector<branch_float_t>
-            {
-                std::optional<branch_float_t> good_normalization_value = std::nullopt;
-
-                for (const StatisticalBucket& bucket: *this->good_statistic_table)
-                {
-                    if (bucket.total_count == 0u)
-                    {
-                        continue;
-                    }
-
-                    if (!good_normalization_value.has_value())
-                    {
-                        good_normalization_value = this->get_score(bucket.total_score, bucket.total_count);
-                        continue;
-                    }
-
-                    good_normalization_value.value() += this->get_score(bucket.total_score, bucket.total_count);
-                }
-
-                if (!good_normalization_value.has_value())
-                {
-                    if (this->good_statistic_table->empty())
-                    {
-                        return {};
-                    }
-
-                    return std::vector<branch_float_t>(this->good_statistic_table->size(), static_cast<branch_float_t>(1) / this->good_statistic_table->size());
-                }
-
-                std::vector<branch_float_t> result{};
-
-                for (const StatisticalBucket& bucket: *this->good_statistic_table)
-                {
-                    if (bucket.total_count == 0u)
-                    {
-                        result.push_back(0);
-                        continue;
-                    }
-
-                    branch_float_t good_perc    = this->get_score(bucket.total_score, bucket.total_count);
-                    branch_float_t perc         = good_perc / good_normalization_value.value();
-
-                    result.push_back(perc);
-                }
-
-                return result;
-            }
-
-            void reevaluate_distribution_table()
-            {
-                std::vector<branch_float_t> percentage_table = this->get_percentage_table();
-                branch_float_t first = 0;
-                std::vector<branch_float_t> nxt_distribution_table(percentage_table.size());
-
-                for (size_t i = 0u; i < percentage_table.size(); ++i)
-                {
-                    nxt_distribution_table[i] = first;
-                    first += percentage_table[i];
-                }
-
-                //let's do another validation of increasing sequence
-
-                try
-                {
-                    for (size_t i = 0u; i < nxt_distribution_table.size(); ++i)
-                    {
-                        if (std::isnan(nxt_distribution_table[i]))
-                        {
-                            throw std::runtime_error("unexpected result");
-                        }
-
-                        if (i != 0u)
-                        {
-                            if (nxt_distribution_table[i] < nxt_distribution_table[i - 1])
-                            {
-                                throw std::runtime_error("unexpected result");
-                            }
-                        }
-                    }
-
-                    this->distribution_table = std::move(nxt_distribution_table);
-                }
-                catch (...)
-                {
-                    return;
-                }
-            }
-
             auto random_next() -> std::unique_ptr<BranchPredictionResultInterface>
             {
-                size_t result = this->uint_randomizer.randomize_uint(0u, this->distribution_table.size());
+                size_t result = this->uint_randomizer.randomize_uint(0u, this->resource->distribution_table.size());
+
                 return this->make_branch_prediction_result(result);
             }
 
@@ -671,15 +575,15 @@ namespace branch_optimizer
             {
                 private:
 
-                    std::shared_ptr<std::vector<StatisticalBucket>> good_statistic_table;
+                    std::shared_ptr<Resource> resource;
                     size_t enumeration_idx;
                     bool was_feedback_received;
 
                 public:
 
-                    BranchPredictionResult(std::shared_ptr<std::vector<StatisticalBucket>> good_statistic_table,
+                    BranchPredictionResult(std::shared_ptr<Resource> resource,
                                            size_t enumeration_idx,
-                                           bool was_feedback_received) noexcept: good_statistic_table(std::move(good_statistic_table)),
+                                           bool was_feedback_received) noexcept: resource(std::move(resource)),
                                                                                  enumeration_idx(enumeration_idx),
                                                                                  was_feedback_received(was_feedback_received){}
 
@@ -695,19 +599,144 @@ namespace branch_optimizer
                             return;
                         }
 
-                        (*this->good_statistic_table)[this->enumeration_idx].total_score    += FloatRangeClamper<branch_float_t>(MIN_SCORE_VALUE, MAX_SCORE_VALUE).normalize(x);
-                        (*this->good_statistic_table)[this->enumeration_idx].total_count    += 1;
+                        if (this->resource->evaluation_count == this->resource->reevaluation_window)
+                        {
+                            this->reevaluate_distribution_table();
+
+                            if (this->is_statistic_table_full())
+                            {
+                                this->defaultize_statistic_table();
+                            }
+
+                            this->resource->evaluation_count = 0u;
+                        }
+
+                        this->resource->good_statistic_table[this->enumeration_idx].total_score     += FloatRangeClamper<branch_float_t>(MIN_SCORE_VALUE, MAX_SCORE_VALUE).normalize(x);
+                        this->resource->good_statistic_table[this->enumeration_idx].total_count     += 1;
+
+                        this->resource->evaluation_count                                            += 1;
+                    }
+
+                private:
+
+                    auto is_statistic_table_full() -> bool
+                    {
+                        for (const StatisticalBucket& bucket: this->resource->good_statistic_table)
+                        {
+                            if (bucket.total_count >= RESET_THRESHOLD)
+                            {
+                                return true;
+                            }
+                        }
+
+                        return false;
+                    }
+
+                    auto get_score(branch_float_t total_score, size_t total_count) -> branch_float_t
+                    {
+                        return StatelessScorer{}(total_score, total_count);
+                    }
+
+                    void defaultize_statistic_table()
+                    {
+                        std::fill(this->resource->good_statistic_table.begin(),
+                                  this->resource->good_statistic_table.end(),
+                                  StatisticalBucket{.total_score = static_cast<branch_float_t>(0), .total_count = 0u});
+                    }
+
+                    auto get_percentage_table() -> std::vector<branch_float_t>
+                    {
+                        std::optional<branch_float_t> good_normalization_value = std::nullopt;
+
+                        for (const StatisticalBucket& bucket: this->resource->good_statistic_table)
+                        {
+                            if (bucket.total_count == 0u)
+                            {
+                                continue;
+                            }
+
+                            if (!good_normalization_value.has_value())
+                            {
+                                good_normalization_value = this->get_score(bucket.total_score, bucket.total_count);
+                                continue;
+                            }
+
+                            good_normalization_value.value() += this->get_score(bucket.total_score, bucket.total_count);
+                        }
+
+                        if (!good_normalization_value.has_value())
+                        {
+                            if (this->resource->good_statistic_table.empty())
+                            {
+                                return {};
+                            }
+
+                            return std::vector<branch_float_t>(this->resource->good_statistic_table.size(), static_cast<branch_float_t>(1) / this->resource->good_statistic_table.size());
+                        }
+
+                        std::vector<branch_float_t> result{};
+
+                        for (const StatisticalBucket& bucket: this->resource->good_statistic_table)
+                        {
+                            if (bucket.total_count == 0u)
+                            {
+                                result.push_back(0);
+                                continue;
+                            }
+
+                            branch_float_t good_perc    = this->get_score(bucket.total_score, bucket.total_count);
+                            branch_float_t perc         = good_perc / good_normalization_value.value();
+
+                            result.push_back(perc);
+                        }
+
+                        return result;
+                    }
+
+                    void reevaluate_distribution_table()
+                    {
+                        std::vector<branch_float_t> percentage_table = this->get_percentage_table();
+                        branch_float_t first = 0;
+                        std::vector<branch_float_t> nxt_distribution_table(percentage_table.size());
+
+                        for (size_t i = 0u; i < percentage_table.size(); ++i)
+                        {
+                            nxt_distribution_table[i] = first;
+                            first += percentage_table[i];
+                        }
+
+                        //let's do another validation of increasing sequence
+
+                        try
+                        {
+                            for (size_t i = 0u; i < nxt_distribution_table.size(); ++i)
+                            {
+                                if (std::isnan(nxt_distribution_table[i]))
+                                {
+                                    throw std::runtime_error("unexpected result");
+                                }
+
+                                if (i != 0u)
+                                {
+                                    if (nxt_distribution_table[i] < nxt_distribution_table[i - 1])
+                                    {
+                                        throw std::runtime_error("unexpected result");
+                                    }
+                                }
+                            }
+
+                            this->resource->distribution_table = std::move(nxt_distribution_table);
+                        }
+                        catch (...)
+                        {
+                            return;
+                        }
                     }
             };
 
             auto make_branch_prediction_result(size_t enumeration_idx) -> std::unique_ptr<BranchPredictionResultInterface>
             {
-                if (enumeration_idx >= this->good_statistic_table->size())
-                {
-                    std::abort();
-                }
-
-                return std::make_unique<BranchPredictionResult>(this->good_statistic_table, enumeration_idx, false);
+                return std::make_unique<BranchPredictionResult>(this->resource, enumeration_idx, false);
             }
 
             //this is complicated
@@ -733,7 +762,7 @@ namespace branch_optimizer
                 size_t mid_sz       = range_sz / 2;
                 size_t mid_point    = first + mid_sz;
 
-                branch_float_t cand = this->distribution_table[mid_point];
+                branch_float_t cand = this->resource->distribution_table[mid_point];
 
                 if (cand > prob)
                 {
@@ -764,7 +793,7 @@ namespace branch_optimizer
                 }
 
                 size_t first    = 0u;
-                size_t last     = this->distribution_table.size();
+                size_t last     = this->resource->distribution_table.size();
 
                 if (first == last)
                 {
@@ -777,12 +806,12 @@ namespace branch_optimizer
                     return first;
                 }
 
-                if (prob < this->distribution_table.front())
+                if (prob < this->resource->distribution_table.front())
                 {
                     std::abort();
                 }
 
-                if (prob >= this->distribution_table.back())
+                if (prob >= this->resource->distribution_table.back())
                 {
                     return last - 1;
                 }

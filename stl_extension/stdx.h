@@ -1103,20 +1103,28 @@ namespace stdx
     template <class ...Args>
     void high_resolution_sleep_for(std::chrono::duration<Args...> dur)
     {
-        constexpr intmax_t MIN_NANO_TICK    = 0;
-        constexpr intmax_t MAX_NANO_TICK    = 999'999'999LL;
+        #if defined(__linux__)
+        {
+            constexpr intmax_t MIN_NANO_TICK    = 0;
+            constexpr intmax_t MAX_NANO_TICK    = 999'999'999LL;
 
-        std::chrono::nanoseconds nano_dur   = std::chrono::duration_cast<std::chrono::nanoseconds>(dur);
+            std::chrono::nanoseconds nano_dur   = std::chrono::duration_cast<std::chrono::nanoseconds>(dur);
 
-        intmax_t nano_tick                  = nano_dur.count();
-        intmax_t actual_nano_tick           = std::clamp(nano_tick, MIN_NANO_TICK, MAX_NANO_TICK);
+            intmax_t nano_tick                  = nano_dur.count();
+            intmax_t actual_nano_tick           = std::clamp(nano_tick, MIN_NANO_TICK, MAX_NANO_TICK);
 
-        struct timespec request             = {};
-        request.tv_nsec                     = actual_nano_tick;
+            struct timespec request             = {};
+            request.tv_nsec                     = actual_nano_tick;
 
-        struct timespec remaining;
+            struct timespec remaining;
 
-        clock_nanosleep(CLOCK_MONOTONIC, 0, &request, &remaining);
+            clock_nanosleep(CLOCK_MONOTONIC, 0, &request, &remaining);
+        }
+        #else
+        {
+            std::this_thread::sleep_for(dur);
+        }
+        #endif
     }
 }
 

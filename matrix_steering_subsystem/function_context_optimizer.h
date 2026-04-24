@@ -13,28 +13,8 @@
 #include <stl_extension/stdx.h>
 #include <array>
 
-//in this component, we'd try to extract the traits of the function, pick a sample point
-//we'd have to have an operating window size, and a fixed discretization of the window size, just like stock
-
-//think like this, we'd want to inspect the window 100, window 10, window 1, window 0.1, window 0.01
-//discretization = 10 means that 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 1, 2, 3, ..., 10, ...
-
-//how can we clue the context without exploding the space?
-//such is that the context is fair and our optimization is reasonable
-
-//we'd try to work on this today
-//this is hard
-
-//today we'd work on the theory of function context
-
-//as we are well-awared, the function context in the sense of finding zeros is the up and down of a certain derivative value after a certain time
-//let's say that a function has f(x), f'(x), f''(x), f'''(x), ...
-
-//if f(x) is ever increasing, it's a radix of exponential function
-//if f(x) is positive, then negative, then the acceleration pulled the string of the velocity which pulled the string of the position
-
-//an easy way to radix a function is to punch anchor points for position, and sort the points to get a sense of the function
-//we'd settle this being the solution before we are circling back for optimizations
+//as I already tried to explain that there is no better statistics than enumeration + punching branch predictions
+//if we can engineer the context so good that there is no entropy left for the environmental variables, we can 100% predict the next move
 
 namespace function_context_optimizer
 {
@@ -52,6 +32,7 @@ namespace function_context_optimizer
         public:
 
             virtual ~StatisticalMachineGeneratorInterface() = default;
+
             virtual auto get() -> std::unique_ptr<StatisticalMachineInterface> = 0;
     };
 
@@ -60,6 +41,7 @@ namespace function_context_optimizer
         public:
 
             virtual ~FunctionInterface() = default;
+
             virtual auto f(ctx_float_t x) -> ctx_float_t = 0;
     };
 
@@ -68,6 +50,7 @@ namespace function_context_optimizer
         public:
 
             virtual ~FunctionRadixerInterface() = default;
+
             virtual auto enumerate(FunctionInterface& f) -> size_t = 0;
             virtual auto enumeration_size() -> size_t = 0;
     };
@@ -77,6 +60,7 @@ namespace function_context_optimizer
         public:
 
             virtual ~FunctionContextOptimizerInterface() = default;
+
             virtual auto optimize_context(FunctionInterface& f) -> std::shared_ptr<StatisticalMachineInterface> = 0;
     };
 

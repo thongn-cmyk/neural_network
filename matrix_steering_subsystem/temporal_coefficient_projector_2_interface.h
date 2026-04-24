@@ -18,6 +18,7 @@ namespace temporal_coefficient_projector_2
         public:
 
             virtual ~TemporalCoefficientProjectorContainerInterface() = default;
+
             virtual auto get() -> std::shared_ptr<temporal_coefficient_projector::TemporalCoefficientProjectorInterface> = 0;
             virtual void feedback(double rating) = 0;
     };
@@ -27,6 +28,7 @@ namespace temporal_coefficient_projector_2
         public:
 
             virtual ~TemporalCoefficientProjectorGeneratorInterface() = default;
+
             virtual auto get(size_t coefficient_sz) -> std::unique_ptr<TemporalCoefficientProjectorContainerInterface> = 0;
     };
 }

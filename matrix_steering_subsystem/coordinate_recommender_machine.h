@@ -25,6 +25,7 @@ namespace coordinate_recommender_machine
         public:
 
             virtual ~CoordinateRecommenderMachineInterface() noexcept = default;
+
             virtual void feedback(const std::vector<machine_float_t>& coordinate, machine_float_t rating) = 0;
             virtual auto next() -> std::optional<std::vector<machine_float_t>> = 0;
             virtual void set_window_size(size_t sz) = 0;

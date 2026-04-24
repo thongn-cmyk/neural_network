@@ -35,6 +35,7 @@ namespace cosine_recommender_machine_x
         public:
 
             virtual ~EnumerableCosineProjectorInterface() noexcept = default;
+
             virtual auto cosine_like(const std::vector<size_t>& enumeration_vec,
                                      const std::vector<crm_x_float_t>& org_vec) -> std::vector<crm_x_float_t> = 0;
 
@@ -46,6 +47,7 @@ namespace cosine_recommender_machine_x
         public:
 
             virtual ~VectorRandomizerMachineInterface() noexcept = default;
+
             virtual auto randomize(size_t sz) -> std::vector<crm_x_float_t> = 0;
     };
 
@@ -54,6 +56,7 @@ namespace cosine_recommender_machine_x
         public:
 
             virtual ~CosineRecommendationResultInterface() = default;
+
             virtual auto get() -> std::vector<crm_x_float_t> = 0;
             virtual void feedback(crm_x_float_t score) = 0;
     };
@@ -63,6 +66,7 @@ namespace cosine_recommender_machine_x
         public:
 
             virtual ~CosineRecommenderMachineInterface() = default;
+
             virtual auto next() -> std::unique_ptr<CosineRecommendationResultInterface> = 0;
             virtual auto space_size() -> size_t = 0;
     };

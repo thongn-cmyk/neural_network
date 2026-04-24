@@ -15,6 +15,7 @@ namespace time_machine
         public:
 
             virtual ~TimeMachineInterface() noexcept = default;
+
             virtual auto f(std_float_t t) -> tm_float_t = 0;
     };
 }

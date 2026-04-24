@@ -19,6 +19,7 @@ namespace interval_coefficient_optimizer_tree
         public:
 
             virtual ~CoefficientSpaceTensorInterface() = default;
+
             virtual auto get_coefficient_space() -> std::vector<std_float_t> = 0;
             virtual void feedback(std_float_t rating) = 0;
     };
@@ -28,6 +29,7 @@ namespace interval_coefficient_optimizer_tree
         public:
 
             virtual ~CoefficientOptimizerTreeInterface() = default;
+
             virtual auto get_coefficient_span(const std::pair<size_t, size_t>& range) -> std::unique_ptr<CoefficientSpaceTensorInterface> = 0;
             virtual void set_range(size_t range_sz) = 0;
             virtual auto size() -> size_t = 0;

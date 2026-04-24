@@ -44,6 +44,7 @@ namespace cosine_recommender_machine
         public:
 
             virtual ~CosineRecommenderMachineInterface() = default;
+
             virtual void feedback(const std::vector<crm_float_t>& coordinate, crm_float_t rating) = 0;
             virtual auto next() -> std::optional<std::vector<crm_float_t>> = 0;
     };

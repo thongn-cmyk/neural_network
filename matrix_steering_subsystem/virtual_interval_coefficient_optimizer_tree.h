@@ -23,6 +23,7 @@ namespace virtual_interval_coefficient_optimizer_tree
         public:
 
             virtual ~BatchCoefficientSpaceTensorInterface() = default;
+
             virtual auto get_coefficient_space() -> std::vector<std::vector<std_float_t>> = 0;
             virtual void feedback(std_float_t rating) = 0;
     };
@@ -32,6 +33,7 @@ namespace virtual_interval_coefficient_optimizer_tree
         public:
 
             virtual ~BatchCoefficientOptimizerTreeInterface() = default;
+
             virtual auto get_coefficient_span(const std::vector<std::pair<size_t, size_t>>& range_vec) -> std::unique_ptr<BatchCoefficientSpaceTensorInterface> = 0;
             virtual auto translate(const std::pair<size_t, size_t>& interval) -> std::vector<std::pair<size_t, size_t>> = 0;
             virtual void rearrange_focal() = 0;
@@ -43,6 +45,7 @@ namespace virtual_interval_coefficient_optimizer_tree
         public:
 
             virtual ~SegmentMapperInterface() = default;
+
             virtual void hint(const std::vector<std::pair<size_t, size_t>>& segment_vec, std_float_t rating) = 0;
             virtual void clear() = 0;
             virtual void apply() = 0;

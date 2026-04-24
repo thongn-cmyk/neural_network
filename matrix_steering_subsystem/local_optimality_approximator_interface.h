@@ -15,6 +15,7 @@ namespace local_optimality_approximator
         public:
 
             virtual ~OptimalityApproximatorInterface() noexcept = default;
+
             virtual auto approx_x(time_machine::TimeMachineInterface& time_machine, std_float_t x) -> std_float_t = 0;
     };
 }

@@ -20,6 +20,8 @@ namespace temporal_coefficient_projector_2
 {
     using std_float_t = float_def::std_float_t;
 
+    //I have thought of every possible scenerio of how this could work, random and ranges are the only non-bias actionables in this scenerio, sue me
+
     class DecisiveFactoryInterface
     {
         public:
@@ -773,6 +775,14 @@ namespace temporal_coefficient_projector_2
                 return std::make_unique<temporal_coefficient_projector::PointCoefficientProjector>(std::vector<std_float_t>(coefficient_sz, lense));
             }
 
+            static auto get_const_scope_focal_expdst_range(size_t coefficient_sz) -> std::unique_ptr<temporal_coefficient_projector::TemporalCoefficientProjectorInterface>
+            {
+                conventional_randomizer::ApplicationRandomizerObject randomizer{};
+                std_float_t lense   = randomizer.ld_randomize_focal();
+
+                return std::make_unique<temporal_coefficient_projector::PointCoefficientProjector>(std::vector<std_float_t>(coefficient_sz, lense));
+            }
+
             static auto get_const_scope_focal_noaction(size_t coefficient_sz) -> std::unique_ptr<temporal_coefficient_projector::TemporalCoefficientProjectorInterface>
             {
                 return std::make_unique<temporal_coefficient_projector::PointCoefficientProjector>(std::vector<std_float_t>(coefficient_sz, 1));
@@ -855,16 +865,12 @@ namespace temporal_coefficient_projector_2
 
             static auto get_line_scope_focal_expdst_range(size_t coefficient_sz) -> std::unique_ptr<temporal_coefficient_projector::TemporalCoefficientProjectorInterface>
             {
-                const std_float_t FIRST_VALUE   = 0;
-                const std_float_t LAST_VALUE    = 1;
-                const size_t DISCRETIZATION_SZ  = 1'000'000'000'000'000ULL;
-
-                conventional_randomizer::RandomizerObject randomizer{};
+                conventional_randomizer::ApplicationRandomizerObject app_randomizer{};
                 std::vector<std_float_t> line_vec(coefficient_sz);
 
                 for (size_t i = 0u; i < coefficient_sz; ++i)
                 {
-                    line_vec[i] = randomizer.template randomize_fixed_point_float<std_float_t>(FIRST_VALUE, LAST_VALUE, DISCRETIZATION_SZ);
+                    line_vec[i] = app_randomizer.ld_randomize_focal();
                 }
 
                 return std::make_unique<temporal_coefficient_projector::LineTemporalCoefficientProjector<PromotedFloatType>>(std::move(line_vec));
@@ -899,7 +905,7 @@ namespace temporal_coefficient_projector_2
             {
                 {"origin", {"const_scope_focal", "sin_scope_focal", "line_scope_focal"}},
 
-                {"const_scope_focal", {"const_scope_focal_xdcm_range", "const_scope_focal_dcm_range", "const_scope_focal_noaction"}},
+                {"const_scope_focal", {"const_scope_focal_xdcm_range", "const_scope_focal_dcm_range", "const_scope_focal_expdst_range", "const_scope_focal_noaction"}},
                 {"sin_scope_focal", {"sin_scope_focal_dcm_range", "sin_scope_focal_unfdst_range", "sin_scope_focal_expdst_range"}},
                 {"line_scope_focal", {"line_scope_focal_unfdst_range", "line_scope_focal_expdst_range"}}
 
@@ -911,6 +917,7 @@ namespace temporal_coefficient_projector_2
             {
                 {"const_scope_focal_xdcm_range", self::get_const_scope_focal_xdcm_range},
                 {"const_scope_focal_dcm_range", self::get_const_scope_focal_dcm_range},
+                {"const_scope_focal_expdst_range", self::get_const_scope_focal_expdst_range},
                 {"const_scope_focal_noaction", self::get_const_scope_focal_noaction},
                 {"sin_scope_focal_dcm_range", self::get_sin_scope_focal_dcm_range},
                 {"sin_scope_focal_unfdst_range", self::get_sin_scope_focal_unfdst_range},
@@ -962,7 +969,13 @@ namespace temporal_coefficient_projector_2
             }
     };
 
-    class FocalExtendedProjectorGenerator: public virtual TemporalCoefficientProjectorGeneratorInterface
+    //I think that we need two lenses too
+    //I was thinking of the virtual space of <closing in> of random space
+
+    //such is that we'd want to leverage context to reduce randomization ranges, but on top of that requires a translation to a bijective space of the randomization space
+    //but we wont talk about that for now
+
+    class RangeFocalExtendedProjectorGenerator: public virtual TemporalCoefficientProjectorGeneratorInterface
     {
         private:
 
@@ -972,11 +985,11 @@ namespace temporal_coefficient_projector_2
 
         public:
 
-            FocalExtendedProjectorGenerator(std::unique_ptr<DecisiveFactoryInterface> focal_factory,
-                                            std::unique_ptr<branch_optimizer::MultipleBranchPredictorInterface> focal_branch_predictor,
-                                            std::unique_ptr<TemporalCoefficientProjectorGeneratorInterface> base_generator) noexcept: focal_factory(std::move(focal_factory)),
-                                                                                                                                      focal_branch_predictor(std::move(focal_branch_predictor)),
-                                                                                                                                      base_generator(std::move(base_generator)){}
+            RangeFocalExtendedProjectorGenerator(std::unique_ptr<DecisiveFactoryInterface> focal_factory,
+                                                 std::unique_ptr<branch_optimizer::MultipleBranchPredictorInterface> focal_branch_predictor,
+                                                 std::unique_ptr<TemporalCoefficientProjectorGeneratorInterface> base_generator) noexcept: focal_factory(std::move(focal_factory)),
+                                                                                                                                           focal_branch_predictor(std::move(focal_branch_predictor)),
+                                                                                                                                           base_generator(std::move(base_generator)){}
 
             auto get(size_t coefficient_sz) -> std::unique_ptr<TemporalCoefficientProjectorContainerInterface>
             {
@@ -1015,6 +1028,69 @@ namespace temporal_coefficient_projector_2
                     {
                         return std::make_shared<temporal_coefficient_projector::MultiplicationTemporalCoefficientProjector<>>(std::make_unique<temporal_coefficient_projector::SharedPointerProjector>(this->origin_scaler),
                                                                                                                               std::make_unique<temporal_coefficient_projector::SharedPointerProjector>(this->base_container->get()));
+                    }
+
+                    void feedback(double rating)
+                    {
+                        this->branch_prediction_result->feedback(rating);
+                        this->base_container->feedback(rating);
+                    }
+            };
+    };
+
+    class DomainFocalExtendedProjectorGenerator: public virtual TemporalCoefficientProjectorGeneratorInterface
+    {
+        private:
+
+            std::unique_ptr<DecisiveFactoryInterface> focal_factory;
+            std::unique_ptr<branch_optimizer::MultipleBranchPredictorInterface> focal_branch_predictor;
+            std::unique_ptr<TemporalCoefficientProjectorGeneratorInterface> base_generator;
+
+        public:
+
+            DomainFocalExtendedProjectorGenerator(std::unique_ptr<DecisiveFactoryInterface> focal_factory,
+                                                  std::unique_ptr<branch_optimizer::MultipleBranchPredictorInterface> focal_branch_predictor,
+                                                  std::unique_ptr<TemporalCoefficientProjectorGeneratorInterface> base_generator): focal_factory(std::move(focal_factory)),
+                                                                                                                                   focal_branch_predictor(std::move(focal_branch_predictor)),
+                                                                                                                                   base_generator(std::move(base_generator)){}
+
+            auto get(size_t coefficient_sz) -> std::unique_ptr<TemporalCoefficientProjectorContainerInterface>
+            {
+                std::unique_ptr<branch_optimizer::MultipleBranchPredictionResultInterface> branch_prediction_result     = this->focal_branch_predictor->next();
+                std::vector<size_t> enumeration_vec                                                                     = branch_prediction_result->get_enumeration();
+                std::unique_ptr<temporal_coefficient_projector::TemporalCoefficientProjectorInterface> domain_scaler    = this->focal_factory->get_optimizer(enumeration_vec, 1u);
+                std::unique_ptr<TemporalCoefficientProjectorContainerInterface> base_container                          = this->base_generator->get(coefficient_sz);
+
+                return std::make_unique<InternalFactoryTensor>
+                (
+                    std::move(domain_scaler),
+                    std::move(base_container),
+                    std::move(branch_prediction_result)
+                );
+            }
+
+        private:
+
+            class InternalFactoryTensor: public virtual TemporalCoefficientProjectorContainerInterface
+            {
+                private:
+
+                    std::shared_ptr<temporal_coefficient_projector::TemporalCoefficientProjectorInterface> domain_scaler;
+                    std::shared_ptr<TemporalCoefficientProjectorContainerInterface> base_container;
+                    std::unique_ptr<branch_optimizer::MultipleBranchPredictionResultInterface> branch_prediction_result;
+                
+                public:
+
+                    InternalFactoryTensor(std::shared_ptr<temporal_coefficient_projector::TemporalCoefficientProjectorInterface> domain_scaler,
+                                          std::shared_ptr<TemporalCoefficientProjectorContainerInterface> base_container,
+                                          std::unique_ptr<branch_optimizer::MultipleBranchPredictionResultInterface> branch_prediction_result): domain_scaler(std::move(domain_scaler)),
+                                                                                                                                                base_container(std::move(base_container)),
+                                                                                                                                                branch_prediction_result(std::move(branch_prediction_result)){}
+
+                    auto get() -> std::shared_ptr<temporal_coefficient_projector::TemporalCoefficientProjectorInterface>
+                    {
+                        return std::make_shared<temporal_coefficient_projector::DomainScaledTemporalCoefficientProjector<>>(std::make_unique<temporal_coefficient_projector::SharedPointerProjector>(this->domain_scaler),
+                                                                                                                            std::make_unique<temporal_coefficient_projector::SharedPointerProjector>(this->base_container->get()));
                     }
 
                     void feedback(double rating)
@@ -1184,7 +1260,7 @@ namespace temporal_coefficient_projector_2
         private:
 
             template <class PromotedFloatType = std_float_t>
-            static auto get_autolense_generator(std::unique_ptr<TemporalCoefficientProjectorGeneratorInterface>&& base) -> std::unique_ptr<TemporalCoefficientProjectorGeneratorInterface>
+            static auto get_auto_domain_lense_generator(std::unique_ptr<TemporalCoefficientProjectorGeneratorInterface>&& base) -> std::unique_ptr<TemporalCoefficientProjectorGeneratorInterface>
             {
                 if (base == nullptr)
                 {
@@ -1194,9 +1270,31 @@ namespace temporal_coefficient_projector_2
                 std::unique_ptr<DecisiveFactoryInterface> lense_factory                                 = std::make_unique<DecisiveFocalFactory<PromotedFloatType>>();
                 std::unique_ptr<branch_optimizer::MultipleBranchPredictorInterface> branch_predictor    = branch_optimizer::HierarchicalBranchPredictorFactory::get_best_branch_predictor_from_preorder_tree(lense_factory->get_enumeration_preorder_tree());
 
-                return std::make_unique<FocalExtendedProjectorGenerator>(std::move(lense_factory),
-                                                                         std::move(branch_predictor),
-                                                                         std::move(base));
+                return std::make_unique<DomainFocalExtendedProjectorGenerator>(std::move(lense_factory),
+                                                                               std::move(branch_predictor),
+                                                                               std::move(base));
+            }
+
+            template <class PromotedFloatType = std_float_t>
+            static auto get_auto_range_lense_generator(std::unique_ptr<TemporalCoefficientProjectorGeneratorInterface>&& base) -> std::unique_ptr<TemporalCoefficientProjectorGeneratorInterface>
+            {
+                if (base == nullptr)
+                {
+                    throw std::invalid_argument("bad base, null");
+                }
+
+                std::unique_ptr<DecisiveFactoryInterface> lense_factory                                 = std::make_unique<DecisiveFocalFactory<PromotedFloatType>>();
+                std::unique_ptr<branch_optimizer::MultipleBranchPredictorInterface> branch_predictor    = branch_optimizer::HierarchicalBranchPredictorFactory::get_best_branch_predictor_from_preorder_tree(lense_factory->get_enumeration_preorder_tree());
+
+                return std::make_unique<RangeFocalExtendedProjectorGenerator>(std::move(lense_factory),
+                                                                              std::move(branch_predictor),
+                                                                              std::move(base));
+            }
+
+            template <class PromotedFloatType = std_float_t>
+            static auto get_autolense_generator(std::unique_ptr<TemporalCoefficientProjectorGeneratorInterface>&& base) -> std::unique_ptr<TemporalCoefficientProjectorGeneratorInterface>
+            {
+                return get_auto_range_lense_generator(get_auto_domain_lense_generator(std::move(base)));
             }
 
             template <class PromotedFloatType = std_float_t>

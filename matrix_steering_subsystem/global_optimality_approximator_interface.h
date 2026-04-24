@@ -15,6 +15,7 @@ namespace global_optimality_approximator
         public:
 
             virtual ~TimeMachineOptimizerInterface() noexcept = default;
+
             virtual auto optimize(time_machine::TimeMachineInterface& time_machine) -> std_float_t = 0;
     };
 }

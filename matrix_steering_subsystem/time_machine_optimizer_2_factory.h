@@ -39,6 +39,7 @@ namespace global_optimality_approximator
         public:
 
             virtual ~TensorFactoryInterface() = default;
+
             virtual auto get() -> std::unique_ptr<FactoryTensorInterface> = 0;
     };
 

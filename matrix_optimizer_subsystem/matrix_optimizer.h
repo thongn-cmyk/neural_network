@@ -258,6 +258,22 @@ namespace matrix_optimizer
             auto optimize(the_matrix::MatrixInterface& matrix,
                           const std::vector<std::pair<std::shared_ptr<tensor_model::Matrix>, std::shared_ptr<tensor_model::Matrix>>>& gold_std) -> std::shared_ptr<the_matrix::MatrixInterface>
             {
+                //we'd work on strategy optimizations, such is that for an action to form appropriately, we'd need to take a sequence of actions to achieve a predefined goal
+                //our work is (context) -> immediate action
+
+                //we'd work on two major works:
+
+                //(context) optimization, providing all the argument variables with appropriate memory
+                //immediate action, formed by a strategy of sequence of actions followed by a propagation of feedback
+
+                //in this particular scenerio, we are interested in the projection space of the line, so the next line is "actionable"
+                //and the container that holds the actionable is a heuristic, so our problem becomes (context) -> heuristic -> immediate action
+
+                //in this sense, we can punch the context hole by one-dimensionalization, says that we lossless compress the score AND the previous projections into one dimensional integer space
+                //then the heuristic is BY context hole
+
+                //and we'd have to hone the projection line to be part of a strategy or a bigger picture
+
                 std::unique_ptr<temporal_coefficient_projector_3::TemporalCoefficientProjectorGeneratorInterface> projector_gen = this->get_projector_generator(matrix.get_coefficient_vector().size());
                 std::unique_ptr<global_optimality_approximator::TensorFactoryInterface> time_machine_optimizer_factory          = this->get_time_machine_optimizer_factory();
                 std::unique_ptr<matrix_evaluator::MatrixEvaluatorInterface> product_evaluator                                   = this->get_product_evaluator(gold_std);

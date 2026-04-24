@@ -39,6 +39,7 @@ namespace score_context_optimizer
         public:
 
             virtual ~StatisticalMachineGeneratorInterface() = default;
+
             virtual auto get() -> std::unique_ptr<StatisticalMachineInterface> = 0;
     };
 
@@ -47,6 +48,7 @@ namespace score_context_optimizer
         public:
 
             virtual ~ActionableResultInterface() = default;
+
             virtual void feedback(ctx_float_t score) = 0;
             virtual auto get_statistical_machine() -> std::shared_ptr<StatisticalMachineInterface> = 0;
     };
@@ -56,6 +58,7 @@ namespace score_context_optimizer
         public:
 
             virtual ~IterationContextInterface() = default;
+
             virtual auto next() -> std::unique_ptr<ActionableResultInterface> = 0;
     };
 
@@ -64,6 +67,7 @@ namespace score_context_optimizer
         public:
 
             virtual ~IterationContextGeneratorInterface() = default;
+
             virtual auto get() -> std::unique_ptr<IterationContextInterface> = 0;
     };
 
@@ -72,6 +76,7 @@ namespace score_context_optimizer
         public:
 
             virtual ~WindowCalculatorInterface() = default;
+
             virtual void push(ctx_float_t e) = 0;
             virtual auto get_enumeration() -> size_t = 0;
             virtual auto enumeration_size() -> size_t = 0;
@@ -82,6 +87,7 @@ namespace score_context_optimizer
         public:
 
             virtual ~WindowCalculatorGeneratorInterface() = default;
+
             virtual auto get(size_t enumeration_sz) -> std::unique_ptr<WindowCalculatorInterface> = 0;
     };
 

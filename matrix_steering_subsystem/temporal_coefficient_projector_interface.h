@@ -15,6 +15,7 @@ namespace temporal_coefficient_projector
         public:
 
             virtual ~TemporalCoefficientProjectorInterface() noexcept = default;
+
             virtual auto project(std_float_t t) -> std::vector<std_float_t> = 0;
     };
 }

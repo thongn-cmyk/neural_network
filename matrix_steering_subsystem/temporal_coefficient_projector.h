@@ -331,6 +331,33 @@ namespace temporal_coefficient_projector
     };
 
     template <class PromotedFloatType = std_float_t>
+    class DomainScaledTemporalCoefficientProjector: public virtual TemporalCoefficientProjectorInterface
+    {
+        private:
+
+            std::unique_ptr<TemporalCoefficientProjectorInterface> domain_scaler;
+            std::unique_ptr<TemporalCoefficientProjectorInterface> rhs;
+        
+        public:
+
+            DomainScaledTemporalCoefficientProjector(std::unique_ptr<TemporalCoefficientProjectorInterface> domain_scaler,
+                                                     std::unique_ptr<TemporalCoefficientProjectorInterface> rhs): domain_scaler(std::move(domain_scaler)),
+                                                                                                                  rhs(std::move(rhs)){}
+
+            auto project(std_float_t t) -> std::vector<std_float_t>
+            {
+                std::vector<PromotedFloatType> lhs_vec  = stdx::to_castable_vector_initializer(this->domain_scaler->project(t));
+
+                if (lhs_vec.size() != 1)
+                {
+                    throw std::runtime_error("internal corruption, operation size mismatched for domain scaled operation");
+                }
+
+                return this->rhs->project(lhs_vec.front() * t);
+            }
+    };
+
+    template <class PromotedFloatType = std_float_t>
     class GenericOvalTemporalCoefficientProjector: public virtual TemporalCoefficientProjectorInterface
     {
         private:
