@@ -34,8 +34,6 @@ namespace sequential_line_context_optimizer
 
             virtual auto get() -> std::unique_ptr<IterationContextInterface> = 0;
     };
-
-
 }
 
 #endif
