@@ -563,7 +563,7 @@ namespace dg_sock::network_kernel_mailbox_impl1::packet_controller{
         public:
 
             virtual ~RetransmissionDelayNegotiatorInterface() noexcept = default;
-            virtual auto get(const Address& to_addr) noexcept -> std::expected<std::chrono::nanoseconds, exception_t> = 0;
+            virtual auto get(size_t retransmission_count, const Address& to_addr) noexcept -> std::expected<std::chrono::nanoseconds, exception_t> = 0;
     };
 
     class UpdatableInterface{
@@ -3119,7 +3119,8 @@ namespace dg_sock::network_kernel_mailbox_impl1::packet_controller{
 
             StaticRetransmissionDelayNegotiator(std::chrono::nanoseconds delay_interval) noexcept: delay_interval(delay_interval){}
 
-            auto get(const Address& to_addr) noexcept -> std::expected<std::chrono::nanoseconds, exception_t>{
+            auto get(size_t retransmission_count,
+                     const Address& to_addr) noexcept -> std::expected<std::chrono::nanoseconds, exception_t>{
 
                 return this->delay_interval;
             }
@@ -3135,7 +3136,8 @@ namespace dg_sock::network_kernel_mailbox_impl1::packet_controller{
 
             RandomRetransmissionDelayNegotiator(std::chrono::nanoseconds average_delay_interval) noexcept: average_delay_interval(average_delay_interval){}
 
-            auto get(const Address& to_addr) noexcept -> std::expected<std::chrono::nanoseconds, exception_t>
+            auto get(size_t retransmission_count,
+                     const Address& to_addr) noexcept -> std::expected<std::chrono::nanoseconds, exception_t>
             {
                 std::chrono::nanoseconds two_interval   = this->average_delay_interval * 2;
                 uint64_t two_interval_ticks             = static_cast<uint64_t>(two_interval.count());
@@ -3143,6 +3145,40 @@ namespace dg_sock::network_kernel_mailbox_impl1::packet_controller{
                 uint64_t new_avg_ticks                  = random_seed % std::max(uint64_t{1}, two_interval_ticks); 
 
                 return std::chrono::nanoseconds(new_avg_ticks);
+            }
+    };
+
+    class ExponentialRetransmissionDelayNegotiator: public virtual RetransmissionDelayNegotiatorInterface
+    {
+        private:
+
+            std::chrono::nanoseconds base_interval;
+            std::chrono::nanoseconds min_interval;
+            std::chrono::nanoseconds max_interval;
+            double exp_base;
+        
+        public:
+
+            ExponentialRetransmissionDelayNegotiator(std::chrono::nanoseconds base_interval,
+                                                     std::chrono::nanoseconds min_interval,
+                                                     std::chrono::nanoseconds max_interval,
+                                                     double exp_base): base_interval(base_interval),
+                                                                       min_interval(min_interval),
+                                                                       max_interval(max_interval),
+                                                                       exp_base(exp_base){}
+
+            auto get(size_t retransmission_count,
+                     const Address& to_addr) noexcept -> std::expected<std::chrono::nanoseconds, exception_t>
+            {
+                auto tentative_interval     = this->base_interval * std::pow(this->exp_base, retransmission_count);
+                auto tentative_interval_2   = std::chrono::duration_cast<std::chrono::nanoseconds>(tentative_interval);
+
+                if (std::isnan(tentative_interval_2.count()))
+                {
+                    return this->max_interval;
+                }
+
+                return std::chrono::nanoseconds(std::clamp(tentative_interval_2.count(), this->min_interval.count(), this->max_interval.count()));
             }
     };
 
@@ -3314,7 +3350,7 @@ namespace dg_sock::network_kernel_mailbox_impl1::packet_controller{
                             continue;
                         }
 
-                        std::expected<std::chrono::nanoseconds, exception_t> delay = this->delay_negotiator->get(base_pkt_arr[i].to_addr);
+                        std::expected<std::chrono::nanoseconds, exception_t> delay = this->delay_negotiator->get(base_pkt_arr[i].retransmission_count, base_pkt_arr[i].to_addr);
 
                         if (!delay.has_value()){
                             exception_arr[i] = delay.error();
@@ -3386,7 +3422,7 @@ namespace dg_sock::network_kernel_mailbox_impl1::packet_controller{
 
                 for (size_t i = 0u; i < push_sz; ++i)
                 {
-                    std::expected<std::chrono::nanoseconds, exception_t> delay = this->delay_negotiator->get(pkt_arr[i]->to_addr);
+                    std::expected<std::chrono::nanoseconds, exception_t> delay = this->delay_negotiator->get(pkt_arr[i]->retransmission_count, pkt_arr[i]->to_addr);
 
                     if (!delay.has_value())
                     {
@@ -6596,6 +6632,36 @@ namespace dg_sock::network_kernel_mailbox_impl1::packet_controller{
             }
 
             return std::make_unique<RandomRetransmissionDelayNegotiator>(interval);
+        }
+
+        static auto get_base2_exp_retransmission_delay_negotiator(std::chrono::nanoseconds base_interval,
+                                                                  std::chrono::nanoseconds min_interval,
+                                                                  std::chrono::nanoseconds max_interval) -> std::unique_ptr<RetransmissionDelayNegotiatorInterface>
+        {
+            using namespace std::chrono_literals;
+
+            const std::chrono::nanoseconds MIN_INTERVAL             = std::chrono::duration_cast<std::chrono::nanoseconds>(0ns);
+            const std::chrono::nanoseconds MAX_INTERVAL             = std::chrono::duration_cast<std::chrono::nanoseconds>(10min);
+
+            if (std::clamp(base_interval, MIN_INTERVAL, MAX_INTERVAL) != base_interval)
+            {
+                dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
+            }
+
+            if (std::clamp(min_interval, MIN_INTERVAL, MAX_INTERVAL) != min_interval)
+            {
+                dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
+            }
+
+            if (std::clamp(max_interval, MIN_INTERVAL, MAX_INTERVAL) != max_interval)
+            {
+                dg_sock::network_exception::throw_exception(dg_sock::network_exception::INVALID_ARGUMENT);
+            }
+
+            return std::make_unique<ExponentialRetransmissionDelayNegotiator>(base_interval,
+                                                                              min_interval,
+                                                                              max_interval,
+                                                                              2);
         }
 
         static auto get_empty_retransmission_controller() -> std::unique_ptr<RetransmissionControllerInterface>

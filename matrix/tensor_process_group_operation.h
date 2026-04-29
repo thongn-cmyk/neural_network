@@ -236,7 +236,7 @@ namespace tensor_process_group_operation
         size_t slot_idx                 = tentative_slot_idx % tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ;
         size_t slot_offset              = dimension_idx % tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ;
 
-        tensor_process_unit_operation::positional_encode(rs.process_vec[slot_idx], amplitude, frequency_multiplier, x_offset, y_offset, slot_offset);
+        rs.process_vec[slot_idx]        = tensor_process_unit_operation::positional_encode(rs.process_vec[slot_idx], amplitude, frequency_multiplier, x_offset, y_offset, slot_offset);
 
         return std::allocate_shared<tensor_model::ProcessGroup>(allocator, std::move(rs));
     }

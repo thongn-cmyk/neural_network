@@ -244,7 +244,7 @@ namespace tensor_process_unit_operation
         }
 
         tensor_model::ProcessUnit rs    = arg;
-        rs.logit_vec[offset]            = amplitude * std::sin(frequency_multiplier * arg.logit_vec[offset] + x_offset) + y_offset;
+        rs.logit_vec[offset]            += amplitude * std::sin(frequency_multiplier * arg.logit_vec[offset] + x_offset) + y_offset;
 
         return rs;
     }

@@ -36,6 +36,17 @@ namespace cuda_matrix::utility
         }
     };
 
+    template <class T>
+    constexpr __device__ auto safe_ptr_access(T * ptr) -> T *
+    {
+        if (ptr == nullptr)
+        {
+            assert(false);
+        }
+
+        return ptr;
+    }
+
     constexpr __device__ auto unsigned_multiply(size_t a, size_t b, bool * overflow = nullptr) -> size_t
     {
         __uint128_t promoted = static_cast<__uint128_t>(a) * b;
@@ -62,6 +73,16 @@ namespace cuda_matrix::utility
         }
 
         return promoted;
+    }
+
+    constexpr __device__ auto safe_non_zero_access(size_t sz) -> size_t
+    {
+        if (sz == 0u)
+        {
+            assert(false);
+        }
+
+        return sz;
     }
 
     constexpr __device__ auto unsigned_pow(size_t base, size_t exp, bool * overflow = nullptr) -> size_t
@@ -113,6 +134,7 @@ namespace cuda_matrix::utility
     {
         return {};
     }
+
 }
 
 #endif
