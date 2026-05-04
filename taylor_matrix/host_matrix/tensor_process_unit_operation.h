@@ -1,19 +1,19 @@
 //HEADER_CONTROL 3
 
-#ifndef __TENSOR_PROCESS_UNIT_OPERATION_H__
-#define __TENSOR_PROCESS_UNIT_OPERATION_H__
+#ifndef __TAYLOR_MATRIX_HOST_MATRIX_TENSOR_PROCESS_UNIT_OPERATION_H__
+#define __TAYLOR_MATRIX_HOST_MATRIX_TENSOR_PROCESS_UNIT_OPERATION_H__
 
 #include <stdint.h>
 #include <stdlib.h>
 #include <stl_extension/stdx.h>
 #include <vector>
-#include "tensor_model.h"
+#include <matrix/tensor_model.h>
 #include <stdexcept>
 #include "taylor_projection.h"
 #include "shape_projection.h"
 #include <array>
 
-namespace tensor_process_unit_operation
+namespace taylor_matrix::host_matrix::tensor_process_unit_operation
 {
     static inline constexpr size_t PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ = tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ;
 

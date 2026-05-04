@@ -1,5 +1,5 @@
-#ifndef __CUDA_MATRIX_TENSOR_PROCESS_GROUP_OPERATION_H__
-#define __CUDA_MATRIX_TENSOR_PROCESS_GROUP_OPERATION_H__
+#ifndef __TAYLOR_MATRIX_CUDA_MATRIX_TENSOR_PROCESS_GROUP_OPERATION_H__
+#define __TAYLOR_MATRIX_CUDA_MATRIX_TENSOR_PROCESS_GROUP_OPERATION_H__
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -8,22 +8,71 @@
 #include <stdexcept>
 #include "tensor_process_unit_operation.h"
 #include <array>
+#include <cuda_management/utility.h>
+#include "local_exception.h"
 
-namespace cuda_matrix::tensor_process_group_operation
+namespace taylor_matrix::cuda_matrix::tensor_process_group_operation
 {
-    using namespace cuda_matrix::tensor_model;
-    using namespace cuda_matrix::utility;
+    using namespace taylor_matrix::cuda_matrix::tensor_model;
+    using namespace taylor_matrix::cuda_matrix::utility;
+    using namespace taylor_matrix::cuda_matrix::local_exception;
+
+    //--CREATE-BY-DEFAULT--
+
+    //--READ--
+
+    __device__ constexpr auto flatten_to(tensor_std_float_t * dst,
+                                         const ProcessGroup& src) -> tensor_std_float_t *
+    {
+        for (const auto& e: src.process_vec)
+        {
+            dst = tensor_process_unit_operation::flatten_to(dst, e);
+        }
+
+        return dst;
+    }
+
+    __device__ constexpr auto flatten_size(const ProcessGroup& arg) -> size_t
+    {
+        return PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ * PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ;
+    }
+
+    //--OPERATION--
+
+    __device__ constexpr auto empty_as(const ProcessGroup& arg) -> ProcessGroup
+    {
+        ProcessGroup rs{};
+
+        for (size_t i = 0u; i < arg.process_vec.size(); ++i)
+        {
+            rs.process_vec[i] = tensor_process_unit_operation::empty_as(arg.process_vec[i]);
+        }
+
+        return rs;
+    }
+
+    __device__ constexpr auto unflatten_to(ProcessGroup& dst,
+                                           const tensor_std_float_t * src) -> const tensor_std_float_t *
+    {
+        for (auto& e: dst.process_vec)
+        {
+            src = tensor_process_unit_operation::unflatten_to(e, src);
+        }
+
+        return src;
+    }
 
     template <class ShapeBaseCoeffSizeContainer,
               class ShapeBasePromotedFloatType = tensor_model::tensor_std_float_t,
               size_t BATCH_SZ = 64u>
-    constexpr __device__ __attribute__((noinline)) auto two_to_one_project(const ProcessGroup& lhs,
+    __device__ constexpr __attribute__((noinline)) auto two_to_one_project(const ProcessGroup& lhs,
                                                                            const ProcessGroup& rhs,
                                                                            ShapeBaseCoeffSizeContainer base_shape_coeff_sz_container,
                                                                            const tensor_model::tensor_std_float_t * shape_coeff_arr, size_t& shape_coeff_arr_offset, size_t shape_coeff_arr_cap,
-                                                                           const stdx::Tag<ShapeBasePromotedFloatType>& shape_base_promotion_tag = stdx::Tag<ShapeBasePromotedFloatType>{},
+                                                                           const Tag<ShapeBasePromotedFloatType>& shape_base_promotion_tag = Tag<ShapeBasePromotedFloatType>{},
                                                                            bool has_process_unit_logit_reuse_tag = true,
                                                                            bool has_process_group_logit_reuse_tag = true,
+                                                                           local_exception_t * err = nullptr,
                                                                            const std::integral_constant<size_t, BATCH_SZ>& batch_sz = std::integral_constant<size_t, BATCH_SZ>{}) -> ProcessGroup
     {
         constexpr size_t TOTAL_ITERATION_SZ         = tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ * tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ;
@@ -36,6 +85,13 @@ namespace cuda_matrix::tensor_process_group_operation
         const size_t saved_shape_coeff_arr_offset   = shape_coeff_arr_offset;
 
         ProcessGroup accum_vec[tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ];
+
+        local_exception_t local_err = SUCCESS;
+
+        if (err == nullptr)
+        {
+            err = &local_err;
+        }
 
         for (size_t i = 0u; i < REVOLUTION_SZ; ++i)
         {
@@ -61,8 +117,14 @@ namespace cuda_matrix::tensor_process_group_operation
                                                                     out_tensor_arr,
                                                                     base_shape_coeff_sz_container,
                                                                     shape_coeff_arr, shape_coeff_arr_offset, shape_coeff_arr_cap,
+                                                                    err,
                                                                     shape_base_promotion_tag,
                                                                     has_process_unit_logit_reuse_tag);
+
+            if (*err != SUCCESS)
+            {
+                return {};
+            }
 
             for (size_t j = 0u; j < BATCH_SZ; ++j)
             {
@@ -84,11 +146,11 @@ namespace cuda_matrix::tensor_process_group_operation
         return rs;
     }
 
-    constexpr __device__ auto deparameterize(const ProcessGroup& process_group,
+    __device__ constexpr auto deparameterize(const ProcessGroup& process_group,
                                              double perc) -> ProcessGroup
     {
         size_t tentative_deparam_sz     = process_group.process_vec.size() * perc;
-        size_t deparam_sz               = std::clamp(tentative_deparam_sz, size_t{0u}, process_group.process_vec.size());
+        size_t deparam_sz               = clamp(tentative_deparam_sz, size_t{0u}, process_group.process_vec.size());
         size_t active_sz                = process_group.process_vec.size() - deparam_sz;
 
         std::array<ProcessUnit, PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ> rs{};
@@ -100,7 +162,7 @@ namespace cuda_matrix::tensor_process_group_operation
 
         for (size_t i = 0u; i < deparam_sz; ++i)
         {
-            rs[active_sz + i] = cuda_matrix::tensor_process_unit_operation::empty_as(process_group.process_vec[active_sz + i]);
+            rs[active_sz + i] = taylor_matrix::cuda_matrix::tensor_process_unit_operation::empty_as(process_group.process_vec[active_sz + i]);
         }
 
         return 
@@ -109,7 +171,7 @@ namespace cuda_matrix::tensor_process_group_operation
         };
     }
 
-    constexpr __device__ auto accumulate(const ProcessGroup& lhs,
+    __device__ constexpr auto accumulate(const ProcessGroup& lhs,
                                          const ProcessGroup& rhs) -> ProcessGroup
     {
         const auto& lhs_content = lhs.process_vec;
@@ -125,49 +187,32 @@ namespace cuda_matrix::tensor_process_group_operation
         return rs;
     }
 
-    constexpr __device__ auto accumulate(const ProcessGroup * process_group_arr,
-                                         size_t process_group_arr_sz) -> ProcessGroup
+    __device__ constexpr auto accumulate(const ProcessGroup * process_group_arr,
+                                         size_t process_group_arr_sz,
+                                         local_exception_t * err = nullptr) -> ProcessGroup
     {
         if (process_group_arr_sz == 0u)
         {
-            assert(false);
+            if (err != nullptr)
+            {
+                *err = OTHER_INVALID_ARGUMENT_CODE;
+            }
+
+            return {};
         }
 
-        ProcessGroup result = process_group_arr[0];
+        ProcessGroup rs = process_group_arr[0];
 
         for (size_t i = 1u; i < process_group_arr_sz; ++i)
         {
-            result = accumulate(result, process_group_arr[i]);
+            rs = accumulate(rs, process_group_arr[i]);
         }
-
-        return result;
-    }
-
-    template <class FloatType>
-    constexpr __device__ auto positional_encode(const ProcessGroup& process_group,
-                                                const FloatType& amplitude,
-                                                const FloatType& frequency_multiplier,
-                                                const FloatType& x_offset,
-                                                const FloatType& y_offset,
-                                                size_t dimension_idx) -> ProcessGroup
-    {
-        ProcessGroup rs             = process_group;
-        size_t tentative_slot_idx   = dimension_idx / tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ;
-        size_t slot_idx             = tentative_slot_idx % tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ;
-        size_t slot_offset          = dimension_idx % tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ;
-
-        rs.process_vec[slot_idx]    = tensor_process_unit_operation::positional_encode(rs.process_vec[slot_idx],
-                                                                                       amplitude,
-                                                                                       frequency_multiplier,
-                                                                                       x_offset,
-                                                                                       y_offset,
-                                                                                       slot_offset);
 
         return rs;
     }
 
     template <class ValueType>
-    constexpr __device__ auto div(const ProcessGroup& process_group,
+    __device__ constexpr auto div(const ProcessGroup& process_group,
                                   const ValueType& value) -> ProcessGroup
     {
         ProcessGroup rs{};
@@ -180,11 +225,22 @@ namespace cuda_matrix::tensor_process_group_operation
         return rs;
     }
 
-    constexpr __device__ auto avg(const ProcessGroup * process_group_arr,
-                                  size_t process_group_arr_sz) -> ProcessGroup
+    __device__ constexpr auto avg(const ProcessGroup * process_group_arr,
+                                  size_t process_group_arr_sz,
+                                  local_exception_t * err = nullptr) -> ProcessGroup
     {
-        return div(accumulate(process_group_arr, process_group_arr_sz),
-                   safe_non_zero_access(process_group_arr_sz));
+        if (process_group_arr_sz == 0u)
+        {
+            if (err != nullptr)
+            {
+                *err = OTHER_INVALID_ARGUMENT_CODE;
+            }
+
+            return {};
+        }
+
+        return div(accumulate(process_group_arr, process_group_arr_sz, err),
+                   process_group_arr_sz);
     }
 }
 

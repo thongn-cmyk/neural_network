@@ -1,17 +1,17 @@
 //HEADER_CONTROL 4
 
-#ifndef __TENSOR_PROCESS_GROUP_OPERATION_H__
-#define __TENSOR_PROCESS_GROUP_OPERATION_H__
+#ifndef __TAYLOR_MATRIX_HOST_MATRIX_TENSOR_PROCESS_GROUP_OPERATION_H__
+#define __TAYLOR_MATRIX_HOST_MATRIX_TENSOR_PROCESS_GROUP_OPERATION_H__
 
 #include <stdint.h>
 #include <stdlib.h>
 #include <stl_extension/stdx.h>
 #include <vector>
-#include "tensor_model.h"
+#include <matrix/tensor_model.h>
 #include <stdexcept>
 #include "tensor_process_unit_operation.h"
 
-namespace tensor_process_group_operation
+namespace taylor_matrix::host_matrix::tensor_process_group_operation
 {
     static inline constexpr size_t PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ = tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ;
 

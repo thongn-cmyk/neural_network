@@ -1,19 +1,19 @@
 //HEADER_CONTROL 6
 
-#ifndef __TENSOR_MATRIX_OPERATION_H__
-#define __TENSOR_MATRIX_OPERATION_H__
+#ifndef __TAYLOR_MATRIX_HOST_MATRIX_TENSOR_MATRIX_OPERATION_H__
+#define __TAYLOR_MATRIX_HOST_MATRIX_TENSOR_MATRIX_OPERATION_H__
 
 #include <stdint.h>
 #include <stdlib.h>
 #include <stl_extension/stdx.h>
 #include <memory>
 #include <vector>
-#include "tensor_model.h"
+#include <matrix/tensor_model.h>
 #include <stdexcept>
 #include "tensor_being_unit_operation.h"
 #include <general_definition/float_def.h>
 
-namespace tensor_matrix_operation
+namespace taylor_matrix::host_matrix::tensor_matrix_operation
 {
     template <class T, class ...Args, class Allocator = std::allocator<char>>
     constexpr auto to_shared_array(const std::vector<T, Args...>& arg,
@@ -445,85 +445,6 @@ namespace tensor_matrix_operation
         return avg(result_vec.data(), result_vec.size(), allocator);
     }
 
-    //let's get to the basic encoding method
-    //<char><char><char><char> = 4 bytes = int
-
-    //denormalized value (one dimensional value) = 256 * 256 * 256 * 256
-    //= 1 << 32
-
-    //assume each discrete value is 0.001, then a random idx has the value of x * 0.001
-
-    //how do we apply that here in this algorithm to make sure that our encoding method is accurate
-    //assume that our matrix focal is [256] [64] [8] [2]
-
-    //one dimensional value = 256 * 64 * 8 * 2
-    //assume that we are at the pointer <128> <8> <4> <1>
-
-    //we are to flatten each dimension and add them up
-
-    //<4> = 4 * 2 = 8 without loss of generality
-    //<8> = 8 * 8 * 2 = 128 without loss of generality
-
-    //then we'd have to multiply that with the discretization unit, 0.01 for example
-
-    //I have to admit that this algorithm of positional encoding is not easy to implement
-
-    //because at the heart of lossless encoding, we'd want to prove that there is a possibility of a reverse function
-    //yet at the heart of continuity compression, we'd want to have relevant things closer together in the euclidean coordiante
-
-    //now let's get back to the problem of one dimensionalist, we flatten the space vector of known shape <256, 256, 256, 256> in the case of int32_t, or <128, 64, 32, 16, 8, 4, 2> in the case of our matrix transform
-    //the equation of transforming from multi-dimensional pointer -> one dimensional pointer is lossless compression, and the equation for that is offset * <succeeding_dimension_sz> + ...
-
-    //we encode the value of the one dimensional pointer into the amplitude of a frequency equation, fine, we have met the lossless compression criteria
-
-    //what we have not met is the euclidean relevancy of the pointer and the amplitude restriction of the space
-    //euclidean relevancy can only be met if we do it as big endianness of encoding, such is the first dimension is the last dimension with respect to the current context
-
-    //then our problem now becomes the problem of amplitude restriction of the space
-    //so we are smart, we'd turn from being one dimensionalist into a multi-dimensionalist, and follow the equation of distance: coor_distance = sqrt(sqr_difference + ...)
-
-    //the problem now is that we'd want to distinct each dimension very differently, such that there is no chance of euclidean relevancy for the corresponding dimension 0 and dimension 1 or dimension 2
-    //now it sounds like a sphere encoding method, an extension of the sin, cos encoding, is it so?
-
-    //we'd try to solve the equation today, and prove that our equation meets three very important points: (1) lossless compression
-    //                                                                                                     (2) euclidean relevancy
-    //                                                                                                     (3) amplitude requirements
-
-    //apart from that, we'd work on the domain and range of our worst case Taylor Series, we'd definitely need the radian coordinate of the Series, yet we'd take other ranges factor into the considerations
-    //we'd work on that tmr
-
-    //today we'd work on very two important concepts of the equation, the coefficient space and the positional encoding
-
-    //our coefficient space spans all the possibilities of the power series in terms of sigma(pow)...
-    //yet the divisor constants would play a crucial role in shaping the search space, such is that the search base might be more suitable to our search algorithms than other spaces
-
-    //let's look at our parallel training equation, (f(x) - expected(x)) ^2 + ...
-
-    //without loss of generality assume that our coefficient is a and the equation is (a + t) * x^n * y^m + C
-    //f(x) - expected(x) = (a + t) * C1 + C2
-    //(f(x) - expected(x)) ^ 2 = ((a + t) * C1 + C2) ^ 2
-
-    //the derivative with respect to t is 2 * ((a + t) * C1 + C2) * C1*a
-
-    //for positional encoding
-    //let's start with the obvious, we assign each dimension of the vector -> one positional encoded value
-    //without loss of generality, [0, 1, 2, 0, 4] means that slot 0 of the first focal, slot 1 of the second focal, ...
-    //we would turn this value into a frequency equation individually with amplitude, and paint the designated first slots of the BeingUnit with the value
-
-    //in this sense, each of the dimension is now semantically distinct on their own, we have met the requirements of euclidean relevancy (maybe)
-    //lossless compression => yes (in the sense of focal_idx... being a representation of the original idx)
-    //amplitude requirements => yes, as long as we keep the focal size small
-
-    //I think that the proof for this equation being the most suitable function, or optimized form of contiunous approximation would be at least 100 pages long
-    //but I would try to be very brief about the directions of proof, or the sequence of statements that need to be proved
-
-        //(1): every approximatable function by using calculus (slope and friends) must take a form of Taylor Series, with real coefficients
-        //(2): a base approximation is only stable if operated on a group of less than or equal to k dimensions, for k is some number
-        //(3): a function is only Taylor-Series-complete without exploding the coefficient space if we use the method x = x + f(x) and y = y + x (with the slack-one buffer that we proved the other day)
-        //(4): a vertical shrink of a function is sufficient for x = x + f(x), with interchangable finite range and domain, every vertically shrinked function reflects one point on the radian coordinate
-
-    //
-
     template <class TaylorBaseCoeffSizeContainer,
               class ShapeBaseCoeffSizeContainer,
               class TaylorBasePromotedFloatType = tensor_model::tensor_std_float_t,
@@ -739,7 +660,7 @@ namespace tensor_matrix_operation
                 up_to_point_matrix                                      = avg(avg_arr.data(), avg_arr.size(), allocator);
             }
 
-            std::shared_ptr<Matrix> incremental_result  = unfocal_matrix(accum_matrix_vec, i, focal_suffix_map, allocator);
+            std::shared_ptr<Matrix> incremental_result  = unfocal_matrix(accum_matrix_vec, i, accum_suffix_map, allocator);
             incremental_matrix_vec.push_back(std::move(incremental_result));
         }
 

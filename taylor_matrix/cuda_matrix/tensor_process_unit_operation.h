@@ -1,7 +1,7 @@
 //HEADER_CONTROL 3
 
-#ifndef __CUDA_MATRIX_TENSOR_PROCESS_UNIT_OPERATION_H__
-#define __CUDA_MATRIX_TENSOR_PROCESS_UNIT_OPERATION_H__
+#ifndef __TAYLOR_MATRIX_CUDA_MATRIX_TENSOR_PROCESS_UNIT_OPERATION_H__
+#define __TAYLOR_MATRIX_CUDA_MATRIX_TENSOR_PROCESS_UNIT_OPERATION_H__
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -10,27 +10,64 @@
 #include <stdexcept>
 #include "shape_projection.h"
 #include <array>
+#include <algorithm>
+#include <cstring>
+#include "local_exception.h"
 
-namespace cuda_matrix::tensor_process_unit_operation
+namespace taylor_matrix::cuda_matrix::tensor_process_unit_operation
 {
-    using namespace cuda_matrix::tensor_model;
-    using namespace cuda_matrix::utility;
+    using namespace taylor_matrix::cuda_matrix::tensor_model;
+    using namespace taylor_matrix::cuda_matrix::utility;
+    using namespace taylor_matrix::cuda_matrix::local_exception;
 
-    constexpr __device__ auto empty_as(const tensor_std_float_t&) -> tensor_std_float_t
+    //--CREATE-BY-DEFAULT--
+    
+    //--READ--
+
+    __device__ constexpr auto flatten_to(tensor_std_float_t * dst, const ProcessUnit& src) -> tensor_std_float_t *
+    {
+        std::memcpy(dst,
+                    src.logit_vec.data(),
+                    src.logit_vec.size() * sizeof(tensor_std_float_t));
+
+        return next(dst, src.logit_vec.size());
+    }
+
+    __device__ constexpr auto flatten_size(const ProcessUnit& src) -> size_t
+    {
+        return PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ;
+    }
+
+    //--OPERATION--
+
+    __device__ constexpr auto empty_as(const tensor_std_float_t&) -> tensor_std_float_t
     {
         return 0;
     }
 
-    constexpr __device__ auto empty_as(const ProcessUnit&) -> ProcessUnit
+    __device__ constexpr auto empty_as(const ProcessUnit&) -> ProcessUnit
     {
-        return {.logit_vec = stdx::to_array_default_initializer(0)};
+        ProcessUnit rs{};
+        fill(rs.logit_vec.begin(), rs.logit_vec.end(), 0);
+
+        return rs;
+    }
+
+    __device__ constexpr auto unflatten_to(ProcessUnit& dst, const tensor_std_float_t * src) -> const tensor_std_float_t *
+    {
+        std::memcpy(dst.logit_vec.data(),
+                    src,
+                    dst.logit_vec.size() * sizeof(tensor_std_float_t));
+
+        return next(src, dst.logit_vec.size());
     }
 
     template <class ShapeBaseCoeffSizeContainer, class ShapeBasePromotedFloatType = tensor_model::tensor_std_float_t>
-    constexpr __device__ __attribute__((noinline)) auto two_to_one_project(const ProcessUnit& lhs,
+    __device__ constexpr __attribute__((noinline)) auto two_to_one_project(const ProcessUnit& lhs,
                                                                            const ProcessUnit& rhs,
                                                                            ShapeBaseCoeffSizeContainer base_shape_coeff_sz_container,
                                                                            const tensor_model::tensor_std_float_t * shape_coeff_arr, size_t& shape_coeff_arr_offset, size_t shape_coeff_arr_cap,
+                                                                           local_exception_t * err = nullptr,
                                                                            const Tag<ShapeBasePromotedFloatType>& shape_base_promotion_tag = Tag<ShapeBasePromotedFloatType>{},
                                                                            bool has_logit_reuse_tag = true) -> ProcessUnit
     {
@@ -38,15 +75,16 @@ namespace cuda_matrix::tensor_process_unit_operation
 
         std::array<tensor_model::tensor_std_float_t, COMBINED_DIMENSION_SZ> combined{};
 
-        std::copy(lhs.logit_vec.begin(), lhs.logit_vec.end(), combined.data());
-        std::copy(rhs.logit_vec.begin(), rhs.logit_vec.end(), std::next(combined.data(), lhs.logit_vec.size()));
+        copy(lhs.logit_vec.begin(), lhs.logit_vec.end(), combined.data());
+        copy(rhs.logit_vec.begin(), rhs.logit_vec.end(), next(combined.data(), lhs.logit_vec.size()));
 
         std::array<tensor_model::tensor_std_float_t, PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ> child{};
 
-        shape_projection::multidimensional_taylor_shape_project(combined.data(), stdx::to_size_container(std::integral_constant<size_t, COMBINED_DIMENSION_SZ>{}),
+        shape_projection::multidimensional_taylor_shape_project(combined.data(), to_size_container(std::integral_constant<size_t, COMBINED_DIMENSION_SZ>{}),
                                                                 base_shape_coeff_sz_container,
                                                                 shape_coeff_arr, shape_coeff_arr_offset, shape_coeff_arr_cap,
                                                                 child.data(), child.size(),
+                                                                err,
                                                                 shape_base_promotion_tag,
                                                                 has_logit_reuse_tag);
 
@@ -54,12 +92,13 @@ namespace cuda_matrix::tensor_process_unit_operation
     }
 
     template <class ShapeBaseCoeffSizeContainer, size_t BATCH_SZ, class ShapeBasePromotedFloatType = tensor_model::tensor_std_float_t>
-    constexpr __device__ __attribute__((noinline)) auto batch_two_to_one_project(const ProcessUnit * lhs_arr,
+    __device__ constexpr __attribute__((noinline)) auto batch_two_to_one_project(const ProcessUnit * lhs_arr,
                                                                                  const ProcessUnit * rhs_arr,
                                                                                  const std::integral_constant<size_t, BATCH_SZ> batch_sz,
                                                                                  ProcessUnit * out_arr,
                                                                                  ShapeBaseCoeffSizeContainer base_shape_coeff_sz_container,
                                                                                  const tensor_model::tensor_std_float_t * shape_coeff_arr, size_t& shape_coeff_arr_offset, size_t shape_coeff_arr_cap,
+                                                                                 local_exception_t * err = nullptr,
                                                                                  const Tag<ShapeBasePromotedFloatType>& shape_base_promotion_tag = Tag<ShapeBasePromotedFloatType>{},
                                                                                  bool has_logit_reuse_tag = true)
     {
@@ -93,11 +132,17 @@ namespace cuda_matrix::tensor_process_unit_operation
             }
         }
 
-        shape_projection::batch_multidimensional_taylor_shape_project(input_arr, stdx::to_size_container(std::integral_constant<size_t, COMBINED_DIMENSION_SZ>{}), stdx::to_size_container(batch_sz),
+        shape_projection::batch_multidimensional_taylor_shape_project(input_arr, to_size_container(std::integral_constant<size_t, COMBINED_DIMENSION_SZ>{}), to_size_container(batch_sz),
                                                                       base_shape_coeff_sz_container,
                                                                       shape_coeff_arr, shape_coeff_arr_offset, shape_coeff_arr_cap,
                                                                       shape_output_arr, std::integral_constant<size_t, PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ>{},
+                                                                      err,
                                                                       has_logit_reuse_tag);
+
+        if (err != nullptr && *err != SUCCESS)
+        {
+            return;
+        }
 
         for (size_t i = 0u; i < BATCH_SZ; ++i)
         {
@@ -114,11 +159,11 @@ namespace cuda_matrix::tensor_process_unit_operation
         }
     }
 
-    constexpr __device__ auto deparameterize(const ProcessUnit& process_unit,
+    __device__ constexpr auto deparameterize(const ProcessUnit& process_unit,
                                              double perc) -> ProcessUnit
     {
         size_t tentative_deparam_sz     = process_unit.logit_vec.size() * perc;
-        size_t deparam_sz               = std::clamp(tentative_deparam_sz, size_t{0u}, process_unit.logit_vec.size());
+        size_t deparam_sz               = clamp(tentative_deparam_sz, size_t{0u}, process_unit.logit_vec.size());
         size_t active_sz                = process_unit.logit_vec.size() - deparam_sz;
 
         std::array<tensor_std_float_t, PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ> rs{};
@@ -136,7 +181,7 @@ namespace cuda_matrix::tensor_process_unit_operation
         return {.logit_vec = rs};
     }
 
-    constexpr __device__ auto accumulate(const ProcessUnit& lhs,
+    __device__ constexpr auto accumulate(const ProcessUnit& lhs,
                                          const ProcessUnit& rhs) -> ProcessUnit
     {
         ProcessUnit rs{};
@@ -149,12 +194,18 @@ namespace cuda_matrix::tensor_process_unit_operation
         return rs;
     }
 
-    constexpr __device__ auto accumulate(const ProcessUnit * process_vec,
-                                         size_t process_vec_sz) -> ProcessUnit
+    __device__ constexpr auto accumulate(const ProcessUnit * process_vec,
+                                         size_t process_vec_sz,
+                                         local_exception_t * err = nullptr) -> ProcessUnit
     {
         if (process_vec_sz == 0u) [[unlikely]]
         {
-            assert(false);
+            if (err != nullptr)
+            {
+                *err = OTHER_INVALID_ARGUMENT_CODE;
+            }
+
+            return {};
         }
 
         ProcessUnit result = process_vec[0];
@@ -167,27 +218,8 @@ namespace cuda_matrix::tensor_process_unit_operation
         return result;
     }
 
-    template <class FloatType>
-    constexpr __device__ auto positional_encode(const ProcessUnit& arg,
-                                                const FloatType& amplitude,
-                                                const FloatType& frequency_multiplier,
-                                                const FloatType& x_offset,
-                                                const FloatType& y_offset,
-                                                size_t offset) -> ProcessUnit
-    {
-        if (offset >= arg.logit_vec.size())
-        {
-            assert(false);
-        }
-
-        ProcessUnit rs          = arg;
-        rs.logit_vec[offset]    += amplitude * std::sin(frequency_multiplier * arg.logit_vec[offset] + x_offset) + y_offset;
-
-        return rs;
-    }
-
     template <class ValueType>
-    constexpr __device__ auto div(const ProcessUnit& process_unit,
+    __device__ constexpr auto div(const ProcessUnit& process_unit,
                                   const ValueType& value) -> ProcessUnit
     {
         ProcessUnit rs{};
@@ -200,10 +232,21 @@ namespace cuda_matrix::tensor_process_unit_operation
         return rs;
     }
 
-    constexpr __device__ auto avg(const ProcessUnit * process_vec,
-                                  size_t process_vec_sz) -> ProcessUnit
+    __device__ constexpr auto avg(const ProcessUnit * process_vec,
+                                  size_t process_vec_sz,
+                                  local_exception_t * err = nullptr) -> ProcessUnit
     {
-        return div(accumulate(process_vec, process_vec_sz), safe_non_zero_access(process_vec_sz));
+        if (process_vec_sz == 0u)
+        {
+            if (err != nullptr)
+            {
+                *err = OTHER_INVALID_ARGUMENT_CODE;
+            }
+
+            return {};
+        }
+
+        return div(accumulate(process_vec, process_vec_sz, err), process_vec_sz);
     }
 }
 

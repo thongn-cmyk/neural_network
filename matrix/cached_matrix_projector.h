@@ -1,7 +1,7 @@
 //HEADER_CONTROL 7
 
-#ifndef __CACHED_MATRIX_PROJECTOR_H__
-#define __CACHED_MATRIX_PROJECTOR_H__
+#ifndef __MATRIX_CACHED_MATRIX_PROJECTOR_H__
+#define __MATRIX_CACHED_MATRIX_PROJECTOR_H__
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -9,8 +9,9 @@
 #include <string>
 #include <unordered_map>
 #include "matrix_projector_interface.h"
-#include "tensor_matrix_operation.h"
 #include "tensor_model.h"
+#include "tensor_factory.h"
+#include <serializer/compact_serializer.h>
 
 namespace matrix_projector
 {
@@ -45,7 +46,7 @@ namespace matrix_projector
                 for (size_t i = 0u; i < matrix_vec.size(); ++i)
                 {
                     const auto& matrix              = matrix_vec[i];
-                    std::string serialized_matrix   = tensor_matrix_operation::matrix_to_unique_representation(matrix);
+                    std::string serialized_matrix   = this->matrix_to_unique_representation(matrix);
 
                     if (auto map_ptr = this->cache_map.find(serialized_matrix); map_ptr != this->cache_map.end())
                     {
@@ -69,7 +70,7 @@ namespace matrix_projector
                 {
                     const auto& [idx, projecting_matrix]    = out_of_cache_matrix_vec[i];
                     const auto& projected_matrix            = projected_vec[i];
-                    std::string serialized_matrix           = tensor_matrix_operation::matrix_to_unique_representation(projecting_matrix);
+                    std::string serialized_matrix           = this->matrix_to_unique_representation(projecting_matrix);
                     rs_vec[idx]                             = projected_matrix;
 
                     if (this->cache_map_capacity != 0u)
@@ -89,6 +90,21 @@ namespace matrix_projector
             void clear_cache() noexcept
             {
                 this->cache_map.clear();
+            }
+        
+        private:
+            
+            auto matrix_to_unique_representation(const std::shared_ptr<tensor_model::Matrix>& inp) -> std::string
+            {
+                stdx::safe_ptr_access(inp.get());
+
+                std::vector<tensor_model::tensor_std_float_t> logit_vec{};
+                std::vector<size_t> shape_vec{};
+
+                tensor_factory::flatten(inp, logit_vec);
+                tensor_factory::get_shape(inp, shape_vec);
+
+                return dg::network_compact_serializer::serialize<std::string>(std::make_pair(std::move(logit_vec), std::move(shape_vec)));
             }
     };
 }

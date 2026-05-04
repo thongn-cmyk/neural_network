@@ -1,7 +1,7 @@
 //HEADER_CONTROL 2
 
-#ifndef __THE_MATRIX_INTERFACE_H__
-#define __THE_MATRIX_INTERFACE_H__
+#ifndef __MATRIX_THE_MATRIX_INTERFACE_H__
+#define __MATRIX_THE_MATRIX_INTERFACE_H__
 
 #include "matrix_projector_interface.h"
 #include <vector>
@@ -18,6 +18,7 @@ namespace the_matrix
         public:
 
             virtual ~MatrixInterface() noexcept = default;
+
             virtual auto get_coefficient_vector() -> std::vector<tensor_std_float_t> = 0;
             virtual void set_coefficient_vector(const std::vector<tensor_std_float_t>& coeff_vec) = 0;
             virtual auto clone() -> std::shared_ptr<MatrixInterface> = 0;

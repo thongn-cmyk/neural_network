@@ -1,7 +1,7 @@
 //HEADER_CONTROL 1
 
-#ifndef __TAYLOR_PROJECTION_H__
-#define __TAYLOR_PROJECTION_H__
+#ifndef __TAYLOR_MATRIX_HOST_MATRIX_TAYLOR_PROJECTION_H__
+#define __TAYLOR_MATRIX_HOST_MATRIX_TAYLOR_PROJECTION_H__
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -9,7 +9,7 @@
 #include <type_traits>
 #include <stdexcept>
 
-namespace taylor_projection
+namespace taylor_matrix::host_matrix::taylor_projection
 {
     static inline constexpr size_t MAX_BASE_COEFFICIENT = 20u;
     static inline constexpr bool HAS_FAST_DIV           = true;

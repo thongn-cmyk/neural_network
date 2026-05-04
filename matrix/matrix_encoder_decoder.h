@@ -1,5 +1,5 @@
-#ifndef __MATRIX_ENCODER_DECODER_H__
-#define __MATRIX_ENCODER_DECODER_H__
+#ifndef __MATRIX_MATRIX_ENCODER_DECODER_H__
+#define __MATRIX_MATRIX_ENCODER_DECODER_H__
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -11,6 +11,7 @@
 #include <general_definition/float_def.h>
 #include <limits.h>
 #include <optional>
+#include "tensor_factory.h"
 
 namespace matrix_encoder_decoder
 {
@@ -223,11 +224,11 @@ namespace matrix_encoder_decoder
                 std::vector<tensor_model::tensor_std_float_t> expected_flat_vec = flat_vec;
                 expected_flat_vec.resize(expected_flat_sz, 0);
 
-                return tensor_matrix_operation::make_matrix_from_flat_vec({this->being_vec_sz,
-                                                                           this->being_process_group_vec_sz,
-                                                                           tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
-                                                                           tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ},
-                                                                          expected_flat_vec);
+                return tensor_factory::make_matrix_from_flat_vec({this->being_vec_sz,
+                                                                  this->being_process_group_vec_sz,
+                                                                  tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
+                                                                  tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ},
+                                                                  expected_flat_vec);
             }
     };
 

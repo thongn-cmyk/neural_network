@@ -1,7 +1,7 @@
 //HEADER_CONTROL 1
 
-#ifndef __SPACE_OPERATION_H__
-#define __SPACE_OPERATION_H__
+#ifndef __TAYLOR_MATRIX_HOST_MATRIX_SPACE_OPERATION_H__
+#define __TAYLOR_MATRIX_HOST_MATRIX_SPACE_OPERATION_H__
 
 #include <general_definition/float_def.h>
 #include <stdint.h>
@@ -10,7 +10,7 @@
 #include <stl_extension/stdx.h>
 #include <stdexcept>
 
-namespace space_operation
+namespace taylor_matrix::host_matrix::space_operation
 {
     template <class FloatType, class PromotedFloatType = FloatType>
     constexpr auto radian_normalize(FloatType x,

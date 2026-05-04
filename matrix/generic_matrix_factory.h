@@ -1,5 +1,5 @@
-#ifndef __GENERIC_MATRIX_FACTORY_H__
-#define __GENERIC_MATRIX_FACTORY_H__
+#ifndef __MATRIX_GENERIC_MATRIX_FACTORY_H__
+#define __MATRIX_GENERIC_MATRIX_FACTORY_H__
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -9,7 +9,7 @@
 #include <functional>
 #include <algorithm>
 #include <serializer/compact_serializer.h>
-#include "the_host_matrix.h"
+#include <taylor_matrix/host_matrix/the_host_matrix.h>
 #include "tensor_model.h"
 #include <variant>
 #include <stl_extension/stdx.h>
@@ -123,13 +123,13 @@ namespace generic_matrix_factory
     {
         public:
 
-            static inline constexpr uint8_t LOW_COMPUTE     = the_host_matrix::TheHostMatrixFactory::LOW_COMPUTE;
-            static inline constexpr uint8_t MID_COMPUTE     = the_host_matrix::TheHostMatrixFactory::MID_COMPUTE;
-            static inline constexpr uint8_t HIGH_COMPUTE    = the_host_matrix::TheHostMatrixFactory::HIGH_COMPUTE;
+            static inline constexpr uint8_t LOW_COMPUTE     = taylor_matrix::host_matrix::the_host_matrix::TheHostMatrixFactory::LOW_COMPUTE;
+            static inline constexpr uint8_t MID_COMPUTE     = taylor_matrix::host_matrix::the_host_matrix::TheHostMatrixFactory::MID_COMPUTE;
+            static inline constexpr uint8_t HIGH_COMPUTE    = taylor_matrix::host_matrix::the_host_matrix::TheHostMatrixFactory::HIGH_COMPUTE;
 
-            static inline constexpr uint8_t LOW_ENTROPY     = the_host_matrix::TheHostMatrixFactory::LOW_ENTROPY;
-            static inline constexpr uint8_t MID_ENTROPY     = the_host_matrix::TheHostMatrixFactory::MID_ENTROPY;
-            static inline constexpr uint8_t HIGH_ENTROPY    = the_host_matrix::TheHostMatrixFactory::HIGH_ENTROPY;
+            static inline constexpr uint8_t LOW_ENTROPY     = taylor_matrix::host_matrix::the_host_matrix::TheHostMatrixFactory::LOW_ENTROPY;
+            static inline constexpr uint8_t MID_ENTROPY     = taylor_matrix::host_matrix::the_host_matrix::TheHostMatrixFactory::MID_ENTROPY;
+            static inline constexpr uint8_t HIGH_ENTROPY    = taylor_matrix::host_matrix::the_host_matrix::TheHostMatrixFactory::HIGH_ENTROPY;
 
         private:
 
@@ -142,11 +142,11 @@ namespace generic_matrix_factory
 
             BaseConfiguration base_configuration;
 
-            static auto get_matrix_factory_from_base_configuration(BaseConfiguration configuration) -> the_host_matrix::TheHostMatrixFactory
+            static auto get_matrix_factory_from_base_configuration(BaseConfiguration configuration) -> taylor_matrix::host_matrix::the_host_matrix::TheHostMatrixFactory
             {
-                return the_host_matrix::TheHostMatrixFactory{}.set_entropy(configuration.entropy_option)
-                                                              .set_compute(configuration.compute_option)
-                                                              .set_vector_size(configuration.vector_sz);
+                return taylor_matrix::host_matrix::the_host_matrix::TheHostMatrixFactory{}.set_entropy(configuration.entropy_option)
+                                                                                          .set_compute(configuration.compute_option)
+                                                                                          .set_vector_size(configuration.vector_sz);
             }
 
             static auto get_matrix_from_base_configuration(BaseConfiguration configuration) -> std::unique_ptr<the_matrix::MatrixInterface>

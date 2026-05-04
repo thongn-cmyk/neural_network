@@ -1,7 +1,7 @@
 //HEADER_CONTROL 2
 
-#ifndef __SHAPE_PROJECTION_H__
-#define __SHAPE_PROJECTION_H__
+#ifndef __TAYLOR_MATRIX_HOST_MATRIX_SHAPE_PROJECTION_H__
+#define __TAYLOR_MATRIX_HOST_MATRIX_SHAPE_PROJECTION_H__
 
 #include <stl_extension/stdx.h>
 #include <type_traits>
@@ -9,7 +9,7 @@
 #include <numbers>
 #include <stdexcept>
 
-namespace shape_projection
+namespace taylor_matrix::host_matrix::shape_projection
 {
     //the number one reason why we are copy and paste is because this continuous space is subjected to a lot of changes
     //we dont know if the radian space + cosine space is sufficient for complex shape projection

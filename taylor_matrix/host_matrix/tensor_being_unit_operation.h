@@ -1,19 +1,19 @@
 //HEADER_CONTROL 5
 
-#ifndef __TENSOR_BEING_UNIT_OPERATION_H__
-#define __TENSOR_BEING_UNIT_OPERATION_H__
+#ifndef __TAYLOR_MATRIX_HOST_MATRIX_TENSOR_BEING_UNIT_OPERATION_H__
+#define __TAYLOR_MATRIX_HOST_MATRIX_TENSOR_BEING_UNIT_OPERATION_H__
 
 #include <stdint.h>
 #include <stdlib.h>
 #include <stl_extension/stdx.h>
 #include <memory>
 #include <vector>
-#include "tensor_model.h"
+#include <matrix/tensor_model.h>
 #include <stdexcept>
 #include "tensor_process_group_operation.h"
 #include <general_definition/float_def.h>
 
-namespace tensor_being_unit_operation
+namespace taylor_matrix::host_matrix::tensor_being_unit_operation
 {
     template <class ...Args, class Allocator = std::allocator<char>>
     constexpr auto make_being_unit_from_shape_vec(const std::vector<size_t, Args...>& space,

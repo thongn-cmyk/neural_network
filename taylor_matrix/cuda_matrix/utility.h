@@ -1,13 +1,17 @@
-#ifndef __CUDA_MATRIX_TAG_H__
-#define __CUDA_MATRIX_TAG_H__
+#ifndef __TAYLOR_MATRIX_CUDA_MATRIX_UTILITY_H__
+#define __TAYLOR_MATRIX_CUDA_MATRIX_UTILITY_H__
 
 #include <stdint.h>
 #include <stdlib.h>
 #include <limits.h>
 #include <type_traits>
+#include "assert.h"
+#include <cuda_management/utility.h>
 
-namespace cuda_matrix::utility
+namespace taylor_matrix::cuda_matrix::utility
 {
+    using namespace cuda_management::utility;
+
     template <class T>
     struct Tag{};
 
@@ -15,10 +19,10 @@ namespace cuda_matrix::utility
     {
         size_t value;
 
-        constexpr __device__ NormalSizeContainer() noexcept = default;
-        constexpr __device__ NormalSizeContainer(size_t value): value(value){}
+        __device__ constexpr NormalSizeContainer() noexcept = default;
+        __device__ constexpr NormalSizeContainer(size_t value): value(value){}
 
-        constexpr __device__ auto get() const noexcept -> size_t
+        __device__ constexpr auto get() const noexcept -> size_t
         {
             return this->value;
         }
@@ -27,8 +31,8 @@ namespace cuda_matrix::utility
     template <size_t SZ>
     struct IntegralSizeContainer
     {
-        constexpr __device__ IntegralSizeContainer() = default;
-        constexpr __device__ IntegralSizeContainer(std::integral_constant<size_t, SZ>) {}
+        __device__ constexpr IntegralSizeContainer() = default;
+        __device__ constexpr IntegralSizeContainer(std::integral_constant<size_t, SZ>) {}
 
         consteval __device__ auto get() -> size_t
         {
@@ -36,18 +40,7 @@ namespace cuda_matrix::utility
         }
     };
 
-    template <class T>
-    constexpr __device__ auto safe_ptr_access(T * ptr) -> T *
-    {
-        if (ptr == nullptr)
-        {
-            assert(false);
-        }
-
-        return ptr;
-    }
-
-    constexpr __device__ auto unsigned_multiply(size_t a, size_t b, bool * overflow = nullptr) -> size_t
+    __device__ constexpr auto unsigned_multiply(size_t a, size_t b, bool * overflow = nullptr) -> size_t
     {
         __uint128_t promoted = static_cast<__uint128_t>(a) * b;
 
@@ -61,7 +54,7 @@ namespace cuda_matrix::utility
         return promoted;
     }
 
-    constexpr __device__ auto unsigned_add(size_t a, size_t b, bool * overflow = nullptr) -> size_t
+    __device__ constexpr auto unsigned_add(size_t a, size_t b, bool * overflow = nullptr) -> size_t
     {
         __uint128_t promoted = static_cast<__uint128_t>(a) + b;
 
@@ -75,7 +68,7 @@ namespace cuda_matrix::utility
         return promoted;
     }
 
-    constexpr __device__ auto safe_non_zero_access(size_t sz) -> size_t
+    __device__ constexpr auto safe_non_zero_access(size_t sz) -> size_t
     {
         if (sz == 0u)
         {
@@ -85,7 +78,7 @@ namespace cuda_matrix::utility
         return sz;
     }
 
-    constexpr __device__ auto unsigned_pow(size_t base, size_t exp, bool * overflow = nullptr) -> size_t
+    __device__ constexpr auto unsigned_pow(size_t base, size_t exp, bool * overflow = nullptr) -> size_t
     {
         if (exp == 0u)
         {
@@ -108,13 +101,13 @@ namespace cuda_matrix::utility
         return unsigned_multiply(premod_pow, base, overflow);
     }
 
-    constexpr __device__ auto to_size_container(size_t sz) -> NormalSizeContainer
+    __device__ constexpr auto to_size_container(size_t sz) -> NormalSizeContainer
     {
         return {sz};
     }
 
     template <size_t SZ>
-    constexpr __device__ auto to_size_container(const std::integral_constant<size_t, SZ>) -> IntegralSizeContainer<SZ>
+    __device__ constexpr auto to_size_container(const std::integral_constant<size_t, SZ>) -> IntegralSizeContainer<SZ>
     {
         return {};
     }
@@ -124,17 +117,23 @@ namespace cuda_matrix::utility
         public:
 
             template <class FloatType, std::enable_if_t<std::is_floating_point_v<FloatType>, bool> = true>
-            constexpr __device__ operator FloatType() const noexcept
+            __device__ constexpr operator FloatType() const noexcept
             {
                 return nanf("");
             }
     };
 
-    constexpr __device__ auto generic_nan() -> GenericNaN
+    __device__ constexpr auto generic_nan() -> GenericNaN
     {
         return {};
     }
 
+    __device__ constexpr auto access_guard(size_t i, size_t sz) -> size_t
+    {
+        assert(i < sz);
+
+        return i;
+    }
 }
 
 #endif

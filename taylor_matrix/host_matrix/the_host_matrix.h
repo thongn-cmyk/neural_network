@@ -1,10 +1,10 @@
 //HEADER_CONTROL 7
 
-#ifndef __THE_HOST_MATRIX_H__
-#define __THE_HOST_MATRIX_H__
+#ifndef __TAYLOR_MATRIX_HOST_MATRIX_THE_HOST_MATRIX_H__
+#define __TAYLOR_MATRIX_HOST_MATRIX_THE_HOST_MATRIX_H__
 
 #include <seqpar_async/async_x.h>
-#include "the_matrix_interface.h"
+#include <matrix/the_matrix_interface.h>
 #include "tensor_matrix_operation.h"
 #include "shape_projection.h"
 #include <vector>
@@ -14,7 +14,7 @@
 #include <algorithm>
 #include <execution>
 
-namespace the_host_matrix
+namespace taylor_matrix::host_matrix::the_host_matrix
 {
     using namespace the_matrix;
     using tensor_std_float_t = tensor_model::tensor_std_float_t;

@@ -1,7 +1,7 @@
 //HEADER_CONTROL 1
 
-#ifndef __CUDA_MATRIX_SPACE_OPERATION_H__
-#define __CUDA_MATRIX_SPACE_OPERATION_H__
+#ifndef __TAYLOR_MATRIX_CUDA_MATRIX_SPACE_OPERATION_H__
+#define __TAYLOR_MATRIX_CUDA_MATRIX_SPACE_OPERATION_H__
 
 #include <general_definition/float_def.h>
 #include <stdint.h>
@@ -10,12 +10,12 @@
 #include "utility.h"
 #include <numbers>
 
-namespace cuda_matrix::space_operation
+namespace taylor_matrix::cuda_matrix::space_operation
 {
-    using namespace cuda_matrix::utility;
+    using namespace taylor_matrix::cuda_matrix::utility;
 
     template <class FloatType, class PromotedFloatType = FloatType>
-    constexpr __device__ auto radian_normalize(FloatType x,
+    __device__ constexpr auto radian_normalize(FloatType x,
                                                const Tag<PromotedFloatType>& promotion_tag = Tag<PromotedFloatType>{}) -> PromotedFloatType
     {
         static_assert(std::is_floating_point_v<FloatType>);
@@ -27,7 +27,7 @@ namespace cuda_matrix::space_operation
     }
 
     template <class T, class T1, class T2, class ArrSizeType>
-    constexpr __device__ void restrict_scalar_mul_array(const T * __restrict__ arg_arr, ArrSizeType arr_sz,
+    __device__ constexpr void restrict_scalar_mul_array(const T * __restrict__ arg_arr, ArrSizeType arr_sz,
                                                         T1 c,
                                                         T2 * __restrict__ output_arr)
     {
@@ -38,7 +38,7 @@ namespace cuda_matrix::space_operation
     }
 
     template <class T, class T1, class T2, class ArrSizeType>
-    constexpr __device__ void restrict_scalar_div_array(const T * __restrict__ arg_arr, ArrSizeType arr_sz,
+    __device__ constexpr void restrict_scalar_div_array(const T * __restrict__ arg_arr, ArrSizeType arr_sz,
                                                         T1 c,
                                                         T2 * __restrict__ output_arr)
     {
@@ -49,7 +49,7 @@ namespace cuda_matrix::space_operation
     }
 
     template <class T, class T1, class T2, class ArrSizeType>
-    constexpr __device__ void restrict_add_array(const T * __restrict__ lhs_arr, const T1 * __restrict__ rhs_arr, ArrSizeType arr_sz,
+    __device__ constexpr void restrict_add_array(const T * __restrict__ lhs_arr, const T1 * __restrict__ rhs_arr, ArrSizeType arr_sz,
                                                  T2 * __restrict__ output_arr)
     {
         for (size_t i = 0u; i < to_size_container(arr_sz).get(); ++i)
@@ -59,7 +59,7 @@ namespace cuda_matrix::space_operation
     }
 
     template <class FloatType1, class FloatType2, class FloatType3, class ArrSizeType, class PromotedFloatType = float_def::most_byte_width_float_t<FloatType1, FloatType2, FloatType3>>
-    constexpr __device__ void restrict_multidimensional_oval_to_euclidean_array(const FloatType1 * __restrict__ radian_arr, ArrSizeType radian_space_sz,
+    __device__ constexpr void restrict_multidimensional_oval_to_euclidean_array(const FloatType1 * __restrict__ radian_arr, ArrSizeType radian_space_sz,
                                                                                 const FloatType2 * __restrict__ radius_arr,
                                                                                 FloatType3  * __restrict__ output_arr,
                                                                                 const Tag<PromotedFloatType>& promotion_tag = Tag<PromotedFloatType>{})
@@ -79,7 +79,7 @@ namespace cuda_matrix::space_operation
     }
 
     template <class FloatType1, class FloatType2, class PromotedFloatType = float_def::most_byte_width_float_t<FloatType1, FloatType2>>
-    constexpr __device__ auto dot_product(const FloatType1 * lhs_arr,
+    __device__ constexpr auto dot_product(const FloatType1 * lhs_arr,
                                           const FloatType2 * rhs_arr,
                                           size_t arr_sz,
                                           const Tag<PromotedFloatType>& promotion_tag = Tag<PromotedFloatType>()) -> PromotedFloatType
@@ -99,14 +99,14 @@ namespace cuda_matrix::space_operation
     }
 
     template <class FloatType, class PromotedFloatType = FloatType>
-    constexpr __device__ auto coordinate_distance(const FloatType * coor_arr, size_t coor_arr_sz,
+    __device__ constexpr auto coordinate_distance(const FloatType * coor_arr, size_t coor_arr_sz,
                                                   const Tag<PromotedFloatType>& promotion_tag = Tag<PromotedFloatType>{}) -> PromotedFloatType
     {
         return std::sqrt(dot_product(coor_arr, coor_arr, coor_arr_sz, promotion_tag));
     }
 
     template <class FloatType1, class FloatType2, class PromotedFloatType = float_def::most_byte_width_float_t<FloatType1, FloatType2>>
-    constexpr __device__ auto cosine_score(const FloatType1 * coor_arr_1,
+    __device__ constexpr auto cosine_score(const FloatType1 * coor_arr_1,
                                            const FloatType2 * coor_arr_2,
                                            size_t coor_arr_sz,
                                            const Tag<PromotedFloatType>& promotion_tag = Tag<PromotedFloatType>{}) -> PromotedFloatType
@@ -115,7 +115,7 @@ namespace cuda_matrix::space_operation
     }
 
     template <class FloatType1, class FloatType2, class PromotedFloatType = float_def::most_byte_width_float_t<FloatType1, FloatType2>>
-    constexpr __device__ auto cosine_angle(const FloatType1 * coor_arr_1,
+    __device__ constexpr auto cosine_angle(const FloatType1 * coor_arr_1,
                                            const FloatType2 * coor_arr_2,
                                            size_t coor_arr_sz,
                                            const Tag<PromotedFloatType>& promotion_tag = Tag<PromotedFloatType>{}) -> PromotedFloatType
@@ -124,7 +124,7 @@ namespace cuda_matrix::space_operation
     }
 
     template <class FloatType1, class FloatType2, class PromotedFloatType = float_def::most_byte_width_float_t<FloatType1, FloatType2>>
-    constexpr __device__ void euclidean_to_radian_coordinate(const FloatType1 * euclid_coor_arr,
+    __device__ constexpr void euclidean_to_radian_coordinate(const FloatType1 * euclid_coor_arr,
                                                              size_t euclid_coor_arr_sz,
                                                              FloatType2 * radian_coor_arr,
                                                              const Tag<PromotedFloatType>& promotion_tag = Tag<PromotedFloatType>{})
@@ -158,7 +158,7 @@ namespace cuda_matrix::space_operation
     }
 
     template <class FloatType1, class FloatType2, class PromotedFloatType = float_def::most_byte_width_float_t<FloatType1, FloatType2>>
-    constexpr __device__ void radian_to_euclidean_coordinate(const FloatType1 * radian_coor_arr,
+    __device__ constexpr void radian_to_euclidean_coordinate(const FloatType1 * radian_coor_arr,
                                                              size_t radian_coor_arr_sz,
                                                              FloatType2 * euclid_coor_arr,
                                                              const Tag<PromotedFloatType>& promotion_tag = Tag<PromotedFloatType>{})

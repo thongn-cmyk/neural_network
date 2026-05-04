@@ -5,6 +5,7 @@
 #include <utility>
 #include <functional>
 #include <cstdlib>
+#include <chrono>
 
 auto randomize_int(size_t range) -> size_t
 {

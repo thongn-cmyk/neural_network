@@ -1,5 +1,5 @@
-#ifndef __MATRIX_PROJECTOR_INTERFACE__
-#define __MATRIX_PROJECTOR_INTERFACE__
+#ifndef __MATRIX_MATRIX_PROJECTOR_INTERFACE__
+#define __MATRIX_MATRIX_PROJECTOR_INTERFACE__
 
 #include <vector>
 #include <memory>
