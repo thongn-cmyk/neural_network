@@ -1,5 +1,5 @@
 #include <serializer/dg_buf.h>
-#include <cuda_management/host_service.h>
+#include <cuda_management/host_service_header.h>
 #include <iostream>
 #include <type_traits>
 
@@ -39,7 +39,7 @@ void host_test_vector()
 
     auto cuda_total_vec = dg::dgbuf::stl_to_dgbuf::serializer{}.serialize(total_vec, bstream);
     auto cuda_buf       = cuda_management::host_service::make_cuda_buffer_from_host_view(bstream);
-    auto host_buf       = cuda_management::host_service::cuda_to_host_buf(cuda_buf, bstream.size());
+    auto host_buf       = cuda_management::host_service::cuda_to_host_buffer(cuda_buf, bstream.size());
 
     if (std::memcmp(host_buf.get(), bstream.data(), bstream.size() + 1) != 0)
     {
@@ -71,7 +71,7 @@ void host_test_2d_vector()
 
     auto cuda_total_vec = dg::dgbuf::stl_to_dgbuf::serializer{}.serialize(total_vec, bstream);
     auto cuda_buf       = cuda_management::host_service::make_cuda_buffer_from_host_view(bstream);
-    auto host_buf       = cuda_management::host_service::cuda_to_host_buf(cuda_buf, bstream.size());
+    auto host_buf       = cuda_management::host_service::cuda_to_host_buffer(cuda_buf, bstream.size());
 
     if (std::memcmp(host_buf.get(), bstream.data(), bstream.size() + 1) != 0)
     {

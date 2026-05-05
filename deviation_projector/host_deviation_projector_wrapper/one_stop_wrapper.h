@@ -7,11 +7,11 @@
 #include <serializer/compact_serializer.h>
 #include <matrix/generic_matrix_factory.h>
 #include <matrix/tensor_model.h>
-#include <matrix/tensor_matrix_operation.h>
 #include <deviation_projector/matrix_deviation_calculator_factory.h>
 #include <deviation_projector/generic_matrix_deviation_calculator_interface.h>
 #include <stl_extension/stdx.h>
 #include <global_string_encoder/generic_encoder.h>
+#include <matrix/tensor_factory.h>
 
 namespace deviation_projector::host_wrapper
 {
@@ -113,8 +113,8 @@ namespace deviation_projector::host_wrapper
             std::vector<tensor_std_float_t> rs{};
             std::vector<size_t> shape{};
 
-            tensor_matrix_operation::flatten(inp, rs);
-            tensor_matrix_operation::get_shape(inp, shape);
+            tensor_factory::flatten(inp, rs);
+            tensor_factory::get_shape(inp, shape);
 
             serializable_inp = MatrixSerializable
             {
@@ -127,7 +127,7 @@ namespace deviation_projector::host_wrapper
             std::vector<tensor_std_float_t> rs{};
             std::vector<size_t> shape{};
 
-            tensor_matrix_operation::flatten(out, rs);
+            tensor_factory::flatten(out, rs);
             tensor_matrix_operation::get_shape(out, shape);
 
             serializable_out = MatrixSerializable

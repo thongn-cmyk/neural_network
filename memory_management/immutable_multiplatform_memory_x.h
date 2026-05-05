@@ -115,10 +115,6 @@ namespace immutable_multiplatform_memory_x
             }
     };
 
-
-    //what I would imagine is that this immutable memory cache is binded to the using object so that we can deallocate the memory once out of solution box scope
-    //it's complicated
-
     class ImmutableMemoryCache: public virtual ImmutableMemoryCacheInterface
     {
         private:

@@ -30,23 +30,6 @@ namespace immutable_multiplatform_memory
         uintptr_t internal_key;
     };
 
-    //today we'd work on 1: chunk memory allocation for MemoryAllocator, somewhat an over-allocated chunk to increase sequential locality + decrease memory fragmentation
-    //says that we'd allocate 10x the buffer view and store that for the next whatever allocation, and use shared pointer on the original buffer to increase reference counting and deallocation
-    //batching + shorten the immutable memory tree + run this on HIP
-
-    //this is because this optimization strategy is independent of fattening the immutable memory buffer, so I guess we'd have to apply this optimization strategy because
-    //most of the time we just converting a vector of immutable memories -> device memories
-
-    //MatrixAsDeviation is a hack that actually only extracts the logit vector and apply their own "magical" logics to do all the deviation in device code
-    //this is the only point that breaks symmetric in our designs but we'd have to live with that
-
-    //I guess the reason that we settled for a version of high-thruput pinned memory is because we'd want to be able to use the benefits of pinned memory and their friends, that's all
-    //the only thing I dont like is the extend_lifetime and get_expired_memory_vector
-
-    //I think that the auto_evict_memory_sz should be checked upon entry and exit
-
-    //let's do that
-
     class ExternalImmutableMemoryCacheInterface
     {
         public:

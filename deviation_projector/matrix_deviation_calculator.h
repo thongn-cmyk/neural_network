@@ -7,7 +7,7 @@
 #include <general_definition/float_def.h>
 #include <matrix/tensor_model.h>
 #include <memory>
-#include <matrix/tensor_matrix_operation.h>
+#include <matrix/tensor_factory.h>
 
 namespace deviation_projector
 {
@@ -32,8 +32,8 @@ namespace deviation_projector
                     lhs_logit_vec.clear();
                     rhs_logit_vec.clear();
 
-                    tensor_matrix_operation::flatten(lhs, lhs_logit_vec);
-                    tensor_matrix_operation::flatten(rhs, rhs_logit_vec);
+                    tensor_factory::flatten(lhs, lhs_logit_vec);
+                    tensor_factory::flatten(rhs, rhs_logit_vec);
 
                     if (!flat_shape.has_value())
                     {

@@ -575,7 +575,7 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_operation
     }
 
     template <class FocalSizeVector, /*inplace_vector<size_t>*/
-              class SuffixMap, /*inplace_unordered_map<inplace_unordered_map<inplace_vector<inplace_vector<size_t>>?*/
+              class SuffixMap, /*inplace_unordered_map<size_t, inplace_unordered_map<size_t, inplace_vector<inplace_vector<size_t>>?*/
               class RotationSizeVector, /*inplace_vector<size_t>*/
               class ParameterBoundRatioVector, /*inplace_vactor<double>*/
               class ShapeBaseCoeffSizeContainer,
@@ -773,13 +773,7 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_operation
                         transformed_focal_vec[focal_idx] = transformed_focal; 
                     }
 
-                    Matrix * transformed_focused_matrix     = focal_unsplit_matrix(transformed_focal_vec, focal_sz, allocator, err);
-
-                    if (*err != SUCCESS)
-                    {
-                        return {};
-                    }
-
+                    Matrix * transformed_focused_matrix     = focal_unsplit_matrix(transformed_focal_vec, focal_sz, allocator);
                     up_to_point_incremental_matrix_vec[j]   = transformed_focused_matrix;
                 }
             }
@@ -841,13 +835,7 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_operation
                     transformed_focal_vec[focal_idx] = transformed_focal;
                 }
 
-                Matrix * transformed_focused_matrix = focal_unsplit_matrix(transformed_focal_vec, focal_sz, allocator, err);
-
-                if (*err != SUCCESS)
-                {
-                    return {};
-                }
-
+                Matrix * transformed_focused_matrix = focal_unsplit_matrix(transformed_focal_vec, focal_sz, allocator);
                 accum_incremental_matrix_vec[j]     = transformed_focused_matrix;
             }
 
@@ -899,7 +887,19 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_operation
             }
         }
 
-        copy_to(rs, avg(incremental_matrix_vec, incremental_matrix_vec_sz, allocator, err));
+        Matrix * tmp_rs = avg(incremental_matrix_vec, incremental_matrix_vec_sz, allocator, err);
+
+        if (*err != SUCCESS)
+        {
+            return {};
+        }
+
+        copy_to(rs, tmp_rs, err);
+
+        if (*err != SUCCESS)
+        {
+            return {};
+        }
 
         return rs;
     }

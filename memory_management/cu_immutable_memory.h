@@ -1,68 +1,88 @@
-#ifndef __CU_IMMUTABLE_MEMORY_H__
-#define __CU_IMMUTABLE_MEMORY_H__
+#ifndef __MEMORY_MANAGEMENT_CU_IMMUTABLE_MEMORY_H__
+#define __MEMORY_MANAGEMENT_CU_IMMUTABLE_MEMORY_H__
 
-#include "cu_x.h"
-#include "immutable_memory.h"
-
-//what i'd worry is the collision of semantics, such is that one object can have multiple semantic representations that are not necessarily agreed by distinct components
-//just to prevent that, we'd have to move one level up
+#include <stdint.h>
+#include <stdlib.h>
+#include <string_view>
+#include <memory>
+#include <cuda_management/host_service_header.h>
+#include "immutable_multiplatform_memory_x.h"
+#include <stl_extension/stdx.h>
 
 namespace cu_immutable_memory
 {
-    using MemoryReference = immutable_memory::MemoryReference;
+    using MemoryReference           = immutable_multiplatform_memory_x::MemoryReference;
+    using CacheAndAcquireArgument   = immutable_multiplatform_memory_x::CacheAndAcquireArgument;
 
     struct Signature{};
 
-    using SingletonObject = stdx::singleton_container<std::unique_ptr<immutable_memory::ExternalImmutableMemoryCacheInterface>, Signature>;
+    using SingletonObject = stdx::singleton_container<std::unique_ptr<immutable_multiplatform_memory_x::ImmutableMemoryCacheInterface>, Signature>;
 
-    static inline const std::chrono::nanoseconds MEMORY_LIFETIME    = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::minutes(1));
-    static inline const std::chrono::nanoseconds CRON_PERIODIC_DUR  = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(1));
-
-    class InternalAllocator: public virtual immutable_memory::MemoryAllocatorInterface
+    class InternalAllocator: public virtual immutable_multiplatform_memory_x::MemoryAllocatorInterface
     {
         public:
 
             auto allocate_from_view(std::string_view buffer_view) -> std::shared_ptr<void>
             {
-                return cu_x::make_cuda_buffer_from_host_view(buffer_view);
+                return cuda_management::host_service::make_cuda_buffer_from_host_view(buffer_view);
             }
     };
 
-    void init(size_t cache_sz_per_instance,
-              size_t concurrent_sz)
+    void init(size_t cache_sz)
     {
-        SingletonObject::get() = immutable_memory::Factory::get_normal_immutable_memory_cache(MEMORY_LIFETIME,
-                                                                                              CRON_PERIODIC_DUR,
-                                                                                              cache_sz_per_instance,
-                                                                                              concurrent_sz,
-                                                                                              std::make_unique<InternalAllocator>());
-
+        SingletonObject::get() = std::make_unique<immutable_multiplatform_memory_x::ImmutableMemoryCache>(cache_sz);
         std::atomic_thread_fence(std::memory_order_seq_cst);
     }
 
     void deinit() noexcept
     {
         std::atomic_thread_fence(std::memory_order_seq_cst);
-
         SingletonObject::get() = nullptr;
     }
 
-    auto acquire_memory(const std::shared_ptr<char[]>& immutable_reference) noexcept -> std::optional<MemoryReference>
+    auto get_instance() -> immutable_multiplatform_memory_x::ImmutableMemoryCacheInterface *
     {
-        return SingletonObject::get()->acquire_memory(immutable_reference);
+        if (SingletonObject::get() == nullptr)
+        {
+            std::abort();
+        }
+
+        return SingletonObject::get().get();
     }
 
-    auto cache_n_acquire_memory(const std::shared_ptr<char[]>& immutable_reference, size_t mem_sz) -> MemoryReference
+    auto acquire_memory(const std::shared_ptr<void>& immutable_reference) noexcept -> std::optional<MemoryReference>
     {
-        return SingletonObject::get()->cache_n_acquire_memory(immutable_reference, std::string_view(immutable_reference.get(), mem_sz));
+        std::optional<MemoryReference> rs{};
+        get_instance()->acquire_memory(&immutable_reference, 1u, &rs);
+
+        return rs;
     }
 
-    void release_memory(const MemoryReference& memory_reference) noexcept
+    auto cache_and_acquire_memory(const std::shared_ptr<void>& immutable_reference, std::string_view host_memory) -> MemoryReference
     {
-        SingletonObject::get()->release_memory(memory_reference);
+        CacheAndAcquireArgument arg
+        {
+            .immutable_reference    = immutable_reference,
+            .host_memory            = host_memory
+        };
+
+        MemoryReference  rs{};
+        get_instance()->cache_and_acquire_memory(&arg, 1u, &rs);
+
+        return rs;
     }
 
-    auto get_cu_memspan(const MemoryReference& memory_reference) noexcept -> std::pair<void *, size_t>
+    void release_memory(MemoryReference memory_reference) noexcept
+    {
+        get_instance()->release_memory(&memory_reference, 1u);
+    }
+
+    void evict_memory(const std::shared_ptr<void>& immutable_reference) noexcept
+    {
+        get_instance()->evict_memory(&immutable_reference, 1u);
+    }
+
+    auto get_cu_memspan(MemoryReference memory_reference) noexcept -> std::pair<void *, size_t>
     {
         return std::make_pair(memory_reference.device_ptr, memory_reference.ptr_mem_sz);
     }

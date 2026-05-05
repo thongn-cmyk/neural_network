@@ -28,8 +28,8 @@ namespace dg::dgbuf::types
 
 namespace dg::dgbuf::constants
 {
-    static inline constexpr size_t MAX_TEMPLATE_RECURSIVE_DEPTH = 5;
-    static inline constexpr double CAP_TO_SIZE_RATIO = 2; 
+    static inline constexpr size_t MAX_TEMPLATE_RECURSIVE_DEPTH = 8;
+    static inline constexpr double CAP_TO_SIZE_RATIO            = 2;
 
     template <class = void>
     static inline constexpr bool FALSE_VAL = false;
@@ -76,7 +76,13 @@ namespace dg::dgbuf::utility
     static constexpr auto is_pow2(size_t x) noexcept -> bool
     {
         return x != 0u && (x & (x - 1u)) == 0u;
-    } 
+    }
+
+    template <class Iterator>
+    static constexpr auto next(Iterator it, intmax_t displacement) -> Iterator
+    {
+        return it + displacement;
+    }
 }
 
 namespace dg::dgbuf::iterator
@@ -108,7 +114,7 @@ namespace dg::dgbuf::iterator
                 assert(this->buf != nullptr);
 
                 T rs;
-                trivial_serializer::deserialize_into(rs, std::next(this->buf, this->offs));
+                trivial_serializer::deserialize_into(rs, utility::next(this->buf, this->offs));
 
                 return AutoSetter{}.auto_set(rs, this->buf);
             }
@@ -477,7 +483,7 @@ namespace dg::dgbuf::datastructure
 
             constexpr auto buffer_data() const noexcept -> const char *
             {
-                return std::next(this->buf, this->data);
+                return utility::next(this->buf, this->data);
             }
 
         public:
@@ -509,7 +515,7 @@ namespace dg::dgbuf::datastructure
                 assert(idx < this->sz);
                 assert(this->buf != nullptr);
             
-                const char * ptr = std::next(this->buf, this->data + idx * trivial_serializer::size(T{}));
+                const char * ptr = utility::next(this->buf, this->data + idx * trivial_serializer::size(T{}));
                 T rs;
                 trivial_serializer::deserialize_into(rs, ptr);
 
@@ -859,7 +865,7 @@ namespace dg::dgbuf::datastructure
 
                     if (KeyEq{}(key, bucket->first))
                     {
-                        iterator::unordered_flat_map_view_iterator it(std::next(this->buckets.begin(), slot), iterator::make_propagator_device(this->buckets.end()));
+                        iterator::unordered_flat_map_view_iterator it(utility::next(this->buckets.begin(), slot), iterator::make_propagator_device(this->buckets.end()));
                         return it;
                     }
                 }
@@ -982,7 +988,7 @@ namespace dg::dgbuf::datastructure
 
                     if (KeyEq{}(key, bucket.value()))
                     {
-                        iterator::unordered_flat_set_view_iterator it(std::next(this->buckets.begin(), slot), iterator::make_propagator_device(this->buckets.end()));
+                        iterator::unordered_flat_set_view_iterator it(utility::next(this->buckets.begin(), slot), iterator::make_propagator_device(this->buckets.end()));
                         return it;
                     }
                 }
@@ -1710,7 +1716,7 @@ namespace dg::dgbuf::stl_to_dgbuf
             for (const auto& e: obj)
             {
                 auto serialized_e = serialize(e, streamable);
-                trivial_serializer::serialize_into(std::next(streamable.data(), offset + elemental_sz * i), serialized_e);
+                trivial_serializer::serialize_into(utility::next(streamable.data(), offset + elemental_sz * i), serialized_e);
                 i += 1u;
             }
 
@@ -1729,7 +1735,7 @@ namespace dg::dgbuf::stl_to_dgbuf
             size_t i                = 0u;
 
             this->resize_streamable(streamable, new_container_sz);
-            std::copy(obj.begin(), obj.end(), std::next(streamable.begin(), offset));
+            std::copy(obj.begin(), obj.end(), utility::next(streamable.begin(), offset));
 
             return {vaddr, obj.size(), std::add_pointer_t<char>()};
         }

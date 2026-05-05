@@ -14,6 +14,7 @@
 #include <map>
 #include "the_matrix_interface.h"
 #include "tensor_matrix_operation.h"
+#include <matrix/tensor_factory.h>
 #include "matrix_optimizer_interface.h"
 #include <numeric>
 #include <functional>
@@ -1425,7 +1426,7 @@ namespace stock_solution
                 }
 
                 std::vector<tensor_model::tensor_std_float_t> result{};
-                tensor_matrix_operation::flatten(matrix, result);
+                tensor_factory::flatten(matrix, result);
                 
                 if (result.size() != this->matrix_vec_sz)
                 {

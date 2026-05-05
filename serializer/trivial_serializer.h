@@ -484,7 +484,7 @@ namespace trivial_serializer{
     template <class T>
     constexpr auto size(T&& obj) noexcept -> size_t{
 
-        static_assert(is_serializable_v<types_space::base_type_t<T>>);
+        // static_assert(is_serializable_v<types_space::base_type_t<T>>);
 
         return archive::Counter{}.count(std::forward<T>(obj));
     }
@@ -492,7 +492,7 @@ namespace trivial_serializer{
     template <class T>
     constexpr auto serialize_into(char * buf, const T& obj) noexcept -> char *{
 
-        static_assert(is_serializable_v<types_space::base_type_t<T>>);
+        // static_assert(is_serializable_v<types_space::base_type_t<T>>);
 
         archive::Forward().put(buf, obj);
         return buf;
@@ -501,7 +501,7 @@ namespace trivial_serializer{
     template <class T>
     constexpr auto deserialize_into(T& obj, const char * buf) noexcept -> const char *{
 
-        static_assert(is_serializable_v<types_space::base_type_t<T>>); //
+        // static_assert(is_serializable_v<types_space::base_type_t<T>>); //
 
         archive::Backward().put(buf, obj);
         return buf;

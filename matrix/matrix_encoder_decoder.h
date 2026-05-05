@@ -297,7 +297,7 @@ namespace matrix_encoder_decoder
                 }
 
                 std::vector<tensor_model::tensor_std_float_t> flat_tensor_vec{};
-                tensor_matrix_operation::flatten(matrix, flat_tensor_vec);
+                tensor_factory::flatten(matrix, flat_tensor_vec);
 
                 size_t enumeration_sz   = size_t{1} << this->vocab_bit_width;
                 size_t iteration_sz     = flat_tensor_vec.size() / enumeration_sz + static_cast<size_t>(flat_tensor_vec.size() % enumeration_sz != 0u);
