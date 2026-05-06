@@ -13,7 +13,7 @@
 #include <unordered_set>
 #include <map>
 #include "the_matrix_interface.h"
-#include "tensor_matrix_operation.h"
+// #include "tensor_matrix_operation.h"
 #include <matrix/tensor_factory.h>
 #include "matrix_optimizer_interface.h"
 #include <numeric>
@@ -1414,8 +1414,8 @@ namespace stock_solution
                 std::vector<double> new_feature_vec = feature_vec;
                 new_feature_vec.resize(this->matrix_vec_sz, 0);
 
-                return tensor_matrix_operation::make_matrix_from_flat_vec(this->matrix_shape,
-                                                                          std::vector<tensor_model::tensor_std_float_t>(stdx::to_castable_vector_initializer(new_feature_vec)));
+                return tensor_factory::make_matrix_from_flat_vec(this->matrix_shape,
+                                                                 std::vector<tensor_model::tensor_std_float_t>(stdx::to_castable_vector_initializer(new_feature_vec)));
             }
 
             auto decode(const std::shared_ptr<tensor_model::Matrix>& matrix) -> std::vector<double>
@@ -1754,6 +1754,7 @@ namespace stock_solution
                 return the_host_matrix::TheHostMatrixFactory{}.set_entropy(this->get_matrix_maker_entropy_option())
                                                               .set_compute(this->get_matrix_maker_compute_option())
                                                               .set_vector_size(this->get_encoder_flat_size())
+                                                              .compute()
                                                               .get_matrix_shape();
             }
 
@@ -1782,6 +1783,7 @@ namespace stock_solution
                 return the_host_matrix::TheHostMatrixFactory{}.set_compute(this->get_matrix_maker_compute_option())
                                                               .set_entropy(this->get_matrix_maker_entropy_option())
                                                               .set_vector_size(this->get_matrix_maker_vector_size())
+                                                              .compute()
                                                               .get();
             }
 
@@ -2130,6 +2132,7 @@ namespace stock_solution
                 this->transformer   = the_host_matrix::TheHostMatrixFactory{}.set_compute(data.matrix_maker_compute_option)
                                                                              .set_entropy(data.matrix_maker_entropy_option)
                                                                              .set_vector_size(data.matrix_maker_vector_sz)
+                                                                             .compute()
                                                                              .get();
 
                 this->encoder       = std::make_unique<OneOneMatrixEncoder>(stdx::to_castable_vector_initializer(data.matrix_encoder_shape), data.matrix_encoder_flat_sz);

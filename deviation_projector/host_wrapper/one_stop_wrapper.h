@@ -61,7 +61,7 @@ namespace deviation_projector::host_wrapper
         };
     }
 
-    auto to_internal_generic_host_matrix_deviation_projector_resource(const ExternalGenericHostMatrixDeviationCalculatorResource& arg) -> GenericHostMatrixDeviationCalculatorResource
+    auto to_internal_generic_host_matrix_deviation_calculator_resource(const ExternalGenericHostMatrixDeviationCalculatorResource& arg) -> GenericHostMatrixDeviationCalculatorResource
     {
         return dg::network_compact_serializer::dgstd_deserialize<GenericHostMatrixDeviationCalculatorResource>(arg.config_bytestream);
     }
@@ -128,7 +128,7 @@ namespace deviation_projector::host_wrapper
             std::vector<size_t> shape{};
 
             tensor_factory::flatten(out, rs);
-            tensor_matrix_operation::get_shape(out, shape);
+            tensor_factory::get_shape(out, shape);
 
             serializable_out = MatrixSerializable
             {
@@ -151,10 +151,10 @@ namespace deviation_projector::host_wrapper
     {
         TrainingToken training_token = dg::network_compact_serializer::dgstd_deserialize<TrainingToken>(data);
 
-        return {tensor_matrix_operation::make_matrix_from_flat_vec(std::vector<size_t>(stdx::to_castable_vector_initializer(training_token.inp.shape)),
-                                                                   training_token.inp.logit_vec),
-                tensor_matrix_operation::make_matrix_from_flat_vec(std::vector<size_t>(training_token.out.shape),
-                                                                   training_token.out.logit_vec)};
+        return {tensor_factory::make_matrix_from_flat_vec(std::vector<size_t>(stdx::to_castable_vector_initializer(training_token.inp.shape)),
+                                                          training_token.inp.logit_vec),
+                tensor_factory::make_matrix_from_flat_vec(std::vector<size_t>(training_token.out.shape),
+                                                          training_token.out.logit_vec)};
     }
 
     class GenericHostMatrixDeviationCalculator: public virtual deviation_projector::GenericMatrixDeviationCalculatorInterface
@@ -195,7 +195,7 @@ namespace deviation_projector::host_wrapper
                                                                                                                                                 deviation_projector::NoTransformDeviationCalculatorLoader{}.load(arg.deviation_resource),
                                                                                                                                                 generic_matrix_factory::GenericMatrixLoader{}.load_resource(generic_matrix_factory::GenericMatrixExternalizer{}.to_internal(arg.matrix_resource))){}
 
-            GenericHostMatrixDeviationCalculator(const ExternalGenericHostMatrixDeviationCalculatorResource& arg): GenericHostMatrixDeviationCalculator(to_internal_generic_host_matrix_deviation_projector_resource(arg)){}
+            GenericHostMatrixDeviationCalculator(const ExternalGenericHostMatrixDeviationCalculatorResource& arg): GenericHostMatrixDeviationCalculator(to_internal_generic_host_matrix_deviation_calculator_resource(arg)){}
 
             auto get_deviation(const std::vector<std::shared_ptr<std::string>>& training_token_vec) -> mdc_float_t
             {

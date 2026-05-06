@@ -190,117 +190,6 @@ namespace taylor_matrix::host_matrix::the_host_matrix
             }
     };
 
-    template <size_t TAYLOR_BASE_COEFF_SZ, size_t SHAPE_BASE_COEFF_SZ, class TaylorBasePromotedFloatType, class ShapeBasePromotedFloatType>
-    void check_make_the_matrix_args(const std::vector<size_t>& matrix_shape,
-                                    const std::vector<size_t>& focal_sz_vec,
-                                    const std::unordered_map<size_t, std::unordered_map<size_t, std::vector<std::vector<size_t>>>>& focal_suffix_map,
-                                    const std::unordered_map<size_t, std::unordered_map<size_t, std::vector<std::vector<size_t>>>>& accum_suffix_map,
-                                    const std::vector<size_t>& rotation_sz_vec,
-                                    const std::vector<double>& parameter_bound_ratio_vec,
-                                    tensor_std_float_t pe_frequency_multiplier,
-                                    tensor_std_float_t pe_amplitude_discrete_unit,
-                                    size_t pe_dedicated_pe_sz,
-                                    const std::integral_constant<size_t, TAYLOR_BASE_COEFF_SZ>& taylor_base_coeff_sz,
-                                    const std::integral_constant<size_t, SHAPE_BASE_COEFF_SZ>& shape_base_coeff_sz,
-                                    const stdx::Tag<TaylorBasePromotedFloatType>& taylor_base_promotion_tag,
-                                    const stdx::Tag<ShapeBasePromotedFloatType>& shape_base_promotion_tag,
-                                    bool has_process_unit_logit_reuse_tag,
-                                    bool has_process_group_logit_reuse_tag,
-                                    bool has_being_logit_reuse_tag,
-                                    bool has_base_matrix_logit_reuse_tag,
-                                    std::optional<size_t> project_concurrent_sz)
-    {
-        (void) matrix_shape;
-    }
-
-    template <size_t TAYLOR_BASE_COEFF_SZ, size_t SHAPE_BASE_COEFF_SZ,
-             class TaylorBasePromotedFloatType = tensor_std_float_t, class ShapeBasePromotedFloatType = tensor_std_float_t>
-    auto make_the_matrix(const std::vector<size_t>& matrix_shape,
-                         const std::vector<size_t>& focal_sz_vec,
-                         const std::unordered_map<size_t, std::unordered_map<size_t, std::vector<std::vector<size_t>>>>& focal_suffix_map,
-                         const std::unordered_map<size_t, std::unordered_map<size_t, std::vector<std::vector<size_t>>>>& accum_suffix_map,
-                         const std::vector<size_t>& rotation_sz_vec,
-                         const std::vector<double>& parameter_bound_ratio_vec,
-                         tensor_std_float_t pe_frequency_multiplier,
-                         tensor_std_float_t pe_amplitude_discrete_unit,
-                         size_t pe_dedicated_pe_sz,
-                         const std::integral_constant<size_t, TAYLOR_BASE_COEFF_SZ>& taylor_base_coeff_sz,
-                         const std::integral_constant<size_t, SHAPE_BASE_COEFF_SZ>& shape_base_coeff_sz,
-                         const stdx::Tag<TaylorBasePromotedFloatType>& taylor_base_promotion_tag = stdx::Tag<TaylorBasePromotedFloatType>{},
-                         const stdx::Tag<ShapeBasePromotedFloatType>& shape_base_promotion_tag = stdx::Tag<ShapeBasePromotedFloatType>{},
-                         bool has_process_unit_logit_reuse_tag = true,
-                         bool has_process_group_logit_reuse_tag = true,
-                         bool has_being_logit_reuse_tag = true,
-                         bool has_base_matrix_logit_reuse_tag = true,
-                         std::optional<size_t> project_concurrent_sz = 8u) -> std::unique_ptr<MatrixInterface>
-    {
-        check_make_the_matrix_args(matrix_shape,
-                                   focal_sz_vec,
-                                   focal_suffix_map,
-                                   accum_suffix_map,
-                                   rotation_sz_vec,
-                                   parameter_bound_ratio_vec,
-                                   pe_frequency_multiplier,
-                                   pe_amplitude_discrete_unit,
-                                   pe_dedicated_pe_sz,
-                                   taylor_base_coeff_sz,
-                                   shape_base_coeff_sz,
-                                   taylor_base_promotion_tag,
-                                   shape_base_promotion_tag,
-                                   has_process_unit_logit_reuse_tag,
-                                   has_process_group_logit_reuse_tag,
-                                   has_being_logit_reuse_tag,
-                                   has_base_matrix_logit_reuse_tag,
-                                   project_concurrent_sz);
-
-        constexpr size_t LOGIT_VEC_CAPACITY = size_t{1} << 28u;
-
-        std::vector<tensor_std_float_t> coeff_vec(LOGIT_VEC_CAPACITY);
-        std::vector<tensor_std_float_t> shape_coeff_vec(LOGIT_VEC_CAPACITY);
-
-        size_t coeff_vec_sz         = 0u;
-        size_t shape_coeff_vec_sz   = 0u;
-
-        tensor_matrix_operation::matrix_transform(tensor_matrix_operation::make_matrix_from_shape_vec(matrix_shape),
-                                                 focal_sz_vec,
-                                                 focal_suffix_map,
-                                                 accum_suffix_map,
-                                                 rotation_sz_vec,
-                                                 parameter_bound_ratio_vec,
-                                                 stdx::to_size_container(taylor_base_coeff_sz),
-                                                 coeff_vec.data(), coeff_vec_sz, LOGIT_VEC_CAPACITY,
-                                                 stdx::to_size_container(shape_base_coeff_sz),
-                                                 shape_coeff_vec.data(), shape_coeff_vec_sz, LOGIT_VEC_CAPACITY,
-                                                 pe_frequency_multiplier, pe_amplitude_discrete_unit, 0u, pe_dedicated_pe_sz,
-                                                 taylor_base_promotion_tag,
-                                                 shape_base_promotion_tag,
-                                                 has_process_unit_logit_reuse_tag,
-                                                 has_process_group_logit_reuse_tag,
-                                                 has_being_logit_reuse_tag,
-                                                 has_base_matrix_logit_reuse_tag);
-
-        TheHostMatrix matrix(matrix_shape,
-                             focal_sz_vec,
-                             focal_suffix_map,
-                             accum_suffix_map,
-                             rotation_sz_vec,
-                             parameter_bound_ratio_vec,
-                             taylor_base_coeff_sz,
-                             shape_base_coeff_sz,
-                             taylor_base_promotion_tag,
-                             shape_base_promotion_tag,
-                             has_process_unit_logit_reuse_tag,
-                             has_process_group_logit_reuse_tag,
-                             has_being_logit_reuse_tag,
-                             has_base_matrix_logit_reuse_tag,
-                             std::vector<tensor_std_float_t>(coeff_vec_sz, 0.f),
-                             std::vector<tensor_std_float_t>(shape_coeff_vec_sz, 0.f),
-                             pe_frequency_multiplier, pe_amplitude_discrete_unit, pe_dedicated_pe_sz,
-                             project_concurrent_sz);
-
-        return std::make_unique<decltype(matrix)>(std::move(matrix));
-    }
-
     class TheHostMatrixFactory
     {
         public:
@@ -506,6 +395,117 @@ namespace taylor_matrix::host_matrix::the_host_matrix
                 {HIGH_COMPUTE, std::optional<size_t>(64)}
             };
 
+            template <size_t TAYLOR_BASE_COEFF_SZ, size_t SHAPE_BASE_COEFF_SZ, class TaylorBasePromotedFloatType, class ShapeBasePromotedFloatType>
+            static void check_make_the_matrix_args(const std::vector<size_t>& matrix_shape,
+                                                    const std::vector<size_t>& focal_sz_vec,
+                                                    const std::unordered_map<size_t, std::unordered_map<size_t, std::vector<std::vector<size_t>>>>& focal_suffix_map,
+                                                    const std::unordered_map<size_t, std::unordered_map<size_t, std::vector<std::vector<size_t>>>>& accum_suffix_map,
+                                                    const std::vector<size_t>& rotation_sz_vec,
+                                                    const std::vector<double>& parameter_bound_ratio_vec,
+                                                    tensor_std_float_t pe_frequency_multiplier,
+                                                    tensor_std_float_t pe_amplitude_discrete_unit,
+                                                    size_t pe_dedicated_pe_sz,
+                                                    const std::integral_constant<size_t, TAYLOR_BASE_COEFF_SZ>& taylor_base_coeff_sz,
+                                                    const std::integral_constant<size_t, SHAPE_BASE_COEFF_SZ>& shape_base_coeff_sz,
+                                                    const stdx::Tag<TaylorBasePromotedFloatType>& taylor_base_promotion_tag,
+                                                    const stdx::Tag<ShapeBasePromotedFloatType>& shape_base_promotion_tag,
+                                                    bool has_process_unit_logit_reuse_tag,
+                                                    bool has_process_group_logit_reuse_tag,
+                                                    bool has_being_logit_reuse_tag,
+                                                    bool has_base_matrix_logit_reuse_tag,
+                                                    std::optional<size_t> project_concurrent_sz)
+            {
+                (void) matrix_shape;
+            }
+
+            template <size_t TAYLOR_BASE_COEFF_SZ, size_t SHAPE_BASE_COEFF_SZ,
+                    class TaylorBasePromotedFloatType = tensor_std_float_t, class ShapeBasePromotedFloatType = tensor_std_float_t>
+            static auto make_the_matrix(const std::vector<size_t>& matrix_shape,
+                                        const std::vector<size_t>& focal_sz_vec,
+                                        const std::unordered_map<size_t, std::unordered_map<size_t, std::vector<std::vector<size_t>>>>& focal_suffix_map,
+                                        const std::unordered_map<size_t, std::unordered_map<size_t, std::vector<std::vector<size_t>>>>& accum_suffix_map,
+                                        const std::vector<size_t>& rotation_sz_vec,
+                                        const std::vector<double>& parameter_bound_ratio_vec,
+                                        tensor_std_float_t pe_frequency_multiplier,
+                                        tensor_std_float_t pe_amplitude_discrete_unit,
+                                        size_t pe_dedicated_pe_sz,
+                                        const std::integral_constant<size_t, TAYLOR_BASE_COEFF_SZ>& taylor_base_coeff_sz,
+                                        const std::integral_constant<size_t, SHAPE_BASE_COEFF_SZ>& shape_base_coeff_sz,
+                                        const stdx::Tag<TaylorBasePromotedFloatType>& taylor_base_promotion_tag = stdx::Tag<TaylorBasePromotedFloatType>{},
+                                        const stdx::Tag<ShapeBasePromotedFloatType>& shape_base_promotion_tag = stdx::Tag<ShapeBasePromotedFloatType>{},
+                                        bool has_process_unit_logit_reuse_tag = true,
+                                        bool has_process_group_logit_reuse_tag = true,
+                                        bool has_being_logit_reuse_tag = true,
+                                        bool has_base_matrix_logit_reuse_tag = true,
+                                        std::optional<size_t> project_concurrent_sz = 8u) -> std::unique_ptr<MatrixInterface>
+            {
+                check_make_the_matrix_args(matrix_shape,
+                                        focal_sz_vec,
+                                        focal_suffix_map,
+                                        accum_suffix_map,
+                                        rotation_sz_vec,
+                                        parameter_bound_ratio_vec,
+                                        pe_frequency_multiplier,
+                                        pe_amplitude_discrete_unit,
+                                        pe_dedicated_pe_sz,
+                                        taylor_base_coeff_sz,
+                                        shape_base_coeff_sz,
+                                        taylor_base_promotion_tag,
+                                        shape_base_promotion_tag,
+                                        has_process_unit_logit_reuse_tag,
+                                        has_process_group_logit_reuse_tag,
+                                        has_being_logit_reuse_tag,
+                                        has_base_matrix_logit_reuse_tag,
+                                        project_concurrent_sz);
+
+                constexpr size_t LOGIT_VEC_CAPACITY = size_t{1} << 28u;
+
+                std::vector<tensor_std_float_t> coeff_vec(LOGIT_VEC_CAPACITY);
+                std::vector<tensor_std_float_t> shape_coeff_vec(LOGIT_VEC_CAPACITY);
+
+                size_t coeff_vec_sz         = 0u;
+                size_t shape_coeff_vec_sz   = 0u;
+
+                tensor_matrix_operation::matrix_transform(tensor_matrix_operation::make_matrix_from_shape_vec(matrix_shape),
+                                                        focal_sz_vec,
+                                                        focal_suffix_map,
+                                                        accum_suffix_map,
+                                                        rotation_sz_vec,
+                                                        parameter_bound_ratio_vec,
+                                                        stdx::to_size_container(taylor_base_coeff_sz),
+                                                        coeff_vec.data(), coeff_vec_sz, LOGIT_VEC_CAPACITY,
+                                                        stdx::to_size_container(shape_base_coeff_sz),
+                                                        shape_coeff_vec.data(), shape_coeff_vec_sz, LOGIT_VEC_CAPACITY,
+                                                        pe_frequency_multiplier, pe_amplitude_discrete_unit, 0u, pe_dedicated_pe_sz,
+                                                        taylor_base_promotion_tag,
+                                                        shape_base_promotion_tag,
+                                                        has_process_unit_logit_reuse_tag,
+                                                        has_process_group_logit_reuse_tag,
+                                                        has_being_logit_reuse_tag,
+                                                        has_base_matrix_logit_reuse_tag);
+
+                TheHostMatrix matrix(matrix_shape,
+                                    focal_sz_vec,
+                                    focal_suffix_map,
+                                    accum_suffix_map,
+                                    rotation_sz_vec,
+                                    parameter_bound_ratio_vec,
+                                    taylor_base_coeff_sz,
+                                    shape_base_coeff_sz,
+                                    taylor_base_promotion_tag,
+                                    shape_base_promotion_tag,
+                                    has_process_unit_logit_reuse_tag,
+                                    has_process_group_logit_reuse_tag,
+                                    has_being_logit_reuse_tag,
+                                    has_base_matrix_logit_reuse_tag,
+                                    std::vector<tensor_std_float_t>(coeff_vec_sz, 0.f),
+                                    std::vector<tensor_std_float_t>(shape_coeff_vec_sz, 0.f),
+                                    pe_frequency_multiplier, pe_amplitude_discrete_unit, pe_dedicated_pe_sz,
+                                    project_concurrent_sz);
+
+                return std::make_unique<decltype(matrix)>(std::move(matrix));
+            }
+            
         public:
 
             TheHostMatrixFactory(): compute_option(LOW_COMPUTE),
@@ -528,8 +528,6 @@ namespace taylor_matrix::host_matrix::the_host_matrix
                         throw std::invalid_argument("bad entropy option, enumeration out of range");
                     }
                 }
-
-                this->entropy_option = entropy_option;
 
                 return *this;
             }
@@ -556,7 +554,19 @@ namespace taylor_matrix::host_matrix::the_host_matrix
 
             auto set_vector_size(size_t sz) -> TheHostMatrixFactory&
             {
-                size_t ceil_sz  = self::ceil_vector_size(sz);
+                this->vector_sz = sz;
+
+                return *this;
+            }
+
+            auto compute() -> TheHostMatrixFactory&
+            {
+                if (!this->vector_sz.has_value())
+                {
+                    throw std::invalid_argument("configuration error, vector size not set");
+                }
+
+                size_t ceil_sz  = this->ceil_vector_size(this->vector_sz.value());
                 this->vector_sz = ceil_sz;
 
                 return *this;
@@ -566,7 +576,7 @@ namespace taylor_matrix::host_matrix::the_host_matrix
             {
                 if (!this->vector_sz.has_value())
                 {
-                    throw std::runtime_error("configuration error, vector size not set");
+                    throw std::invalid_argument("configuration error, vector size not set");
                 }
 
                 const std::vector<std::vector<size_t>>& shape_vec = [&]
@@ -600,7 +610,7 @@ namespace taylor_matrix::host_matrix::the_host_matrix
                     }
                 }
 
-                throw std::runtime_error("configuration error, vector size and entropy option mismatched");
+                throw std::invalid_argument("configuration error, vector size and entropy option mismatched");
             }
 
             auto get() -> std::unique_ptr<the_matrix::MatrixInterface>

@@ -5,7 +5,8 @@
 #include <stdlib.h>
 #include <memory>
 #include "generic_matrix_deviation_calculator_interface.h"
-#include "host_deviation_projector_wrapper/one_stop_wrapper.h"
+#include "host_wrapper/one_stop_wrapper.h"
+#include "cuda_wrapper/cuda_wrapper.h"
 #include <variant>
 #include <exception>
 
@@ -13,7 +14,9 @@ namespace deviation_projector
 {
     struct GenericMatrixDeviationCalculatorResource
     {
-        std::variant<stdx::reflectible_monostate, deviation_projector::host_wrapper::ExternalGenericHostMatrixDeviationCalculatorResource> resource;
+        std::variant<stdx::reflectible_monostate,
+                     deviation_projector::host_wrapper::ExternalGenericHostMatrixDeviationCalculatorResource,
+                     deviation_projector::cuda_wrapper::ExternalCudaMatrixDeviationCalculatorResource> resource;
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector) const
@@ -70,7 +73,11 @@ namespace deviation_projector
             {
                 if (std::holds_alternative<deviation_projector::host_wrapper::ExternalGenericHostMatrixDeviationCalculatorResource>(arg.resource))
                 {
-                    this->base = std::make_unique<deviation_projector::host_wrapper::GenericHostMatrixDeviationCalculator>(std::get<deviation_projector::host_wrapper::ExternalGenericHostMatrixDeviationCalculatorResource>(arg.resource));
+                    this->base  = std::make_unique<deviation_projector::host_wrapper::GenericHostMatrixDeviationCalculator>(std::get<deviation_projector::host_wrapper::ExternalGenericHostMatrixDeviationCalculatorResource>(arg.resource));
+                }
+                else if (std::holds_alternative<deviation_projector::cuda_wrapper::ExternalCudaMatrixDeviationCalculatorResource>(arg.resource))
+                {
+                    this->base  = std::make_unique<deviation_projector::cuda_wrapper::CudaMatrixDeviationCalculator>(std::get<deviation_projector::cuda_wrapper::ExternalCudaMatrixDeviationCalculatorResource>(arg.resource));
                 }
                 else
                 {

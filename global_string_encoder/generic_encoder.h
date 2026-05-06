@@ -206,6 +206,11 @@ namespace global_string_encoder
                 return this->base->encode(str);
             }
     };
+
+    auto get_empty_transformation_rule() -> ExternalGenericEncoderResource
+    {
+        return to_external_generic_encoder_resource(GenericEncoderResource{.resource = IdentityEncoderResource{}});
+    }
 }
 
 #endif

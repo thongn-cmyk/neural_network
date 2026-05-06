@@ -104,7 +104,11 @@ namespace generic_matrix_factory
     struct GenericMatrixResource
     {
         std::string version_control;
-        std::variant<stdx::reflectible_monostate, TheHostMatrixResource, TheCudaMatrixResource, TheHipMatrixResource> resource;
+
+        std::variant<stdx::reflectible_monostate,
+                     TheHostMatrixResource,
+                     TheCudaMatrixResource,
+                     TheHipMatrixResource> resource;
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector) const
@@ -146,7 +150,8 @@ namespace generic_matrix_factory
             {
                 return taylor_matrix::host_matrix::the_host_matrix::TheHostMatrixFactory{}.set_entropy(configuration.entropy_option)
                                                                                           .set_compute(configuration.compute_option)
-                                                                                          .set_vector_size(configuration.vector_sz);
+                                                                                          .set_vector_size(configuration.vector_sz)
+                                                                                          .compute();
             }
 
             static auto get_matrix_from_base_configuration(BaseConfiguration configuration) -> std::unique_ptr<the_matrix::MatrixInterface>
@@ -264,39 +269,152 @@ namespace generic_matrix_factory
             };
     };
 
-    //__external_linkage__
     class TheCudaMatrixLoader
     {
         public:
 
-            auto load_from_resource(const TheCudaMatrixResource& resource) -> std::unique_ptr<the_matrix::MatrixInterface>
+            static inline constexpr uint8_t LOW_COMPUTE     = taylor_matrix::cuda_matrix::the_cuda_matrix::TheCudaMatrixFactory::LOW_COMPUTE;
+            static inline constexpr uint8_t MID_COMPUTE     = taylor_matrix::cuda_matrix::the_cuda_matrix::TheCudaMatrixFactory::MID_COMPUTE;
+            static inline constexpr uint8_t HIGH_COMPUTE    = taylor_matrix::cuda_matrix::the_cuda_matrix::TheCudaMatrixFactory::HIGH_COMPUTE;
+
+            static inline constexpr uint8_t LOW_ENTROPY     = taylor_matrix::cuda_matrix::the_cuda_matrix::TheCudaMatrixFactory::LOW_ENTROPY;
+            static inline constexpr uint8_t MID_ENTROPY     = taylor_matrix::cuda_matrix::the_cuda_matrix::TheCudaMatrixFactory::MID_ENTROPY;
+            static inline constexpr uint8_t HIGH_ENTROPY    = taylor_matrix::cuda_matrix::the_cuda_matrix::TheCudaMatrixFactory::HIGH_ENTROPY;
+
+        private:
+
+            struct BaseConfiguration
             {
-                #ifdef __CUDACC__
-                {
-                    return {};
-                }
-                #else
-                {
-                    throw device_not_available_exception("hip device not supported");
-                }
-                #endif
+                uint8_t entropy_option;
+                uint8_t compute_option;
+                uint64_t vector_sz;
+            };
+
+            BaseConfiguration base_configuration;
+
+            static auto get_matrix_factory_from_base_configuration(BaseConfiguration configuration) -> taylor_matrix::cuda_matrix::TheCudaMatrixFactory
+            {
+                return taylor_matrix::cuda_matrix::the_cuda_matrix::TheCudaMatrixFactory{}.set_entropy(configuration.entropy_option)
+                                                                                          .set_compute(configuration.compute_option)
+                                                                                          .set_vector_size(configuration.vector_sz)
+                                                                                          .compute();
+            }
+
+            static auto get_matrix_from_base_configuration(BaseConfiguration configuration) -> std::unique_ptr<the_matrix::MatrixInterface>
+            {
+                return get_matrix_factory_from_base_configuration(configuration).get();
+            }
+
+        public:
+
+            auto set_entropy(uint8_t entropy_option) -> TheCudaMatrixLoader&
+            {
+                this->base_configuration.entropy_option = entropy_option;
+
+                return *this;
+            }
+
+            auto set_compute(uint8_t compute_option) -> TheCudaMatrixLoader&
+            {
+                this->base_configuration.compute_option = compute_option;
+
+                return *this;
+            }
+
+            auto set_vector_size(size_t sz) -> TheCudaMatrixLoader&
+            {
+                this->base_configuration.vector_sz = sz;
+
+                return *this;
+            }
+
+            auto get_matrix_shape() -> std::vector<size_t>
+            {
+                return get_matrix_factory_from_base_configuration(this->base_configuration).get_matrix_shape();
+            }
+
+            auto get_matrix() -> std::unique_ptr<the_matrix::MatrixInterface>
+            {
+                return std::make_unique<InternalMatrix>(this->base_configuration,
+                                                        get_matrix_from_base_configuration(this->base_configuration));
             }
 
             auto unload(the_matrix::MatrixInterface& matrix) -> TheCudaMatrixResource
             {
-                #ifdef __CUDACC__
+                InternalMatrix * internal_matrix = dynamic_cast<InternalMatrix *>(&matrix);
+
+                if (internal_matrix == nullptr)
                 {
-                    return {};
+                    throw std::invalid_argument("invalid matrix, matrix is not from loader");
                 }
-                #else
+
+                return TheCudaMatrixResource
                 {
-                    throw device_not_available_exception("cuda device not supported");
-                }
-                #endif
+                    .entropy_option     = internal_matrix->get_configuration().entropy_option,
+                    .compute_option     = internal_amtrix->get_configuration().compute_option,
+                    .vector_sz          = internal_matrix->get_configuration().vector_sz,
+                    .logit_vec          = internal_matrix->get_coefficient_vector()
+                };
             }
+
+            auto load_from_resource(const TheCudaMatrixResource& resource) -> std::unique_ptr<the_matrix::MatrixInterface>
+            {
+                BaseConfiguration config
+                {
+                    .entropy_option = resource.entropy_option,
+                    .compute_option = resource.compute_option,
+                    .vector_sz      = resource.vector_sz
+                };
+
+                std::unique_ptr<the_matrix::MatrixInterface> matrix = get_matrix_from_base_configuration(config);
+
+                return std::make_unique<InternalMatrix>(std::move(config),
+                                                        std::move(matrix));
+            }
+        
+        private:
+            
+            class InternalMatrix: public virtual the_matrix::MatrixInterface
+            {
+                private:
+
+                    TheCudaMatrixLoader::BaseConfiguration base_config,
+                    std::shared_ptr<the_matrix::MatrixInterface> base_matrix;
+                
+                public:
+
+                    InternalMatrix(TheCudaMatrixLoader::BaseConfiguration base_config,
+                                   std::shared_ptr<the_matrix::MatrixInterface> base_matrix) noexcept: base_config(std::move(base_config)),
+                                                                                                       base_matrix(std::move(base_matrix)){}
+
+                    auto get_configuration() const noexcept -> const TheCudaMatrixLoader::BaseConfiguration&
+                    {
+                        return this->base_config;
+                    }
+
+                    auto get_coefficient_vector() -> std::vector<tensor_model::tensor_std_float_t>
+                    {
+                        return this->base_matrix->get_coefficient_vector();
+                    }
+
+                    auto set_coefficient_vector(const std::vector<tensor_model::tensor_std_float_t>& coeff_vec)
+                    {
+                        this->base_matrix->set_coefficient_vector(coeff_vec);
+                    }
+
+                    auto project(const std::vector<std::shared_ptr<tensor_model::Matrix>>& matrix_vec) -> std::vector<std::shared_ptr<tensor_model::Matrix>>
+                    {
+                        return this->base_matrix->project(matrix_vec);
+                    }
+
+                    auto clone() -> std::shared_ptr<the_matrix::MatrixInterface>
+                    {
+                        return std::make_shared<InternalMatrix>(this->base_config,
+                                                                this->base_matrix->clone());
+                    }
+            };
     };
 
-    //__external_linkage__
     class TheHipMatrixLoader
     {
         public:

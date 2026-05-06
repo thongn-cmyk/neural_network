@@ -10,10 +10,8 @@
 
 namespace tensor_factory
 {
-    template <class ...Args,
-              class Allocator = std::allocator<char>>
-    constexpr auto make_matrix_from_shape_vec(const std::vector<size_t, Args...>& space,
-                                              Allocator&& allocator = Allocator()) -> std::shared_ptr<tensor_model::Matrix>
+    template <class ...Args>
+    constexpr void check_shape(const std::vector<size_t, Args...>& space)
     {
         constexpr size_t RECURSIVE_DIMENSION_SZ = 4u; 
 
@@ -41,6 +39,14 @@ namespace tensor_factory
         {
             throw std::invalid_argument("bad shape, incompatible process unit size");
         }
+    }
+
+    template <class ...Args,
+              class Allocator = std::allocator<char>>
+    constexpr auto make_matrix_from_shape_vec(const std::vector<size_t, Args...>& space,
+                                              Allocator&& allocator = Allocator()) -> std::shared_ptr<tensor_model::Matrix>
+    {
+        check_shape(space);
 
         std::shared_ptr<tensor_model::Matrix> rs    = std::allocate_shared<tensor_model::Matrix>(allocator);
         rs->being_vec                               = std::allocate_shared<std::shared_ptr<tensor_model::BeingUnit>[]>(allocator, space[0]);
@@ -138,6 +144,21 @@ namespace tensor_factory
 
         output_vec.push_back(tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ);
         output_vec.push_back(tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ);
+    }
+
+    template <class ...Args>
+    constexpr auto shape_size(const std::vector<size_t>& space) -> size_t
+    {
+        check_shape(space);
+
+        size_t rs = 1u;
+
+        for (size_t d_sz: space)
+        {
+            rs *= d_sz;
+        }
+
+        return rs;
     }
 }
 

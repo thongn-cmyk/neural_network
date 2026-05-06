@@ -18,6 +18,7 @@
 #include <matrix_broker_server/starter.h>
 #include <matrix_broker_client/matrix_broker_client.h>
 #include <matrix/generic_matrix_factory.h>
+#include <matrix/tensor_factory.h>
 #include <connection_handshake_server/starter.h>
 
 class IPSiever: public virtual dg_sock::network_kernel_mailbox_impl1::external_interface::IPSieverInterface{
@@ -526,7 +527,7 @@ void test_matrix_broker()
         std::vector<size_t> matrix_shape    = std::get<matrix_broker_client::FixedProjectionArgument>(rs.projection_argument.projection_argument).inp_matrix_shape;
         auto matrix_projector               = generic_matrix_factory::GenericMatrixLoader{}.load_resource(generic_matrix_factory::GenericMatrixExternalizer{}.to_internal(rs.matrix_resource));
 
-        auto matrix                         = tensor_matrix_operation::make_matrix_from_shape_vec(matrix_shape);
+        auto matrix                         = tensor_factory::make_matrix_from_shape_vec(matrix_shape);
         auto rs_2                           = matrix_projector->project({matrix});
 
         std::cout << rs_2.size() << "<size>\n";

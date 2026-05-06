@@ -46,7 +46,7 @@ namespace cuda_management::device_memory
     };
 
     __device__ static inline constexpr size_t DEFAULT_ALIGNMENT_SZ          = 1u;
-    __device__ static inline constexpr size_t DEFAULT_OBJECT_ALIGNMENT_SZ   = 128u; 
+    __device__ static inline constexpr size_t DEFAULT_OBJECT_ALIGNMENT_SZ   = alignof(std::max_align_t); 
 
     using alignment_header_t        = uint32_t;
     using xalign_metadata_size_t    = uint32_t;

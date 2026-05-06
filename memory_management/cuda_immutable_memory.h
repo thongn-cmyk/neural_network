@@ -9,7 +9,7 @@
 #include "immutable_multiplatform_memory_x.h"
 #include <stl_extension/stdx.h>
 
-namespace cu_immutable_memory
+namespace cuda_immutable_memory
 {
     using MemoryReference           = immutable_multiplatform_memory_x::MemoryReference;
     using CacheAndAcquireArgument   = immutable_multiplatform_memory_x::CacheAndAcquireArgument;

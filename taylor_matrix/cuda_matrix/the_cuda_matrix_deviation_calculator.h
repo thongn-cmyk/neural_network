@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <deviation_projector/generic_matrix_deviation_calculator_interface.h>
-#include <memory_management/cu_immutable_memory.h>
+#include <memory_management/cuda_immutable_memory.h>
 #include <vector>
 #include <unordered_map>
 #include <general_definition/float_def.h>
@@ -16,16 +16,18 @@
 #include <bit>
 #include <cuda_management/host_service_x.h>
 #include <serializer/trivial_serializer.h>
-#include <deviation_projector/host_deviation_projector_wrapper/one_stop_wrapper.h>
+#include <deviation_projector/host_wrapper/one_stop_wrapper.h>
 #include <matrix/tensor_model.h>
 #include <matrix/tensor_factory.h>
 
 namespace taylor_matrix::cuda_matrix::the_cuda_matrix_deviation_calculator
 {
-    using mdc_float_t = float_def::mdc_float_t;
+    using mdc_float_t           = float_def::mdc_float_t;
+    using tensor_std_float_t    = tensor_model::tensor_std_float_t;
+
     using namespace taylor_matrix::cuda_matrix::tensor_matrix_forward_to_deviation;
 
-    struct MemoryLayout
+    struct MatrixLayout
     {
         uint64_t inp_matrix_offset;
         uint64_t expected_matrix_offset;
@@ -55,19 +57,19 @@ namespace taylor_matrix::cuda_matrix::the_cuda_matrix_deviation_calculator
                 std::shared_ptr<RotationSizeVector> rotation_sz_vec;
                 std::shared_ptr<ParameterBoundRatioVector> parameter_bound_ratio_vec;
 
-                std::shared_ptr<tensor_model::tensor_std_float_t[]> logit_cuda_arr;
+                std::shared_ptr<tensor_std_float_t[]> logit_cuda_arr;
             };
 
             struct CudaTokenDispatchables
             {
-                tensor_model::tensor_std_float_t ** inp_cuda_matrix_arr;
-                tensor_model::tensor_std_float_t ** expected_cuda_matrix_arr;
+                tensor_std_float_t ** inp_cuda_matrix_arr;
+                tensor_std_float_t ** expected_cuda_matrix_arr;
             };
 
             struct CudaTokenDispatchable
             {
-                tensor_model::tensor_std_float_t * inp_cuda_matrix;
-                tensor_model::tensor_std_float_t * expected_cuda_matrix;
+                tensor_std_float_t * inp_cuda_matrix;
+                tensor_std_float_t * expected_cuda_matrix;
             };
 
             std::vector<size_t> shape_vec;
@@ -197,17 +199,17 @@ namespace taylor_matrix::cuda_matrix::the_cuda_matrix_deviation_calculator
                 tmp_cuda_resource.focal_suffix_map          = cuda_management::host_service::to_cuda_dgbuf(this->focal_suffix_map);
                 tmp_cuda_resource.rotation_sz_vec           = cuda_management::host_service::to_cuda_dgbuf(this->rotation_sz_vec);
                 tmp_cuda_resource.parameter_bound_ratio_vec = cuda_management::host_service::to_cuda_dgbuf(this->parameter_bound_ratio_vec);
-                tmp_cuda_resource.logit_cuda_arr            = std::static_pointer_cast<tensor_model::tensor_std_float_t[]>(std::static_pointer_cast<void>(cuda_management::host_service::make_cuda_buffer_from_host_view(std::string_view(static_cast<char *>(static_cast<void *>(this->shape_coeff_vec.data())),
-                                                                                                                                                                                                                                          this->shape_coeff_vec.size() * sizeof(tensor_std_float_t)))));
+                tmp_cuda_resource.logit_cuda_arr            = std::static_pointer_cast<tensor_std_float_t[]>(std::static_pointer_cast<void>(cuda_management::host_service::make_cuda_buffer_from_host_view(std::string_view(static_cast<char *>(static_cast<void *>(this->shape_coeff_vec.data())),
+                                                                                                                                                                                                                            this->shape_coeff_vec.size() * sizeof(tensor_std_float_t)))));
 
                 this->cuda_resource                         = tmp_cuda_resource;
             }
 
-            static auto read_mem_layout(void * device_flat_buf) -> MemoryLayout
+            static auto read_mem_layout(void * device_flat_buf) -> MatrixLayout
             {
-                constexpr size_t mem_layout_sz  = trivial_serializer::size(MemoryLayout{});
+                constexpr size_t mem_layout_sz  = trivial_serializer::size(MatrixLayout{});
                 std::array<char, mem_layout_sz> mem_layout_buf{};
-                MemoryLayout mem_layout{};
+                MatrixLayout mem_layout{};
 
                 cuda_management::host_service::memcpy_device_to_host(mem_layout_buf.data(), device_flat_buf, mem_layout_sz);
                 trivial_serializer::deserialize_to(mem_layout, mem_layout_buf.data());
@@ -215,16 +217,16 @@ namespace taylor_matrix::cuda_matrix::the_cuda_matrix_deviation_calculator
                 return mem_layout;
             }
 
-            static auto get_input_matrix_header(void * device_flat_buf) -> tensor_model::tensor_std_float_t *
+            static auto get_input_matrix_header(void * device_flat_buf) -> tensor_std_float_t *
             {
-                return static_cast<tensor_model::tensor_std_float_t *>(static_cast<void *>(std::next(static_cast<char *>(device_flat_buf),
-                                                                                           read_mem_layout(device_flat_buf).inp_matrix_offset)));
+                return static_cast<tensor_std_float_t *>(static_cast<void *>(std::next(static_cast<char *>(device_flat_buf),
+                                                                             read_mem_layout(device_flat_buf).inp_matrix_offset)));
             }
 
-            static auto get_expected_matrix_header(void * device_flat_buf) -> tensor_model::tensor_std_float_t *
+            static auto get_expected_matrix_header(void * device_flat_buf) -> tensor_std_float_t *
             {
-                return static_cast<tensor_model::tensor_std_float_t *>(static_cast<void *>(std::next(static_cast<char *>(device_flat_buf)),
-                                                                                           read_mem_layout(device_flat_buf).expected_matrix_offset));
+                return static_cast<tensor_std_float_t *>(static_cast<void *>(std::next(static_cast<char *>(device_flat_buf)),
+                                                                             read_mem_layout(device_flat_buf).expected_matrix_offset));
             }
 
             auto transform_token(const std::string& tok) -> std::string
@@ -247,31 +249,39 @@ namespace taylor_matrix::cuda_matrix::the_cuda_matrix_deviation_calculator
                     throw std::invalid_argument("bad training token, incompatible output matrix shape");
                 }
 
-                std::vector<tensor_model::tensor_std_float_t> inp_matrix_vec{};
+                std::vector<tensor_std_float_t> inp_matrix_vec{};
                 tensor_factory::flatten(training_pair.first, inp_matrix_vec);
 
-                std::vector<tensor_model::tensor_std_float_t> expected_matrix_vec{};
+                std::vector<tensor_std_float_t> expected_matrix_vec{};
                 tensor_factory::flatten(training_pair.second, expected_matrix_vec);
 
-                size_t total_bsz    = trivial_serializer::size(MemoryLayout{}) + (inp_matrix_vec.size() + expected_matrix_vec.size()) * sizeof(tensor_model::tensor_std_float_t);
+                size_t total_bsz    = trivial_serializer::size(MatrixLayout{})
+                                        + inp_matrix_vec.size() * sizeof(tensor_std_float_t)
+                                        + expected_matrix_vec.size() * sizeof(tensor_std_float_t);
+
                 std::string rs(total_bsz, ' ');
 
-                char * buf          = trivial_serializer::serialize_into(rs.data(), MemoryLayout{.inp_matrix_offset         = trivial_serializer::size(MatrixLayout{}),
-                                                                                                 .expected_matrix_offset    = static_cast<size_t>(trivial_serializer::size(MatrixLayout{}) + inp_matrix_vec.size() * sizeof(tensor_model::tensor_std_float_t))});
+                MatrixLayout layout = MatrixLayout
+                {
+                    .inp_matrix_offset         = trivial_serializer::size(MatrixLayout{}),
+                    .expected_matrix_offset    = static_cast<size_t>(trivial_serializer::size(MatrixLayout{})
+                                                                        + inp_matrix_vec.size() * sizeof(tensor_std_float_t))
+                };
 
-                std::memcpy(buf, inp_matrix_vec.data(), inp_matrix_vec.size() * sizeof(tensor_model::tensor_std_float_t));
-                std::advance(buf, inp_matrix_vec.size() * sizeof(tensor_model::tensor_std_float_t));
-                std::memcpy(buf, expected_matrix_vec.data(), expected_matrix_vec.size() * sizeof(tensor_model::tensor_std_float_t));
-                std::advance(buf, expected_matrix_vec.size() * sizeof(tensor_model::tensor_std_float_t));
+                char * buf          = trivial_serializer::serialize_into(rs.data(), layout);
+
+                std::memcpy(buf, inp_matrix_vec.data(), inp_matrix_vec.size() * sizeof(tensor_std_float_t));
+                std::advance(buf, inp_matrix_vec.size() * sizeof(tensor_std_float_t));
+
+                std::memcpy(buf, expected_matrix_vec.data(), expected_matrix_vec.size() * sizeof(tensor_std_float_t));
+                std::advance(buf, expected_matrix_vec.size() * sizeof(tensor_std_float_t));
 
                 return rs;
             }
 
             auto token_to_cuda_dispatchable(const std::shared_ptr<std::string>& token) -> std::shared_ptr<CudaTokenDispatchable>
             {
-                using namespace cu_immutable_memory;
-
-                std::optional<MemoryReference> mem_reference = acquire_memory(token);
+                std::optional<MemoryReference> mem_reference = cuda_immutable_memory::acquire_memory(token);
 
                 if (!mem_reference.has_value())
                 {
@@ -280,14 +290,14 @@ namespace taylor_matrix::cuda_matrix::the_cuda_matrix_deviation_calculator
                         throw std::invalid_argument("bad token, null");
                     }
 
-                    std::string serialized_buffer   = this->transform_token(*token);
-                    mem_reference                   = cache_and_acquire_memory(token, serialized_buffer);
+                    std::string transformed_token   = this->transform_token(*token);
+                    mem_reference                   = cuda_immutable_memory::cache_and_acquire_memory(token, transformed_token);
                 }
 
-                auto [buf, sz] = get_cu_memspan(mem_reference.value());
+                auto [buf, sz] = cuda_immutable_memory::get_cu_memspan(mem_reference.value());
 
-                tensor_model::tensor_std_float_t * inp_cuda_matrix{};
-                tensor_model::tensor_std_float_t * expected_cuda_matrix{};
+                tensor_std_float_t * inp_cuda_matrix{};
+                tensor_std_float_t * expected_cuda_matrix{};
 
                 try
                 {
@@ -296,21 +306,20 @@ namespace taylor_matrix::cuda_matrix::the_cuda_matrix_deviation_calculator
                 }
                 catch (...)
                 {
-                    release_memory(mem_reference.value());
+                    cuda_immutable_memory::release_memory(mem_reference.value());
                     throw;
                 }
 
-
                 auto destructor = [mem_reference](CudaTokenDispatchable * rs)
                 {
-                    release_memory(mem_reference.value());
+                    cuda_immutable_memory::release_memory(mem_reference.value());
                     delete rs; 
                 };
 
                 try
                 {
-                    return std::unique_ptr<CudaTokenDispatchable, decltype(destructor)>(new CudaTokenDispatchable(CudaTokenDispatchable{.inp_cuda_matrix_arr        = inp_cuda_matrix,
-                                                                                                                                        .expected_cuda_matrix_arr   = expected_cuda_matrix}),
+                    return std::unique_ptr<CudaTokenDispatchable, decltype(destructor)>(new CudaTokenDispatchable(CudaTokenDispatchable{.inp_cuda_matrix        = inp_cuda_matrix,
+                                                                                                                                        .expected_cuda_matrix   = expected_cuda_matrix}),
                                                                                         std::move(destructor));
                 }
                 catch (...)
@@ -319,12 +328,15 @@ namespace taylor_matrix::cuda_matrix::the_cuda_matrix_deviation_calculator
                 }
             }
 
-            auto token_vec_to_cuda_dispatchables(const std::shared_ptr<std::string> * token_arr, size_t token_arr_sz) -> std::shared_ptr<CudaTokenDispatchables>
+            auto token_vec_to_cuda_dispatchables(const std::shared_ptr<std::string> * token_arr,
+                                                 size_t token_arr_sz) -> std::shared_ptr<CudaTokenDispatchables>
             {
-                std::unique_ptr<std::add_pointer_t<tensor_model::tensor_std_float_t>[]> rs(new std::add_pointer_t<tensor_model::tensor_std_float_t>[token_arr_sz * 2u]);
+                size_t rs_sz                                                            = token_arr_sz * 2u;
+                std::unique_ptr<std::add_pointer_t<tensor_std_float_t>[]> rs            = std::make_unique<std::add_pointer_t<tensor_std_float_t>[]>(rs_sz);
 
-                tensor_model::tensor_std_float_t ** inp_cuda_matrix_arr                 = rs.get();
-                tensor_model::tensor_std_float_t ** expected_cuda_matrix_arr            = std::next(rs.get(), token_arr_sz);
+                tensor_std_float_t ** inp_cuda_matrix_arr                               = rs.get();
+                tensor_std_float_t ** expected_cuda_matrix_arr                          = std::next(rs.get(), token_arr_sz);
+
                 std::vector<std::shared_ptr<CudaTokenDispatchable>> dispatchable_vec    = {};
 
                 for (size_t i = 0u; i < token_arr_sz; ++i)
@@ -335,18 +347,189 @@ namespace taylor_matrix::cuda_matrix::the_cuda_matrix_deviation_calculator
                     expected_cuda_matrix_arr[i] = dispatchable_vec.back()->expected_cuda_matrix;
                 }
 
-                auto immutable_holder   = std::make_unique<std::pair<decltype(dispatchable_vec), decltype(rs)>>(std::make_pair(std::move(dispatchable_vec), std::move(rs)));
-                auto destructor         = [holder = std::move(immutable_holder)](CudaTokenDispatchables * arg) noexcept
+                std::shared_ptr<char[]> cu_mem_arr                  = cuda_management::host_service_x::make_cuda_buffer_from_host_view(std::string_view(static_cast<char *>(static_cast<void *>(rs.get())),
+                                                                                                                                                        rs_sz * sizeof(std::add_pointer_t<tensor_std_float_t>)),
+                                                                                                                                       this->cuda_allocator);
+
+                std::shared_ptr<std::add_pointer_t<tensor_std_float_t>[]> cu_float_arr  = std::static_pointer_cast<std::add_pointer_t<tensor_std_float_t>[]>(std::static_pointer_cast<void>(cu_mem_arr));
+
+                tensor_std_float_t ** cu_inp_cuda_matrix_arr        = cu_float_arr.get();
+                tensor_std_float_t ** cu_expected_cuda_matrix_arr   = std::next(cu_float_arr.get(), token_arr_sz);
+
+                auto immutable_holder                               = std::make_unique<std::pair<decltype(dispatchable_vec), decltype(cu_float_arr)>>(std::make_pair(std::move(dispatchable_vec), std::move(cu_float_arr)));
+                auto destructor                                     = [holder = std::move(immutable_holder)](CudaTokenDispatchables * obj) noexcept
                 {
-                    *holder = {};
-                    delete arg;
+                    *holder = {}; //mostly to avoid undefined... I guess we could do __noinline__ and __noipa__ but it just feels safer this way...
+                    delete obj;
                 };
 
-                return std::unique_ptr<CudaTokenDispatchables, decltype(destructor)>(new CudaTokenDispatchables(CudaTokenDispatchables{.inp_cuda_matrix_arr         = inp_cuda_matrix_arr,
-                                                                                                                                       .expected_cuda_matrix_arr    = expected_cuda_matrix_arr}),
+                return std::unique_ptr<CudaTokenDispatchables, decltype(destructor)>(new CudaTokenDispatchables(CudaTokenDispatchables{.inp_cuda_matrix_arr         = cu_inp_cuda_matrix_arr,
+                                                                                                                                       .expected_cuda_matrix_arr    = cu_expected_cuda_matrix_arr}),
                                                                                      std::move(destructor));
             }
-        };
+    };
+
+    struct CudaMatrixIdentifiable
+    {
+        uint8_t entropy_option;
+        uint8_t compute_option;
+        size_t vector_sz;
+
+        template <class Reflector>
+        constexpr void dg_reflect(const Reflector& reflector) const noexcept
+        {
+            reflector(entropy_option,
+                      compute_option,
+                      vector_sz);
+        }
+
+        template <class Reflector>
+        constexpr void dg_reflect(const Reflector& reflector) noexcept
+        {
+            reflector(entropy_option,
+                      compute_option,
+                      vector_sz);
+        }
+    };
+
+    //problem is we can't break encapsulations and designs, so we'd have to make it "accidentially semantically equivalent" due to design constraints
+
+    class TheCudaMatrixDeviationCalculatorFactory
+    {
+        public:
+
+            static inline constexpr uint8_t LOW_COMPUTE     = 0u;
+            static inline constexpr uint8_t MID_COMPUTE     = 1u;
+            static inline constexpr uint8_t HIGH_COMPUTE    = 2u;
+
+            static inline constexpr uint8_t LOW_ENTROPY     = 0u;
+            static inline constexpr uint8_t MID_ENTROPY     = 1u;
+            static inline constexpr uint8_t HIGH_ENTROPY    = 2u;
+
+        private:
+
+            using self = TheCudaMatrixDeviationCalculatorFactory;
+
+            uint8_t compute_option;
+            uint8_t entropy_option;
+
+            std::optional<size_t> vector_sz;
+            std::optional<std::vector<tensor_std_float_t>> logit_vec;
+
+            global_string_encoder::StringTransformationRule str_transformation_rule;
+
+            std::optional<size_t> operational_window;
+            uint8_t deviation_calculator_device;
+
+        public:
+
+            TheCudaMatrixDeviationCalculatorFactory(): compute_option(LOW_COMPUTE),
+                                                       entropy_option(LOW_ENTROPY),
+                                                       vector_sz(std::nullopt),
+                                                       logit_vec(std::nullopt),
+                                                       str_transformation_rule(global_string_encoder::get_empty_transformation_rule()),
+                                                       operational_window(std::nullopt),
+                                                       deviation_calculator_device(deviation_projector::cuda::MEAN_SQRT_DEVICE_CODE){}
+
+            auto set_matrix(const CudaMatrixIdentifiable& cuda_matrix) -> TheCudaMatrixDeviationCalculatorFactory&
+            {
+                return this->set_entropy(cuda_matrix.entropy_option)
+                            .set_compute(cuda_matrix.compute_option)
+                            .set_vector_size(cuda_matrix.vector_sz);
+            }
+
+            auto set_logit_vector(const std::vector<tensor_std_float_t>& logit_vec) -> TheCudaMatrixDeviationCalculatorFactory&
+            {
+                this->logit_vec = logit_vec;
+
+                return *this;
+            }
+
+            auto set_string_transformer_device(const global_string_encoder::StringTransformationRule& str_transformation_rule) -> TheCudaMatrixDeviationCalculatorFactory&
+            {
+                this->str_transformation_rule = str_transformation_rule;
+
+                return *this;
+            }
+
+            auto set_operational_window(std::optional<size_t> operational_window) -> TheCudaMatrixDeviationCalculatorFactory&
+            {
+                this->operational_window = operational_window;
+
+                return *this;
+            }
+
+            auto set_deviation_calculator_device(uint8_t deviation_calculator_device) -> TheCudaMatrixDeviationCalculatorFactory&
+            {
+                this->deviation_calculator_device = deviation_calculator_device;
+
+                return *this;
+            }
+
+            auto compute() -> TheCudaMatrixDeviationCalculatorFactory&
+            {
+                return *this;
+            }
+
+            auto get_matrix_shape() -> std::vector<size_t>
+            {
+                return {};
+            }
+
+            auto get() -> std::unique_ptr<deviation_projector::GenericMatrixDeviationCalculatorInterface>
+            {
+                return {};
+            }
+
+        private:
+
+            auto set_entropy(uint8_t entropy_option) -> TheCudaMatrixDeviationCalculatorFactory&
+            {
+                switch (entropy_option)
+                {
+                    case LOW_ENTROPY:
+                    case MID_ENTROPY:
+                    case HIGH_ENTROPY:
+                    {
+                        this->entropy_option = entropy_option;
+                        break;
+                    }
+                    default:
+                    {
+                        throw std::invalid_argument("bad entropy option, enumeration out of range");
+                    }
+                }
+
+                return *this;
+            }
+
+            auto set_compute(uint8_t compute_option) -> TheCudaMatrixDeviationCalculatorFactory&
+            {
+                switch (compute_option)
+                {
+                    case LOW_COMPUTE:
+                    case MID_COMPUTE:
+                    case HIGH_COMPUTE:
+                    {
+                        this->compute_option = compute_option;
+                        break;
+                    }
+                    default:
+                    {
+                        throw std::invalid_argument("bad compute option, enumeration out of range");
+                    }
+                }
+
+                return *this;
+            }
+
+            auto set_vector_size(size_t sz) -> TheCudaMatrixDeviationCalculatorFactory&
+            {
+                this->vector_sz = sz;
+
+                return *this;
+            }
+    };
 }
 
 #endif
