@@ -151,7 +151,7 @@ namespace generic_matrix_factory
                 return taylor_matrix::host_matrix::the_host_matrix::TheHostMatrixFactory{}.set_entropy(configuration.entropy_option)
                                                                                           .set_compute(configuration.compute_option)
                                                                                           .set_vector_size(configuration.vector_sz)
-                                                                                          .compute();
+                                                                                          ;
             }
 
             static auto get_matrix_from_base_configuration(BaseConfiguration configuration) -> std::unique_ptr<the_matrix::MatrixInterface>
@@ -297,7 +297,7 @@ namespace generic_matrix_factory
                 return taylor_matrix::cuda_matrix::the_cuda_matrix::TheCudaMatrixFactory{}.set_entropy(configuration.entropy_option)
                                                                                           .set_compute(configuration.compute_option)
                                                                                           .set_vector_size(configuration.vector_sz)
-                                                                                          .compute();
+                                                                                          ;
             }
 
             static auto get_matrix_from_base_configuration(BaseConfiguration configuration) -> std::unique_ptr<the_matrix::MatrixInterface>

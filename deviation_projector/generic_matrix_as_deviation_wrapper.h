@@ -5,6 +5,8 @@
 #include <stdlib.h>
 #include <memory>
 #include "generic_matrix_deviation_calculator.h"
+#include "taylor_cuda_wrapper/taylor_cuda_wrapper.h"
+#include "host_wrapper/host_wrapper.h"
 
 namespace deviation_projector
 {
@@ -167,14 +169,14 @@ namespace deviation_projector
 
             auto wrap(const generic_matrix_factory::ExternalGenericMatrixResource& arg) -> deviation_projector::ExternalGenericMatrixDeviationCalculatorResource
             {
-                auto resource           = deviation_projector::cuda_wrapper::CudaMatrixDeviationCalculatorResource
+                auto resource           = deviation_projector::taylor_cuda_wrapper::TaylorCudaMatrixDeviationCalculatorResource
                 {
                     .str_transformation_rule            = this->str_transformation_rule,
                     .cuda_deviation_calculator_device   = this->cuda_deviation_calculator_device,
                     .matrix_resource                    = arg
                 };
 
-                auto external_resource  = deviation_projector::cuda_wrapper::to_external_cuda_matrix_deviation_calculator_resource(resource);
+                auto external_resource  = deviation_projector::taylor_cuda_wrapper::to_external_taylor_cuda_matrix_deviation_calculator_resource(resource);
                 auto generic_resource   = deviation_projector::GenericMatrixDeviationCalculatorResource
                 {
                     .resource = external_resource

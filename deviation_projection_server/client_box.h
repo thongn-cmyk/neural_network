@@ -19,6 +19,7 @@
 #include <request_extension/type_based_resolutor_interface.h>
 #include "local_exception.h"
 #include "model.h"
+#include <immutable_memory/immutable_memory.h>
 
 namespace deviation_projection_server
 {
@@ -26,7 +27,7 @@ namespace deviation_projection_server
     {
         private:
 
-            std::vector<std::shared_ptr<std::string>> training_data;
+            std::vector<std::shared_ptr<immutable_memory::ImmutableMemoryInterface>> training_data;
             std::vector<std::unique_ptr<deviation_projector::GenericMatrixDeviationCalculatorInterface>> deviation_calculator_vec;
 
         public:
@@ -36,7 +37,7 @@ namespace deviation_projection_server
 
             void add_training_data(const std::string& token)
             {
-                this->training_data.push_back(std::make_shared<std::string>(token));
+                this->training_data.push_back(std::make_shared<immutable_memory::ManagedImmutableMemory<>>(token));
             }
 
             void clear_training_data() noexcept

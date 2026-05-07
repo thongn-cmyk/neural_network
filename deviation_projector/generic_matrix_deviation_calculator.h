@@ -5,10 +5,11 @@
 #include <stdlib.h>
 #include <memory>
 #include "generic_matrix_deviation_calculator_interface.h"
-#include "host_wrapper/one_stop_wrapper.h"
-#include "cuda_wrapper/cuda_wrapper.h"
+#include "host_wrapper/host_wrapper.h"
+#include "taylor_cuda_wrapper/taylor_cuda_wrapper.h"
 #include <variant>
 #include <exception>
+#include <immutable_memory/immutable_memory.h>
 
 namespace deviation_projector
 {
@@ -16,7 +17,7 @@ namespace deviation_projector
     {
         std::variant<stdx::reflectible_monostate,
                      deviation_projector::host_wrapper::ExternalGenericHostMatrixDeviationCalculatorResource,
-                     deviation_projector::cuda_wrapper::ExternalCudaMatrixDeviationCalculatorResource> resource;
+                     deviation_projector::taylor_cuda_wrapper::ExternalTaylorCudaMatrixDeviationCalculatorResource> resource;
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector) const
@@ -66,7 +67,7 @@ namespace deviation_projector
         private:
 
             std::unique_ptr<GenericMatrixDeviationCalculatorInterface> base;
-        
+
         public:
 
             GenericMatrixDeviationCalculator(const GenericMatrixDeviationCalculatorResource& arg)
@@ -75,9 +76,9 @@ namespace deviation_projector
                 {
                     this->base  = std::make_unique<deviation_projector::host_wrapper::GenericHostMatrixDeviationCalculator>(std::get<deviation_projector::host_wrapper::ExternalGenericHostMatrixDeviationCalculatorResource>(arg.resource));
                 }
-                else if (std::holds_alternative<deviation_projector::cuda_wrapper::ExternalCudaMatrixDeviationCalculatorResource>(arg.resource))
+                else if (std::holds_alternative<deviation_projector::taylor_cuda_wrapper::ExternalTaylorCudaMatrixDeviationCalculatorResource>(arg.resource))
                 {
-                    this->base  = std::make_unique<deviation_projector::cuda_wrapper::CudaMatrixDeviationCalculator>(std::get<deviation_projector::cuda_wrapper::ExternalCudaMatrixDeviationCalculatorResource>(arg.resource));
+                    this->base  = std::make_unique<deviation_projector::taylor_cuda_wrapper::TaylorCudaMatrixDeviationCalculator>(std::get<deviation_projector::taylor_cuda_wrapper::ExternalTaylorCudaMatrixDeviationCalculatorResource>(arg.resource));
                 }
                 else
                 {
@@ -87,7 +88,7 @@ namespace deviation_projector
 
             GenericMatrixDeviationCalculator(const ExternalGenericMatrixDeviationCalculatorResource& arg): GenericMatrixDeviationCalculator(to_internal_generic_matrix_deviation_calculator_resource(arg)){}
 
-            auto get_deviation(const std::vector<std::shared_ptr<std::string>>& training_token_vec) -> mdc_float_t
+            auto get_deviation(const std::vector<std::shared_ptr<immutable_memory::ImmutableMemoryInterface>>& training_token_vec) -> mdc_float_t
             {
                 return this->base->get_deviation(training_token_vec);
             }

@@ -16,9 +16,10 @@
 #include <bit>
 #include <cuda_management/host_service_x.h>
 #include <serializer/trivial_serializer.h>
-#include <deviation_projector/host_wrapper/one_stop_wrapper.h>
+#include <deviation_projector/training_token_factory.h>
 #include <matrix/tensor_model.h>
 #include <matrix/tensor_factory.h>
+#include <immutable_memory/immutable_memory.h>
 
 namespace taylor_matrix::cuda_matrix::the_cuda_matrix_deviation_calculator
 {
@@ -44,6 +45,15 @@ namespace taylor_matrix::cuda_matrix::the_cuda_matrix_deviation_calculator
             reflector(inp_matrix_offset, expected_matrix_offset);
         }
     };
+
+    //it's complicated but it's (1): defined, (2): object-oriented, (3): not best practice
+    //I never use dynamic_cast<> in the code but I guess this is one of the use case where it could be helpful in the sense of management
+
+    //dynamic_cast is not used in the case where the feature is mandatory to do something
+    //dynamic_cast can be used in the sense of <optional>, where the usage with or without the cast is sufficient
+    //even though the "intention" is not "clear" and the "interface" does not "express" the intention
+
+    //but if the "logics" inside the code is self-induced and the extension is to serve such problem, then it's "acceptable" in the sense of management in this case
 
     class TheCudaMatrixDeviationCalculator: public virtual deviation_projector::GenericMatrixDeviationCalculatorInterface
     {
@@ -115,7 +125,7 @@ namespace taylor_matrix::cuda_matrix::the_cuda_matrix_deviation_calculator
                                                                                                                       cuda_allocator(),
                                                                                                                       str_transformer(std::make_unique<global_string_encoder::GenericEncoder>(encoder_resource)){}
 
-            auto get_deviation(const std::vector<std::shared_ptr<std::string>>& token_vec) -> mdc_float_t
+            auto get_deviation(const std::vector<std::shared_ptr<immutable_memory::ImmutableMemoryInterface>>& token_vec) -> mdc_float_t
             {
                 if (token_vec.empty())
                 {
@@ -145,7 +155,20 @@ namespace taylor_matrix::cuda_matrix::the_cuda_matrix_deviation_calculator
 
         private:
 
-            auto get_deviation_helper(const std::shared_ptr<std::string> * token_arr, size_t token_arr_sz) -> mdc_float_t
+            struct ImmutableMemoryOnDestructionHandler: public virtual immutable_memory::OnDestructionCallbackInterface
+            {
+                static auto handler_id() -> size_t
+                {
+                    return 9520536842620048475ULL;
+                }
+
+                void callback(immutable_memory::ImmutableMemoryHolderInterface& memory) noexcept
+                {
+                    cuda_immutable_memory::evict_memory(memory.get_holder());
+                }
+            };
+
+            auto get_deviation_helper(const std::shared_ptr<immutable_memory::ImmutableMemoryInterface> * token_arr, size_t token_arr_sz) -> mdc_float_t
             {
                 this->initialize_cuda_resource_if_null();
 
@@ -231,7 +254,7 @@ namespace taylor_matrix::cuda_matrix::the_cuda_matrix_deviation_calculator
 
             auto transform_token(const std::string& tok) -> std::string
             {
-                std::pair<std::shared_ptr<tensor_model::Matrix>, std::shared_ptr<tensor_model::Matrix>> training_pair = deviation_projector::host_wrapper::decode_training_token(this->str_transformer->encode(tok));
+                std::pair<std::shared_ptr<tensor_model::Matrix>, std::shared_ptr<tensor_model::Matrix>> training_pair = deviation_projector::training_token_factory::decode_training_token(this->str_transformer->encode(tok));
                 std::vector<size_t> inp_matrix_shape{};
 
                 tensor_factory::get_shape(training_pair.first, inp_matrix_shape);
@@ -279,9 +302,27 @@ namespace taylor_matrix::cuda_matrix::the_cuda_matrix_deviation_calculator
                 return rs;
             }
 
-            auto token_to_cuda_dispatchable(const std::shared_ptr<std::string>& token) -> std::shared_ptr<CudaTokenDispatchable>
+            auto get_immutable_memory_representation(const std::shared_ptr<immutable_memory::ImmutableMemoryInterface>& token) -> std::shared_ptr<void>
             {
-                std::optional<MemoryReference> mem_reference = cuda_immutable_memory::acquire_memory(token);
+                if (token == nullptr)
+                {
+                    return nullptr;
+                }
+
+                std::shared_ptr<immutable_memory::ManagedImmutableMemoryInterface> mem_holder = std::dynamic_pointer_cast<immutable_memory::ManagedImmutableMemoryInterface>(token);
+
+                if (mem_holder == nullptr)
+                {
+                    return token;
+                }
+
+                return mem_holder->get_holder(); //this only works if shared_ptr<> lives with the mem holder
+            }
+
+            auto token_to_cuda_dispatchable(const std::shared_ptr<immutable_memory::ImmutableMemoryInterface>& token) -> std::shared_ptr<CudaTokenDispatchable>
+            {
+                std::shared_ptr<void> token_pass                = this->get_immutable_memory_representation(token);
+                std::optional<MemoryReference> mem_reference    = cuda_immutable_memory::acquire_memory(token_pass);
 
                 if (!mem_reference.has_value())
                 {
@@ -291,7 +332,20 @@ namespace taylor_matrix::cuda_matrix::the_cuda_matrix_deviation_calculator
                     }
 
                     std::string transformed_token   = this->transform_token(*token);
-                    mem_reference                   = cuda_immutable_memory::cache_and_acquire_memory(token, transformed_token);
+                    mem_reference                   = cuda_immutable_memory::cache_and_acquire_memory(token_pass, transformed_token);
+
+                    if (immutable_memory::ManagedImmutableMemoryInterface * obj = dynamic_cast<immutable_memory::ManagedImmutableMemoryInterface *>(token.get()); obj != nullptr)
+                    {
+                        try
+                        {
+                            obj->_register(std::make_shared<ImmutableMemoryOnDestructionHandler>(),
+                                           ImmutableMemoryOnDestructionHandler::handler_id());
+                        }
+                        catch (...)
+                        {
+                            std::abort();
+                        }
+                    }
                 }
 
                 auto [buf, sz] = cuda_immutable_memory::get_cu_memspan(mem_reference.value());
@@ -328,7 +382,7 @@ namespace taylor_matrix::cuda_matrix::the_cuda_matrix_deviation_calculator
                 }
             }
 
-            auto token_vec_to_cuda_dispatchables(const std::shared_ptr<std::string> * token_arr,
+            auto token_vec_to_cuda_dispatchables(const std::shared_ptr<immutable_memory::ImmutableMemoryInterface> * token_arr,
                                                  size_t token_arr_sz) -> std::shared_ptr<CudaTokenDispatchables>
             {
                 size_t rs_sz                                                            = token_arr_sz * 2u;
@@ -406,6 +460,192 @@ namespace taylor_matrix::cuda_matrix::the_cuda_matrix_deviation_calculator
             static inline constexpr uint8_t MID_ENTROPY     = 1u;
             static inline constexpr uint8_t HIGH_ENTROPY    = 2u;
 
+            static inline const std::unordered_map<uint8_t, std::vector<std::vector<size_t>>> TRANSFORMATION_SHAPE_MAP =
+            {
+                {LOW_ENTROPY, 
+                {
+                    {
+                        size_t{1} << 1,
+                        1,
+                        PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
+                        PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
+                    },
+
+                    {
+                        size_t{1} << 2,
+                        2,
+                        PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
+                        PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
+                    },
+
+                    {
+                        size_t{1} << 4,
+                        4,
+                        PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
+                        PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
+                    },
+
+                    {
+                        size_t{1} << 8,
+                        4,
+                        PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
+                        PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
+                    },
+
+                    {
+                        size_t{1} << 16,
+                        4,
+                        PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
+                        PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
+                    }
+                }},
+
+                {MID_ENTROPY,
+                {
+                    {
+                        size_t{1} << 1,
+                        1,
+                        PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
+                        PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
+                    },
+
+                    {
+                        size_t{1} << 2,
+                        2,
+                        PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
+                        PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
+                    },
+
+                    {
+                        size_t{1} << 4,
+                        4,
+                        PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
+                        PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
+                    },
+
+                    {
+                        size_t{1} << 8,
+                        8,
+                        PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
+                        PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
+                    },
+
+                    {
+                        size_t{1} << 16,
+                        16,
+                        PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
+                        PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
+                    }
+                }},
+
+                {HIGH_ENTROPY,
+                {
+                    {
+                        size_t{1} << 1,
+                        4,
+                        PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
+                        PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
+                    },
+
+                    {
+                        size_t{1} << 2,
+                        8,
+                        PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
+                        PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
+                    },
+
+                    {
+                        size_t{1} << 4,
+                        16,
+                        PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
+                        PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
+                    },
+
+                    {
+                        size_t{1} << 8,
+                        32,
+                        PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
+                        PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
+                    },
+
+                    {
+                        size_t{1} << 16,
+                        64,
+                        PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
+                        PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
+                    }
+                }}
+            };
+
+            static inline const std::unordered_map<uint8_t, std::vector<std::vector<size_t>>> TRANSFORMATION_FOCAL_MAP =
+            {
+                {LOW_ENTROPY,
+                {
+                    {},
+                    {size_t{1} << 1},
+                    {size_t{1} << 2, size_t{1} << 1},
+                    {size_t{1} << 4, size_t{1} << 2, size_t{1} << 1},
+                    {size_t{1} << 8, size_t{1} << 4, size_t{1} << 2, size_t{1} << 1}
+                }},
+
+                {MID_ENTROPY,
+                {
+                    {},
+                    {size_t{1} << 1},
+                    {size_t{1} << 2, size_t{1} << 1},
+                    {size_t{1} << 4, size_t{1} << 2, size_t{1} << 1},
+                    {size_t{1} << 8, size_t{1} << 4, size_t{1} << 2, size_t{1} << 1}
+                }},
+
+                {HIGH_ENTROPY,
+                {
+                    {},
+                    {size_t{1} << 1},
+                    {size_t{1} << 2, size_t{1} << 1},
+                    {size_t{1} << 4, size_t{1} << 2, size_t{1} << 1},
+                    {size_t{1} << 8, size_t{1} << 4, size_t{1} << 2, size_t{1} << 1}
+                }}
+            };
+
+            static inline const std::unordered_map<uint8_t, std::vector<std::vector<size_t>>> TRANSFORMATION_ROTATION_MAP =
+            {
+                {LOW_ENTROPY,
+                {
+                    {},
+                    {0},
+                    {4, 0},
+                    {4, 2, 0},
+                    {4, 2, 2, 0}
+                }},
+
+                {MID_ENTROPY,
+                {
+                    {},
+                    {0},
+                    {4, 0},
+                    {4, 2, 0},
+                    {4, 2, 2, 0}
+                }},
+
+                {HIGH_ENTROPY,
+                {
+                    {},
+                    {0},
+                    {4, 0},
+                    {4, 2, 0},
+                    {4, 2, 2, 0}
+                }}
+            };
+
+            static inline const double PARAMETER_BOUND_RATIO = 0.4;
+
+            static inline const std::unordered_map<uint8_t, std::optional<size_t>> CONCURRENT_WORKER_MAP =
+            {
+                {LOW_COMPUTE, std::optional<size_t>(std::nullopt)},
+                {MID_COMPUTE, std::optional<size_t>(std::nullopt)},
+                {HIGH_COMPUTE, std::optional<size_t>(std::nullopt)}
+            };
+
         private:
 
             using self = TheCudaMatrixDeviationCalculatorFactory;
@@ -471,17 +711,68 @@ namespace taylor_matrix::cuda_matrix::the_cuda_matrix_deviation_calculator
                 return *this;
             }
 
-            auto get_matrix_shape() -> std::vector<size_t>
-            {
-                return {};
-            }
-
             auto get() -> std::unique_ptr<deviation_projector::GenericMatrixDeviationCalculatorInterface>
             {
-                return {};
+                this->compute();
+
+                if (!this->vector_sz.has_value())
+                {
+                    throw std::invalid_argument("bad configuration, vector size not set");
+                }
+
+                if (!this->logit_vec.has_value())
+                {
+                    throw std::invalid_argument("bad configuration, logit vector not set");
+                }
+
+                return make_deviation_calculator(this->get_shape_vector(),
+                                                 this->get_focal_size_vector(),
+                                                 this->get_focal_suffix_map(),
+                                                 this->get_rotation_size_vector(),
+                                                 this->get_parameter_bound_ratio_vector(),
+                                                 this->get_shape_coefficient_vector(),
+                                                 this->get_base_shape_coefficient_vector(),
+                                                 this->deviation_calculator_device,
+                                                 this->operation_window,
+                                                 this->str_transformation_rule);
             }
 
         private:
+
+            auto get_shape_vector() -> std::vector<size_t>
+            {
+                return {};
+            }
+
+            auto get_focal_size_vector() -> std::vector<size_t>
+            {
+                return {};
+            }
+            
+            auto get_focal_suffix_map() -> std::unordered_map<size_t, std::unordered_map<size_t, std::vector<std::vector<size_t>>>>
+            {
+                return {};
+            }
+
+            auto get_rotation_size_vector() -> std::vector<size_t>
+            {
+                return {};
+            }
+
+            auto get_parameter_bound_ratio_vector() -> std::vector<double>
+            {
+                return {};
+            }
+
+            auto get_shape_coefficient_vector() -> std::vector<tensor_std_float_t>
+            {
+                return {};
+            }
+
+            auto get_base_shape_coefficient_vector() -> size_t
+            {
+                return {};
+            }
 
             auto set_entropy(uint8_t entropy_option) -> TheCudaMatrixDeviationCalculatorFactory&
             {

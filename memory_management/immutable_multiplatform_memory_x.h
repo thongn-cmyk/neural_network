@@ -53,6 +53,9 @@ namespace immutable_multiplatform_memory_x
             virtual void evict_memory(const std::shared_ptr<void> * immutable_reference_arr,
                                       size_t immutable_reference_arr_sz) noexcept = 0;
 
+            virtual void evict_memory_unsafe(void ** immutable_reference_arr,
+                                             size_t immutable_reference_arr_sz) noexcept = 0;
+
             virtual auto max_consume_size() noexcept -> size_t = 0;
     };
 
@@ -384,10 +387,10 @@ namespace immutable_multiplatform_memory_x
                 }
             }
 
-            void evict_memory_one(const std::shared_ptr<void>& immutable_reference,
-                                  FreeAllocationHolder& free_holder)
+            void evict_memory_one_unsafe(void * immutable_reference,
+                                         FreeAllocationHolder& free_holder)
             {
-                uintptr_t key                       = reinterpret_cast<uintptr_t>(immutable_reference.get());
+                uintptr_t key                       = reinterpret_cast<uintptr_t>(immutable_reference);
                 const MemoryNode * mem_node         = this->management_heap.get_by_key(key);
 
                 if (mem_node == nullptr)
@@ -406,6 +409,13 @@ namespace immutable_multiplatform_memory_x
                 }
 
                 this->wanted_eviction_set.insert(key); //bind lifetime of this -> that of memory reference node, upon 0 exit
+            }
+
+            void evict_memory_one(const std::shared_ptr<void>& immutable_reference,
+                                  FreeAllocationHolder& free_holder)
+            {
+                this->evict_memory_one_unsafe(immutable_reference.get(),
+                                              free_holder);
             }
     };
 }

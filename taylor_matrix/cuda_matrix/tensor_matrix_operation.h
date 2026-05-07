@@ -594,12 +594,12 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_operation
 
                                                                          AllocatorInterface&& allocator,
 
+                                                                         local_exception_t * err = nullptr,
                                                                          const Tag<ShapeBasePromotedFloatType>& shape_base_promotion_tag = Tag<ShapeBasePromotedFloatType>{},
                                                                          bool has_logit_unit_reuse_tag = true,
                                                                          bool has_logit_group_logit_reuse_tag = true,
                                                                          bool has_being_logit_reuse_tag = true,
-                                                                         bool has_base_matrix_logit_reuse_tag = true,
-                                                                         local_exception_t * err = nullptr) -> Matrix *
+                                                                         bool has_base_matrix_logit_reuse_tag = true) -> Matrix *
     {
         using namespace cuda_management::scope_allocator;
         using namespace cuda_management::device_memory; 
@@ -758,12 +758,12 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_operation
                                                                        base_shape_coeff_sz_container,
                                                                        shape_coeff_arr, shape_coeff_arr_offset, shape_coeff_arr_cap,
                                                                        allocator,
+                                                                       err,
                                                                        shape_base_promotion_tag,
                                                                        has_logit_unit_reuse_tag,
                                                                        has_logit_group_logit_reuse_tag,
                                                                        has_being_logit_reuse_tag,
-                                                                       has_base_matrix_logit_reuse_tag,
-                                                                       err);
+                                                                       has_base_matrix_logit_reuse_tag);
 
                         if (*err != SUCCESS)
                         {
@@ -820,12 +820,12 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_operation
                                                                    base_shape_coeff_sz_container,
                                                                    shape_coeff_arr, shape_coeff_arr_offset, shape_coeff_arr_cap,
                                                                    allocator,
+                                                                   err,
                                                                    shape_base_promotion_tag,
                                                                    has_logit_unit_reuse_tag,
                                                                    has_logit_group_logit_reuse_tag,
                                                                    has_being_logit_reuse_tag,
-                                                                   has_base_matrix_logit_reuse_tag,
-                                                                   err);
+                                                                   has_base_matrix_logit_reuse_tag);
 
                     if (*err != SUCCESS)
                     {

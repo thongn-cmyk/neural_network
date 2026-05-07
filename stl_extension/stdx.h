@@ -1100,6 +1100,26 @@ namespace stdx
             memtransaction_guard& operator =(memtransaction_guard&&) = delete;
     };
 
+    template <class SmpType>
+    class smp_guard
+    {
+        private:
+
+            SmpType * volatile smp;
+        
+        public:
+
+            inline __attribute__((always_inline)) smp_guard(SmpType& smp): smp(&smp)
+            {
+                this->smp->acquire();
+            }
+
+            inline __attribute__((always_inline)) ~smp_guard() noexcept
+            {
+                this->smp->release();
+            }
+    };
+
     template <class ...Args>
     void high_resolution_sleep_for(std::chrono::duration<Args...> dur)
     {

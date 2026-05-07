@@ -217,7 +217,7 @@ namespace taylor_matrix::host_matrix::the_host_matrix
             {
                 {
                     size_t{1} << 1,
-                    2,
+                    1,
                     tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
                     tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
                 },
@@ -231,21 +231,21 @@ namespace taylor_matrix::host_matrix::the_host_matrix
 
                 {
                     size_t{1} << 4,
-                    2,
+                    4,
                     tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
                     tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
                 },
 
                 {
                     size_t{1} << 8,
-                    2,
+                    4,
                     tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
                     tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
                 },
 
                 {
                     size_t{1} << 16,
-                    2,
+                    4,
                     tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
                     tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
                 }
@@ -255,7 +255,7 @@ namespace taylor_matrix::host_matrix::the_host_matrix
             {
                 {
                     size_t{1} << 1,
-                    2,
+                    1,
                     tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
                     tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
                 },
@@ -269,21 +269,21 @@ namespace taylor_matrix::host_matrix::the_host_matrix
 
                 {
                     size_t{1} << 4,
-                    2,
+                    4,
                     tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
                     tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
                 },
 
                 {
                     size_t{1} << 8,
-                    2,
+                    8,
                     tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
                     tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
                 },
 
                 {
                     size_t{1} << 16,
-                    2,
+                    16,
                     tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
                     tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
                 }
@@ -293,35 +293,35 @@ namespace taylor_matrix::host_matrix::the_host_matrix
             {
                 {
                     size_t{1} << 1,
-                    2,
+                    4,
                     tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
                     tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
                 },
 
                 {
                     size_t{1} << 2,
-                    2,
+                    8,
                     tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
                     tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
                 },
 
                 {
                     size_t{1} << 4,
-                    2,
+                    16,
                     tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
                     tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
                 },
 
                 {
                     size_t{1} << 8,
-                    2,
+                    32,
                     tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
                     tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
                 },
 
                 {
                     size_t{1} << 16,
-                    2,
+                    64,
                     tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
                     tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
                 }
@@ -361,38 +361,38 @@ namespace taylor_matrix::host_matrix::the_host_matrix
             {
                 {},
                 {0},
-                {2, 0},
-                {2, 2, 0},
-                {2, 2, 2, 0}
+                {4, 0},
+                {4, 2, 0},
+                {4, 2, 2, 0}
             };
 
             static inline const std::vector<std::vector<size_t>> MID_TRANSFORMATION_ROTATION_VEC = 
             {
                 {},
                 {0},
-                {2, 0},
-                {2, 2, 0},
-                {2, 2, 2, 0}
+                {4, 0},
+                {4, 2, 0},
+                {4, 2, 2, 0}
             };
 
             static inline const std::vector<std::vector<size_t>> HIGH_TRANSFORMATION_ROTATION_VEC = 
             {
                 {},
                 {0},
-                {2, 0},
-                {2, 2, 0},
-                {2, 2, 2, 0}
+                {4, 0},
+                {4, 2, 0},
+                {4, 2, 2, 0}
             };
 
-            static inline const double PARAMETER_BOUND_RATIO        = 0.8;
+            static inline const double PARAMETER_BOUND_RATIO        = 0.4;
             static inline const double PE_AMPLITUDE_DISCRETE_UNIT   = 0.1;
             static inline const size_t TENTATIVE_PE_SZ              = 4;
 
             static inline const std::unordered_map<uint8_t, std::optional<size_t>> CONCURRENT_WORKER_MAP =
             {
                 {LOW_COMPUTE, std::optional<size_t>(std::nullopt)},
-                {MID_COMPUTE, std::optional<size_t>(8)},
-                {HIGH_COMPUTE, std::optional<size_t>(64)}
+                {MID_COMPUTE, std::optional<size_t>(std::nullopt)},
+                {HIGH_COMPUTE, std::optional<size_t>(std::nullopt)}
             };
 
             template <size_t TAYLOR_BASE_COEFF_SZ, size_t SHAPE_BASE_COEFF_SZ, class TaylorBasePromotedFloatType, class ShapeBasePromotedFloatType>
@@ -574,6 +574,8 @@ namespace taylor_matrix::host_matrix::the_host_matrix
 
             auto get_matrix_shape() -> std::vector<size_t>
             {
+                this->compute();
+
                 if (!this->vector_sz.has_value())
                 {
                     throw std::invalid_argument("configuration error, vector size not set");
@@ -615,6 +617,8 @@ namespace taylor_matrix::host_matrix::the_host_matrix
 
             auto get() -> std::unique_ptr<the_matrix::MatrixInterface>
             {
+                this->compute();
+
                 return make_the_matrix(this->get_matrix_shape(),
                                        this->get_focal_size_vector(),
                                        this->get_focal_suffix_map(),

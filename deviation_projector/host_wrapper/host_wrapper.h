@@ -12,6 +12,8 @@
 #include <stl_extension/stdx.h>
 #include <global_string_encoder/generic_encoder.h>
 #include <matrix/tensor_factory.h>
+#include <immutable_memory/immutable_memory.h>
+#include <deviation_projector/training_token_factory.h>
 
 namespace deviation_projector::host_wrapper
 {
@@ -66,97 +68,6 @@ namespace deviation_projector::host_wrapper
         return dg::network_compact_serializer::dgstd_deserialize<GenericHostMatrixDeviationCalculatorResource>(arg.config_bytestream);
     }
 
-    struct MatrixSerializable
-    {
-        std::vector<tensor_std_float_t> logit_vec;
-        std::vector<uint64_t> shape;
-
-        template <class Reflector>
-        void dg_reflect(const Reflector& reflector) const
-        {
-            reflector(logit_vec, shape);
-        }
-
-        template <class Reflector>
-        void dg_reflect(const Reflector& reflector)
-        {
-            reflector(logit_vec, shape);
-        }
-    };
-
-    struct TrainingToken
-    {
-        MatrixSerializable inp;
-        MatrixSerializable out;
-
-        template <class Reflector>
-        void dg_reflect(const Reflector& reflector) const
-        {
-            reflector(inp, out);
-        }
-
-        template <class Reflector>
-        void dg_reflect(const Reflector& reflector)
-        {
-            reflector(inp, out);
-        }
-    };
-
-    auto encode_training_token(const std::shared_ptr<tensor_model::Matrix>& inp,
-                               const std::shared_ptr<tensor_model::Matrix>& out) -> std::string
-    {
-
-        MatrixSerializable serializable_inp;
-        MatrixSerializable serializable_out;
-
-        {
-            std::vector<tensor_std_float_t> rs{};
-            std::vector<size_t> shape{};
-
-            tensor_factory::flatten(inp, rs);
-            tensor_factory::get_shape(inp, shape);
-
-            serializable_inp = MatrixSerializable
-            {
-                .logit_vec  = std::move(rs),
-                .shape      = stdx::to_castable_vector_initializer(shape)
-            };
-        }
-
-        {
-            std::vector<tensor_std_float_t> rs{};
-            std::vector<size_t> shape{};
-
-            tensor_factory::flatten(out, rs);
-            tensor_factory::get_shape(out, shape);
-
-            serializable_out = MatrixSerializable
-            {
-                .logit_vec  = std::move(rs),
-                .shape      = stdx::to_castable_vector_initializer(shape)
-            };
-        }
-
-        TrainingToken training_token
-        {
-            .inp = std::move(serializable_inp),
-            .out = std::move(serializable_out)
-        };
-
-        return dg::network_compact_serializer::dgstd_serialize<std::string>(training_token);
-    }
-
-    auto decode_training_token(const std::string& data) -> std::pair<std::shared_ptr<tensor_model::Matrix>,
-                                                                     std::shared_ptr<tensor_model::Matrix>>
-    {
-        TrainingToken training_token = dg::network_compact_serializer::dgstd_deserialize<TrainingToken>(data);
-
-        return {tensor_factory::make_matrix_from_flat_vec(std::vector<size_t>(stdx::to_castable_vector_initializer(training_token.inp.shape)),
-                                                          training_token.inp.logit_vec),
-                tensor_factory::make_matrix_from_flat_vec(std::vector<size_t>(training_token.out.shape),
-                                                          training_token.out.logit_vec)};
-    }
-
     class GenericHostMatrixDeviationCalculator: public virtual deviation_projector::GenericMatrixDeviationCalculatorInterface
     {
         private:
@@ -197,7 +108,7 @@ namespace deviation_projector::host_wrapper
 
             GenericHostMatrixDeviationCalculator(const ExternalGenericHostMatrixDeviationCalculatorResource& arg): GenericHostMatrixDeviationCalculator(to_internal_generic_host_matrix_deviation_calculator_resource(arg)){}
 
-            auto get_deviation(const std::vector<std::shared_ptr<std::string>>& training_token_vec) -> mdc_float_t
+            auto get_deviation(const std::vector<std::shared_ptr<immutable_memory::ImmutableMemoryInterface>>& training_token_vec) -> mdc_float_t
             {
                 std::vector<std::pair<std::shared_ptr<tensor_model::Matrix>, std::shared_ptr<tensor_model::Matrix>>> tensor_pair_vec{};
 
@@ -212,7 +123,7 @@ namespace deviation_projector::host_wrapper
                         throw std::invalid_argument("bad training token, null");
                     }
 
-                    auto [lhs, rhs] = decode_training_token(this->string_encoder->encode(*training_token));
+                    auto [lhs, rhs] = deviation_projector::training_token_factory::decode_training_token(this->string_encoder->encode(training_token->get()));
 
                     projecting_vec.push_back(lhs);
                     expected_vec.push_back(rhs);

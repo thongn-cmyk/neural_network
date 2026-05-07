@@ -14,7 +14,7 @@ namespace deviation_projector
     using tensor_std_float_t = tensor_model::tensor_std_float_t;
 
     template <class PromotedFloatType = tensor_std_float_t>
-    class MatrixSquareDeviationCalculator: public virtual MatrixDeviationCalculatorInterface
+    class MatrixMeanSquareDeviationCalculator: public virtual MatrixDeviationCalculatorInterface
     {
         public:
 
@@ -144,9 +144,9 @@ namespace deviation_projector
         public:
 
             template <class PromotedFloatType = tensor_std_float_t>
-            static auto get_square_deviation_calculator(const stdx::Tag<PromotedFloatType>& tag = stdx::Tag<PromotedFloatType>{}) -> std::unique_ptr<MatrixDeviationCalculatorInterface>
+            static auto get_mean_square_deviation_calculator(const stdx::Tag<PromotedFloatType>& tag = stdx::Tag<PromotedFloatType>{}) -> std::unique_ptr<MatrixDeviationCalculatorInterface>
             {
-                return std::make_unique<MatrixSquareDeviationCalculator<PromotedFloatType>>();
+                return std::make_unique<MatrixMeanSquareDeviationCalculator<PromotedFloatType>>();
             }
 
             static auto get_double_bag_deviation_calculator(std::unique_ptr<MatrixDeviationCalculatorInterface> deviation_calculator) -> std::unique_ptr<MatrixDeviationCalculatorInterface>

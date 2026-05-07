@@ -1,5 +1,5 @@
-#ifndef __TENSOR_MATRIX_FORWARD_TO_DEVIATION_EXTERN_H__
-#define __TENSOR_MATRIX_FORWARD_TO_DEVIATION_EXTERN_H__
+#ifndef __TENSOR_MATRIX_FORWARD_TO_DEVIATION_HEADER_H__
+#define __TENSOR_MATRIX_FORWARD_TO_DEVIATION_HEADER_H__
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -47,7 +47,7 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_forward_to_deviation
                                               size_t base_shape_coeff_sz,
                                               const tensor_model::tensor_std_float_t * shape_coeff_arr, size_t * shape_coeff_arr_offset, size_t shape_coeff_arr_cap,
 
-                                              local_exception_t * err);
+                                              local_exception_t * device_mem_err);
 }
 
 #endif

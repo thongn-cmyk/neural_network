@@ -1754,7 +1754,7 @@ namespace stock_solution
                 return the_host_matrix::TheHostMatrixFactory{}.set_entropy(this->get_matrix_maker_entropy_option())
                                                               .set_compute(this->get_matrix_maker_compute_option())
                                                               .set_vector_size(this->get_encoder_flat_size())
-                                                              .compute()
+                                                              
                                                               .get_matrix_shape();
             }
 
@@ -1783,7 +1783,7 @@ namespace stock_solution
                 return the_host_matrix::TheHostMatrixFactory{}.set_compute(this->get_matrix_maker_compute_option())
                                                               .set_entropy(this->get_matrix_maker_entropy_option())
                                                               .set_vector_size(this->get_matrix_maker_vector_size())
-                                                              .compute()
+                                                              
                                                               .get();
             }
 
@@ -1891,7 +1891,7 @@ namespace stock_solution
                          .set_analytic_option(this->get_analytic_option())
                          .set_data(this->ticker_data_vec)
                          .set_feature_name_list(this->feature_name_vec)
-                         .compute();
+                         ;
                 
                 return extractor;
             }
@@ -2132,7 +2132,7 @@ namespace stock_solution
                 this->transformer   = the_host_matrix::TheHostMatrixFactory{}.set_compute(data.matrix_maker_compute_option)
                                                                              .set_entropy(data.matrix_maker_entropy_option)
                                                                              .set_vector_size(data.matrix_maker_vector_sz)
-                                                                             .compute()
+                                                                             
                                                                              .get();
 
                 this->encoder       = std::make_unique<OneOneMatrixEncoder>(stdx::to_castable_vector_initializer(data.matrix_encoder_shape), data.matrix_encoder_flat_sz);
@@ -2140,7 +2140,7 @@ namespace stock_solution
 
             auto load_data(const std::vector<TickerData>& ticker_data) -> SolutionProduct&
             {
-                this->extractor->set_data(ticker_data).compute();
+                this->extractor->set_data(ticker_data);
 
                 return *this;
             }

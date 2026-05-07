@@ -18,6 +18,7 @@
 namespace taylor_matrix::cuda_matrix::the_cuda_matrix
 {
     using namespace taylor_matrix::cuda_matrix::tensor_matrix_forward;
+    using namespace taylor_matrix::cuda_matrix::tensor_model;
 
     using tensor_std_float_t                = tensor_model::tensor_std_float_t;
     using cuda_matrix_kernel_exception_t    = uint8_t;
@@ -362,6 +363,192 @@ namespace taylor_matrix::cuda_matrix::the_cuda_matrix
 
             std::optional<size_t> vector_sz;
 
+            static inline const std::unordered_map<uint8_t, std::vector<std::vector<size_t>>> TRANSFORMATION_SHAPE_MAP =
+            {
+                {LOW_ENTROPY, 
+                {
+                    {
+                        size_t{1} << 1,
+                        1,
+                        PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
+                        PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
+                    },
+
+                    {
+                        size_t{1} << 2,
+                        2,
+                        PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
+                        PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
+                    },
+
+                    {
+                        size_t{1} << 4,
+                        4,
+                        PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
+                        PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
+                    },
+
+                    {
+                        size_t{1} << 8,
+                        4,
+                        PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
+                        PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
+                    },
+
+                    {
+                        size_t{1} << 16,
+                        4,
+                        PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
+                        PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
+                    }
+                }},
+
+                {MID_ENTROPY,
+                {
+                    {
+                        size_t{1} << 1,
+                        1,
+                        PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
+                        PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
+                    },
+
+                    {
+                        size_t{1} << 2,
+                        2,
+                        PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
+                        PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
+                    },
+
+                    {
+                        size_t{1} << 4,
+                        4,
+                        PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
+                        PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
+                    },
+
+                    {
+                        size_t{1} << 8,
+                        8,
+                        PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
+                        PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
+                    },
+
+                    {
+                        size_t{1} << 16,
+                        16,
+                        PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
+                        PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
+                    }
+                }},
+
+                {HIGH_ENTROPY,
+                {
+                    {
+                        size_t{1} << 1,
+                        4,
+                        PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
+                        PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
+                    },
+
+                    {
+                        size_t{1} << 2,
+                        8,
+                        PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
+                        PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
+                    },
+
+                    {
+                        size_t{1} << 4,
+                        16,
+                        PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
+                        PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
+                    },
+
+                    {
+                        size_t{1} << 8,
+                        32,
+                        PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
+                        PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
+                    },
+
+                    {
+                        size_t{1} << 16,
+                        64,
+                        PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
+                        PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
+                    }
+                }}
+            };
+
+            static inline const std::unordered_map<uint8_t, std::vector<std::vector<size_t>>> TRANSFORMATION_FOCAL_MAP =
+            {
+                {LOW_ENTROPY,
+                {
+                    {},
+                    {size_t{1} << 1},
+                    {size_t{1} << 2, size_t{1} << 1},
+                    {size_t{1} << 4, size_t{1} << 2, size_t{1} << 1},
+                    {size_t{1} << 8, size_t{1} << 4, size_t{1} << 2, size_t{1} << 1}
+                }},
+
+                {MID_ENTROPY,
+                {
+                    {},
+                    {size_t{1} << 1},
+                    {size_t{1} << 2, size_t{1} << 1},
+                    {size_t{1} << 4, size_t{1} << 2, size_t{1} << 1},
+                    {size_t{1} << 8, size_t{1} << 4, size_t{1} << 2, size_t{1} << 1}
+                }},
+
+                {HIGH_ENTROPY,
+                {
+                    {},
+                    {size_t{1} << 1},
+                    {size_t{1} << 2, size_t{1} << 1},
+                    {size_t{1} << 4, size_t{1} << 2, size_t{1} << 1},
+                    {size_t{1} << 8, size_t{1} << 4, size_t{1} << 2, size_t{1} << 1}
+                }}
+            };
+
+            static inline const std::unordered_map<uint8_t, std::vector<std::vector<size_t>>> TRANSFORMATION_ROTATION_MAP =
+            {
+                {LOW_ENTROPY,
+                {
+                    {},
+                    {0},
+                    {4, 0},
+                    {4, 2, 0},
+                    {4, 2, 2, 0}
+                }},
+
+                {MID_ENTROPY,
+                {
+                    {},
+                    {0},
+                    {4, 0},
+                    {4, 2, 0},
+                    {4, 2, 2, 0}
+                }},
+
+                {HIGH_ENTROPY,
+                {
+                    {},
+                    {0},
+                    {4, 0},
+                    {4, 2, 0},
+                    {4, 2, 2, 0}
+                }}
+            };
+
+            static inline const double PARAMETER_BOUND_RATIO = 0.4;
+
+            static inline const std::unordered_map<uint8_t, std::optional<size_t>> CONCURRENT_WORKER_MAP =
+            {
+                {LOW_COMPUTE, std::optional<size_t>(std::nullopt)},
+                {MID_COMPUTE, std::optional<size_t>(std::nullopt)},
+                {HIGH_COMPUTE, std::optional<size_t>(std::nullopt)}
+            };
+
         public:
 
             TheCudaMatrixFactory(): compute_option(LOW_COMPUTE),
@@ -370,6 +557,20 @@ namespace taylor_matrix::cuda_matrix::the_cuda_matrix
 
             auto set_entropy(uint8_t entropy_option) -> TheCudaMatrixFactory&
             {
+                switch (entropy_option)
+                {
+                    case LOW_ENTROPY:
+                    case MID_ENTROPY:
+                    case HIGH_ENTROPY:
+                    {
+                        break;
+                    }
+                    default:
+                    {
+                        throw std::invalid_argument("bad entropy option, enumeration out of range");
+                    }
+                }
+
                 this->entropy_option = entropy_option;
 
                 return *this;
@@ -377,6 +578,20 @@ namespace taylor_matrix::cuda_matrix::the_cuda_matrix
 
             auto set_compute(uint8_t compute_option) -> TheCudaMatrixFactory&
             {
+                switch (compute_option)
+                {
+                    case LOW_COMPUTE:
+                    case MID_COMPUTE:
+                    case HIGH_COMPUTE:
+                    {
+                        break;
+                    }
+                    default:
+                    {
+                        throw std::invalid_argument("bad compute option, enumeration out of range");
+                    }
+                }
+
                 this->compute_option = compute_option;
 
                 return *this;
@@ -391,17 +606,97 @@ namespace taylor_matrix::cuda_matrix::the_cuda_matrix
 
             auto compute() -> TheCudaMatrixFactory&
             {
+                this->_compute();
+
                 return *this;
             }
 
             auto get_matrix_shape() -> std::vector<size_t>
             {
-                return {};
+                this->compute();
+
+                if (!this->vector_sz.has_value())
+                {
+                    throw std::invalid_argument("configuration error, vector size not set");
+                }
+
+                auto map_ptr = this->TRANSFORMATION_SHAPE_MAP.find(this->entropy_option);
+
+                if (map_ptr == this->TRANSFORMATION_SHAPE_MAP.end())
+                {
+                    std::abort();
+                }
+
+                for (const std::vector<size_t>& shape: map_ptr->second)
+                {
+                    if (self::shape_to_size(shape) == this->vector_sz.value())
+                    {
+                        return shape;
+                    }
+                }
+
+                throw std::invalid_argument("configuration error, vector size and entropy option mismatched");
             }
 
             auto get() -> std::unique_ptr<the_matrix::MatrixInterface>
             {
+                this->compute();
+
+                return make_the_matrix(this->get_matrix_shape(),
+                                       this->get_focal_size_vector(),
+                                       this->get_focal_suffix_map(),
+                                       this->get_rotation_size_vector(),
+                                       this->get_parameter_bound_ratio_vector(),
+                                       this->get_shape_coefficient_vector(),
+                                       this->get_base_shape_coefficient_size(),
+                                       this->get_deviation_operation_window());
+            }
+
+        private:
+
+            void _compute()
+            {
+
+            }
+        
+            auto get_matrix_shape() -> std::vector<size_t>
+            {
                 return {};
+            }
+
+            auto get_focal_size_vector() -> std::vector<size_t>
+            {
+                return {};
+            }
+
+            auto get_focal_suffix_map() -> std::unordered_map<std::unordered_map<size_t, std::vector<std::vector<size_t>>>>
+            {
+                return {};
+            }
+
+            auto get_rotation_size_vector() -> std::vector<size_t>
+            {
+                return {};
+            }
+
+            auto get_parameter_bound_ratio_vector() -> std::vector<double>
+            {
+                return {};
+            }
+
+            auto get_shape_coefficient_vector() -> std::vector<tensor_std_float_t>
+            {
+                return {};
+            }
+
+            auto get_base_shape_coefficient_size() -> size_t
+            {
+                return {};
+            }
+
+            auto get_deviation_operation_window() -> std::optional<size_t>
+            {
+                return std::nullopt;
             }
     };
 }

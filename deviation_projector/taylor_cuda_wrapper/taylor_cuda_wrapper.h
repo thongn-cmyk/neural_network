@@ -1,5 +1,5 @@
-#ifndef __DEVIATION_PROJECTOR_CUDA_WRAPPER_CUDA_WRAPPER_H__
-#define __DEVIATION_PROJECTOR_CUDA_WRAPPER_CUDA_WRAPPER_H__
+#ifndef __DEVIATION_PROJECTOR_CUDA_WRAPPER_TAYLOR_CUDA_WRAPPER_H__
+#define __DEVIATION_PROJECTOR_CUDA_WRAPPER_TAYLOR_CUDA_WRAPPER_H__
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -11,12 +11,13 @@
 #include <global_string_encoder/generic_encoder.h>
 #include <matrix/tensor_factory.h>
 #include <taylor_matrix/cuda_matrix/the_cuda_matrix_deviation_calculator.h>
+#include <immutable_memory/immutable_memory.h>
 
-namespace deviation_projector::cuda_wrapper
+namespace deviation_projector::taylor_cuda_wrapper
 {
     using tensor_std_float_t = tensor_model::tensor_std_float_t;
 
-    struct CudaMatrixDeviationCalculatorResource
+    struct TaylorCudaMatrixDeviationCalculatorResource
     {
         global_string_encoder::StringTransformationRule str_transformation_rule;
         uint8_t deviation_calculator_device;
@@ -35,7 +36,7 @@ namespace deviation_projector::cuda_wrapper
         }
     };
 
-    struct ExternalCudaMatrixDeviationCalculatorResource
+    struct ExternalTaylorCudaMatrixDeviationCalculatorResource
     {
         std::string config_bytestream;
 
@@ -52,20 +53,20 @@ namespace deviation_projector::cuda_wrapper
         }
     };
 
-    auto to_external_cuda_matrix_deviation_calculator_resource(const CudaMatrixDeviationCalculatorResource& arg) -> ExternalCudaMatrixDeviationCalculatorResource
+    auto to_external_taylor_cuda_matrix_deviation_calculator_resource(const TaylorCudaMatrixDeviationCalculatorResource& arg) -> ExternalTaylorCudaMatrixDeviationCalculatorResource
     {
-        return ExternalCudaMatrixDeviationCalculatorResource
+        return ExternalTaylorCudaMatrixDeviationCalculatorResource
         {
             .config_bytestream = dg::network_compact_serializer::dgstd_serialize<std::string>(arg)
         };
     }
 
-    auto to_internal_cuda_matrix_deviation_calculator_resource(const ExternalCudaMatrixDeviationCalculatorResource& arg) -> CudaMatrixDeviationCalculatorResource
+    auto to_internal_taylor_cuda_matrix_deviation_calculator_resource(const ExternalTaylorCudaMatrixDeviationCalculatorResource& arg) -> TaylorCudaMatrixDeviationCalculatorResource
     {
-        return dg::network_compact_serializer::dgstd_deserialize<ExternalCudaMatrixDeviationCalculatorResource>(arg.config_bytestream);
+        return dg::network_compact_serializer::dgstd_deserialize<ExternalTaylorCudaMatrixDeviationCalculatorResource>(arg.config_bytestream);
     }
 
-    class CudaMatrixDeviationCalculator: public virtual deviation_projector::GenericMatrixDeviationCalculatorInterface
+    class TaylorCudaMatrixDeviationCalculator: public virtual deviation_projector::GenericMatrixDeviationCalculatorInterface
     {
         private:
 
@@ -99,20 +100,20 @@ namespace deviation_projector::cuda_wrapper
 
         public:
 
-            CudaMatrixDeviationCalculator(const CudaMatrixDeviationCalculatorResource& arg)
+            TaylorCudaMatrixDeviationCalculator(const TaylorCudaMatrixDeviationCalculatorResource& arg)
             {
                 this->base = taylor_matrix::cuda_matrix::the_cuda_matrix_deviation_calculator::TheCudaMatrixDeviationCalculatorFactory{}
                                                                                                .set_matrix(get_cuda_matrix_identifiable(arg.matrix_resource))
                                                                                                .set_logit_vector(get_cuda_logit_vector(arg.matrix_resource))
                                                                                                .set_string_transformer_device(arg.str_transformation_rule)
                                                                                                .set_deviation_calculator_device(arg.deviation_calculator_device)
-                                                                                               .compute()
+                                                                                               
                                                                                                .get();
             }
 
-            CudaMatrixDeviationCalculator(const ExternalCudaMatrixDeviationCalculatorResource& arg): CudaMatrixDeviationCalculator(to_internal_cuda_matrix_deviation_calculator_resource(arg)){}
+            TaylorCudaMatrixDeviationCalculator(const ExternalTaylorCudaMatrixDeviationCalculatorResource& arg): TaylorCudaMatrixDeviationCalculator(to_internal_taylor_cuda_matrix_deviation_calculator_resource(arg)){}
 
-            auto get_deviation(const std::vector<std::shared_ptr<std::string>>& token_vec) -> mdc_float_t
+            auto get_deviation(const std::vector<std::shared_ptr<immutable_memory::ImmutableMemoryInterface>>& token_vec) -> mdc_float_t
             {
                 return this->base->get_deviation(token_vec);                
             }

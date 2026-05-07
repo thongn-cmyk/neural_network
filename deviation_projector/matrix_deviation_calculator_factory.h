@@ -113,11 +113,11 @@ namespace deviation_projector
                     {
                         case NoTransformDeviationCalculatorConstants::SQUARE_DEVIATION_CALCULATOR:
                         {
-                            return deviation_projector::DeviationCalculatorFactory::get_square_deviation_calculator(stdx::Tag<float>{});
+                            return deviation_projector::DeviationCalculatorFactory::get_mean_square_deviation_calculator(stdx::Tag<float>{});
                         }
                         case NoTransformDeviationCalculatorConstants::DOUBLE_BAG_SQUARE_DEVIATION_CALCULATOR:
                         {
-                            return deviation_projector::DeviationCalculatorFactory::get_double_bag_deviation_calculator(deviation_projector::DeviationCalculatorFactory::get_square_deviation_calculator(stdx::Tag<float>{}));
+                            return deviation_projector::DeviationCalculatorFactory::get_double_bag_deviation_calculator(deviation_projector::DeviationCalculatorFactory::get_mean_square_deviation_calculator(stdx::Tag<float>{}));
                         }
                         default:
                         {
@@ -134,11 +134,11 @@ namespace deviation_projector
                     {
                         case NoTransformDeviationCalculatorConstants::SQUARE_DEVIATION_CALCULATOR:
                         {
-                            return deviation_projector::DeviationCalculatorFactory::get_square_deviation_calculator(stdx::Tag<double>{});
+                            return deviation_projector::DeviationCalculatorFactory::get_mean_square_deviation_calculator(stdx::Tag<double>{});
                         }
                         case NoTransformDeviationCalculatorConstants::DOUBLE_BAG_SQUARE_DEVIATION_CALCULATOR:
                         {
-                            return deviation_projector::DeviationCalculatorFactory::get_double_bag_deviation_calculator(deviation_projector::DeviationCalculatorFactory::get_square_deviation_calculator(stdx::Tag<double>{}));
+                            return deviation_projector::DeviationCalculatorFactory::get_double_bag_deviation_calculator(deviation_projector::DeviationCalculatorFactory::get_mean_square_deviation_calculator(stdx::Tag<double>{}));
                         }
                         default:
                         {
@@ -156,11 +156,11 @@ namespace deviation_projector
                     {
                         case NoTransformDeviationCalculatorConstants::SQUARE_DEVIATION_CALCULATOR:
                         {
-                            return deviation_projector::DeviationCalculatorFactory::get_square_deviation_calculator(stdx::Tag<promoted_float_t>{});
+                            return deviation_projector::DeviationCalculatorFactory::get_mean_square_deviation_calculator(stdx::Tag<promoted_float_t>{});
                         }
                         case NoTransformDeviationCalculatorConstants::DOUBLE_BAG_SQUARE_DEVIATION_CALCULATOR:
                         {
-                            return deviation_projector::DeviationCalculatorFactory::get_double_bag_deviation_calculator(deviation_projector::DeviationCalculatorFactory::get_square_deviation_calculator(stdx::Tag<promoted_float_t>{}));
+                            return deviation_projector::DeviationCalculatorFactory::get_double_bag_deviation_calculator(deviation_projector::DeviationCalculatorFactory::get_mean_square_deviation_calculator(stdx::Tag<promoted_float_t>{}));
                         }
                         default:
                         {

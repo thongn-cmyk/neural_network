@@ -4,6 +4,7 @@
 #include <vector>
 #include <general_definition/float_def.h>
 #include <memory>
+#include <immutable_memory/immutable_memory.h>
 
 namespace deviation_projector
 {
@@ -15,7 +16,10 @@ namespace deviation_projector
 
             virtual ~GenericMatrixDeviationCalculatorInterface() noexcept = default;
 
-            virtual auto get_deviation(const std::vector<std::shared_ptr<std::string>>& arg) -> mdc_float_t = 0;
+            //I dont think that specifying ManagedImmutableMemory is languagely accurate
+            //I still consider using dynamic_cast<> for this particular use case
+
+            virtual auto get_deviation(const std::vector<std::shared_ptr<immutable_memory::ImmutableMemoryInterface>>& arg) -> mdc_float_t = 0;
     };
 }
 

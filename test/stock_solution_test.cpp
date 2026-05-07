@@ -432,7 +432,7 @@ void test_one_featurization()
              .set_focal_discretization_size(discretization_sz)
              .set_data(ticker_data)
              .set_feature_name_list(feature_name_list)
-             .compute();
+             ;
 
     std::vector<std::string> ticker_name_list = randomize_ticker_name_list(ticker_data);
 
