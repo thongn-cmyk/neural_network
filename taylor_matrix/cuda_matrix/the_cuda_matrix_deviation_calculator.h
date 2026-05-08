@@ -46,15 +46,6 @@ namespace taylor_matrix::cuda_matrix::the_cuda_matrix_deviation_calculator
         }
     };
 
-    //it's complicated but it's (1): defined, (2): object-oriented, (3): not best practice
-    //I never use dynamic_cast<> in the code but I guess this is one of the use case where it could be helpful in the sense of management
-
-    //dynamic_cast is not used in the case where the feature is mandatory to do something
-    //dynamic_cast can be used in the sense of <optional>, where the usage with or without the cast is sufficient
-    //even though the "intention" is not "clear" and the "interface" does not "express" the intention
-
-    //but if the "logics" inside the code is self-induced and the extension is to serve such problem, then it's "acceptable" in the sense of management in this case
-
     class TheCudaMatrixDeviationCalculator: public virtual deviation_projector::GenericMatrixDeviationCalculatorInterface
     {
         private:
@@ -173,7 +164,6 @@ namespace taylor_matrix::cuda_matrix::the_cuda_matrix_deviation_calculator
                 this->initialize_cuda_resource_if_null();
 
                 std::shared_ptr<mdc_float_t> cuda_output                        = cuda_management::host_service_x::make_cuda_object<mdc_float_t>(this->cuda_allocator);
-                std::shared_ptr<local_exception_t> cuda_err                     = cuda_management::host_service_x::make_cuda_object<local_exception_t>(this->cuda_allocator, local_exception::WAITING_KERNEL_COMPLETE_CODE);
                 std::shared_ptr<CudaTokenDispatchables> cu_tok_dispatchables    = this->token_vec_to_cuda_dispatchables(token_arr, token_arr_sz);
 
                 if (!this->cuda_resource.has_value())
@@ -195,12 +185,8 @@ namespace taylor_matrix::cuda_matrix::the_cuda_matrix_deviation_calculator
                                               *this->cuda_resource->parameter_bound_ratio_vec,
 
                                               this->base_shape_coeff_sz,
-                                              this->cuda_resource->logit_cuda_arr.get(), nullptr, this->shape_coeff_vec.size(),
+                                              this->cuda_resource->logit_cuda_arr.get(), nullptr, this->shape_coeff_vec.size());
 
-                                              cuda_err.get());
-
-                local_exception_t host_err  = cuda_management::host_service::read_cuda_object(cuda_err);
-                taylor_matrix::cuda_matrix::local_exception::throw_error_code(host_err);
                 mdc_float_t host_output     = cuda_management::host_service::read_cuda_object(cuda_output);
 
                 return host_output;
@@ -637,7 +623,8 @@ namespace taylor_matrix::cuda_matrix::the_cuda_matrix_deviation_calculator
                 }}
             };
 
-            static inline const double PARAMETER_BOUND_RATIO = 0.4;
+            static inline const double PARAMETER_BOUND_RATIO                = 0.4;
+            static inline const size_t DEFAULT_BASE_SHAPE_COEFFICIENT_SZ    = 4u;
 
             static inline const std::unordered_map<uint8_t, std::optional<size_t>> CONCURRENT_WORKER_MAP =
             {
@@ -708,6 +695,8 @@ namespace taylor_matrix::cuda_matrix::the_cuda_matrix_deviation_calculator
 
             auto compute() -> TheCudaMatrixDeviationCalculatorFactory&
             {
+                this->_compute();
+
                 return *this;
             }
 
@@ -725,7 +714,7 @@ namespace taylor_matrix::cuda_matrix::the_cuda_matrix_deviation_calculator
                     throw std::invalid_argument("bad configuration, logit vector not set");
                 }
 
-                return make_deviation_calculator(this->get_shape_vector(),
+                return make_deviation_calculator(this->get_matrix_shape(),
                                                  this->get_focal_size_vector(),
                                                  this->get_focal_suffix_map(),
                                                  this->get_rotation_size_vector(),
@@ -739,29 +728,200 @@ namespace taylor_matrix::cuda_matrix::the_cuda_matrix_deviation_calculator
 
         private:
 
-            auto get_shape_vector() -> std::vector<size_t>
+            auto get_matrix_shape() -> std::vector<size_t>
             {
-                return {};
+                this->compute();
+
+                if (!this->vector_sz.has_value())
+                {
+                    throw std::invalid_argument("configuration error, vector size not set");
+                }
+
+                auto map_ptr = this->TRANSFORMATION_SHAPE_MAP.find(this->entropy_option);
+
+                if (map_ptr == this->TRANSFORMATION_SHAPE_MAP.end())
+                {
+                    std::abort();
+                }
+
+                for (const std::vector<size_t>& shape: map_ptr->second)
+                {
+                    if (self::shape_to_size(shape) == this->vector_sz.value())
+                    {
+                        return shape;
+                    }
+                }
+
+                throw std::invalid_argument("configuration error, vector size and entropy option mismatched");
+            }
+
+            void _compute()
+            {
+                if (!this->vector_sz.has_value())
+                {
+                    throw std::invalid_argument("bad configuration, vector size not set");
+                }
+
+                auto map_ptr =  this->TRANSFORMATION_SHAPE_MAP.find(this->entropy_option);
+
+                if (map_ptr == this->TRANSFORMATION_SHAPE_MAP.end())
+                {
+                    std::abort();
+                }
+
+                for (const auto& shape: map_ptr->second)
+                {
+                    if (tensor_factory::shape_size(shape) >= this->vector_sz.value())
+                    {
+                        this->vector_sz = tensor_factory::shape_size(shape);
+                        return;
+                    }
+                }
+
+                throw std::invalid_argument("bad configuration, vector size out of range");
+            }
+
+            auto get_entropy_index() -> size_t
+            {
+                auto map_ptr = this->TRANSFORMATION_SHAPE_MAP.find(this->entropy_option);
+
+                if (map_ptr == this->TRANSFORMATION_SHAPE_MAP.end())
+                {
+                    std::abort();
+                }
+
+                auto expected_shape = this->get_matrix_shape();
+
+                for (size_t i = 0u; i < map_ptr->second.size(); ++i)
+                {
+                    if (shape == map_ptr->second[i])
+                    {
+                        return i;
+                    }
+                }
+
+                throw std::invalid_argument("configuration error, shape not found");
             }
 
             auto get_focal_size_vector() -> std::vector<size_t>
             {
-                return {};
+                auto map_ptr = this->TRANSFORMATION_FOCAL_MAP.find(this->entropy_option);
+
+                if (map_ptr == this->TRANSFORMATION_FOCAL_MAP.end())
+                {
+                    std::abort();
+                }
+
+                return map_ptr->second[this->get_entropy_index()];
             }
-            
-            auto get_focal_suffix_map() -> std::unordered_map<size_t, std::unordered_map<size_t, std::vector<std::vector<size_t>>>>
+
+            auto get_row_based_suffix_rule(size_t flat_sz) -> std::vector<size_t>
             {
-                return {};
+                std::vector<size_t> rs(flat_sz);
+                std::iota(rs.begin(), rs.end(), 0u);
+
+                return rs;
+            }
+
+            auto get_col_based_suffix_rule(size_t flat_sz) -> std::vector<size_t>
+            {
+                size_t sqrt_sz = std::sqrt(flat_sz);
+                std::vector<size_t> rs(flat_sz);
+
+                for (size_t i = 0u; i < sqrt_sz; ++i)
+                {
+                    for (size_t j = 0u; j < sqrt_sz; ++j)
+                    {
+                        size_t virtual_idx  = j * sqrt_sz + i;
+                        size_t actual_idx   = i * sqrt_sz + j;
+                        rs[actual_idx]      = virtual_idx;
+                    }
+                }
+
+                return rs;
+            }
+
+            auto recurse_matrix_shape(const std::vector<size_t>& matrix_shape) -> std::vector<size_t>
+            {
+                auto rs = matrix_shape;
+
+                if (rs.empty())
+                {
+                    std::abort();
+                }
+
+                rs.front() = std::sqrt(rs.front());
+
+                return rs;
+            }
+
+            void get_uniform_focal_map_helper(std::unordered_map<size_t, std::unordered_map<size_t, std::vector<std::vector<size_t>>>>& focal_rule_map, //<matrix_array_sz> <rotation_idx> -> <matrix_array_suffix_arr>
+                                              const std::vector<size_t>& rotation_vec,
+                                              const std::vector<size_t>& matrix_shape)
+            {
+                if (rotation_vec.empty() || rotation_vec.front() == 0u)
+                {
+                    return;
+                }
+
+                if (matrix_shape.empty())
+                {
+                    throw std::invalid_argument("bad matrix shape access, out of bound access");
+                }
+
+                size_t rotation_group_sz    = rotation_vec.front();
+                size_t flat_sz              = matrix_shape.front();
+
+                for (size_t i = 0u; i < rotation_group_sz; ++i)
+                {
+                    if (i % 2 == 0u)
+                    {
+                        focal_rule_map[flat_sz][i] = {get_row_based_suffix_rule(flat_sz)};
+                    }
+                    else
+                    {
+                        focal_rule_map[flat_sz][i] = {get_col_based_suffix_rule(flat_sz)};
+                    }
+                }
+
+                this->get_uniform_focal_map_helper(focal_rule_map,
+                                                   {std::next(rotation_vec.begin()), rotation_vec.end()},
+                                                   this->recurse_matrix_shape(matrix_shape));
+            }
+
+            auto get_uniform_focal_map(const std::vector<size_t>& rotation_vec,
+                                       const std::vector<size_t>& matrix_shape) -> std::unordered_map<size_t, std::unordered_map<size_t, std::vector<std::vector<size_t>>>>
+            {
+                std::unordered_map<size_t, std::unordered_map<size_t, std::vector<std::vector<size_t>>>> rs{};
+
+                this->get_uniform_focal_map_helper(rs,
+                                                   rotation_vec,
+                                                   matrix_shape);
+
+                return rs;
+            }
+
+            auto get_focal_suffix_map() -> std::unordered_map<std::unordered_map<size_t, std::vector<std::vector<size_t>>>>
+            {
+                return this->get_uniform_focal_map(this->get_rotation_size_vector(),
+                                                   this->get_matrix_shape());
             }
 
             auto get_rotation_size_vector() -> std::vector<size_t>
             {
-                return {};
+                auto map_ptr = this->TRANSFORMATION_ROTATION_MAP.find(this->entropy_option);
+
+                if (map_ptr == this->TRANSFORMATION_ROTATION_MAP.end())
+                {
+                    std::abort();
+                }
+
+                return map_ptr->second[this->get_entropy_index()];
             }
 
             auto get_parameter_bound_ratio_vector() -> std::vector<double>
             {
-                return {};
+                return std::vector<double>(this->get_rotation_size_vector().size(), PARAMETER_BOUND_RATIO);
             }
 
             auto get_shape_coefficient_vector() -> std::vector<tensor_std_float_t>
@@ -769,9 +929,14 @@ namespace taylor_matrix::cuda_matrix::the_cuda_matrix_deviation_calculator
                 return {};
             }
 
-            auto get_base_shape_coefficient_vector() -> size_t
+            auto get_base_shape_coefficient_size() -> size_t
             {
-                return {};
+                return DEFAULT_BASE_SHAPE_COEFFICIENT_SZ;
+            }
+
+            auto get_deviation_operation_window() -> std::optional<size_t>
+            {
+                return std::nullopt;
             }
 
             auto set_entropy(uint8_t entropy_option) -> TheCudaMatrixDeviationCalculatorFactory&

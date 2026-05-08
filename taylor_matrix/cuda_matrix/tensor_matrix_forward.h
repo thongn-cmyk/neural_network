@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <matrix/tensor_model.h>
-#include <matrix/device_tensor_model.h>
+#include <matrix/device_tensor/model.h>
 #include <serializer/dg_buf.h>
 #include <vector>
 #include <unordered_map>
@@ -13,6 +13,7 @@
 #include "tensor_matrix_forward_header.h"
 #include <cuda_management/scope_allocator.h>
 #include <cuda_management/device_memory.h>
+#include <cuda_management/host_service_header.h>
 
 namespace taylor_matrix::cuda_matrix::tensor_matrix_forward
 {
@@ -20,26 +21,6 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_forward
     //it just seems to me that 99% of the new features involve templates
 
     #ifdef __CU_ACC__
-
-    // __device__ constexpr __attribute__((noinline)) auto matrix_transform(Matrix * matrix,
-
-    //                                                                  FocalSizeVector focal_sz_vec, size_t focal_sz_vec_offset,
-    //                                                                  SuffixMap focal_suffix_map,
-
-    //                                                                  RotationSizeVector rotation_sz_vec, size_t rotation_sz_vec_offset,
-    //                                                                  ParameterBoundRatioVector parameter_bound_ratio_vec, size_t parameter_bound_ratio_vec_offset,
-
-    //                                                                  ShapeBaseCoeffSizeContainer base_shape_coeff_sz_container,
-    //                                                                  const tensor_model::tensor_std_float_t * shape_coeff_arr, size_t& shape_coeff_arr_offset, size_t shape_coeff_arr_cap,
-
-    //                                                                  AllocatorInterface&& allocator,
-
-    //                                                                  const Tag<ShapeBasePromotedFloatType>& shape_base_promotion_tag = Tag<ShapeBasePromotedFloatType>{},
-    //                                                                  bool has_logit_unit_reuse_tag = true,
-    //                                                                  bool has_logit_group_logit_reuse_tag = true,
-    //                                                                  bool has_being_logit_reuse_tag = true,
-    //                                                                  bool has_base_matrix_logit_reuse_tag = true,
-    //                                                                  local_exception_t * err = nullptr) -> Matrix *
 
     __global__ void matrix_transform_helper(tensor_model::tensor_std_float_t ** matrix_arr, size_t matrix_arr_sz,
                                             MatrixShapeVector matrix_shape_vec,
@@ -54,15 +35,17 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_forward
                                             size_t base_shape_coeff_sz,
                                             const tensor_model::tensor_std_float_t * shape_coeff_arr, size_t * shape_coeff_arr_offset, size_t shape_coeff_arr_cap,
 
-                                            local_exception_t * err)
+                                            local_exception_t * err,
+                                            size_t * success_launch_counter)
     {
         using namespace cuda_management::scope_allocator;
+        using namespace device_tensor::model;
 
-        size_t offset = device_get_offset();
+        size_t offset = blockIdx.x * blockDim.x + threadIdx.x;
 
         if (offset >= matrix_arr_sz)
         {
-            assert(false);
+            return;
         }
 
         if (err == nullptr)
@@ -70,16 +53,22 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_forward
             assert(false);
         }
 
+        if (success_launch_counter == nullptr)
+        {
+            assert(false);
+        }
+
         SplitStackAllocator allocator{};
+        local_exception_t local_err = SUCCESS;
 
         {
             scope_guard<SplitStackAllocator> scope_grd(&allocator);
 
-            auto callback_handler = [&]<size_t ShapeBaseCoeffSizeContainerSize>(const std::integral_constant<size_t, ShapeBaseCoeffSizeContainerSize> base_shape_coeff_sz_ic)
+            auto callback_handler = [&]<size_t BaseSize>(const std::integral_constant<size_t, BaseSize> base_sz_ic)
             {
-                if (matrix_shape_vec.size() != 4u)
+                if (matrix_shape_vec.size() < 2u)
                 {
-                    *err = OTHER_INVALID_ARGUMENT;
+                    atomicExch(err, OTHER_INVALID_ARGUMENT);
                     return;
                 }
 
@@ -92,31 +81,45 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_forward
 
                 *shape_coeff_arr_offset = 0u;
 
-                Matrix * arg    = taylor_matrix::cuda_matrix::tensor_matrix_operation::allocate(matrix_shape_vec[0], matrix_shape_vec[1], allocator);
+                Matrix * arg    = taylor_matrix::cuda_matrix::tensor_matrix_operation::allocate(matrix_shape_vec[0],
+                                                                                                matrix_shape_vec[1],
+                                                                                                allocator);
+
+                taylor_matrix::cuda_matrix::tensor_matrix_operation::unflatten_to(arg, matrix_arr[offset]);
+                
                 Matrix * rs     = taylor_matrix::cuda_matrix::tensor_matrix_operation::matrix_transform(arg,
                                                                                                         focal_sz_vec, 0u,
                                                                                                         focal_suffix_map,
                                                                                                         rotation_sz_vec, 0u,
                                                                                                         parameter_bound_ratio_vec, 0u,
-                                                                                                        base_shape_coeff_sz_ic,
+                                                                                                        utility::to_size_container(base_sz_ic),
                                                                                                         shape_coeff_arr, *shape_coeff_arr_offset, shape_coeff_arr_cap,
                                                                                                         allocator,
-                                                                                                        err);
+                                                                                                        &local_err);
 
-                if (*err != SUCCESS)
+                if (local_err != SUCCESS)
                 {
+                    atomicExch(err, local_err);
                     return;
                 }
 
                 taylor_matrix::cuda_matrix::tensor_matrix_operation::flatten_to(output[offset], rs);
             };
 
-            to_constant_number(base_shape_coeff_sz,
-                               std::integral_constant<size_t, MIN_BASE_SHAPE_COEFF_SZ>{},
-                               std::integral_constant<size_t, MAX_BASE_SHAPE_COEFF_SZ>{},
-                               callback_handler,
-                               err);
+            utility::to_constant_number(base_shape_coeff_sz,
+                                        std::integral_constant<size_t, MIN_BASE_SHAPE_COEFF_SZ>{},
+                                        std::integral_constant<size_t, MAX_BASE_SHAPE_COEFF_SZ>{},
+                                        callback_handler,
+                                        &local_err);
+
+            if (local_err != SUCCESS)
+            {
+                atomicExch(err, local_err);
+                return;
+            }
         }
+
+        atomicAdd(success_launch_counter, 1u);
     }
 
     #endif
@@ -132,16 +135,17 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_forward
                                  ParameterBoundRatioVector parameter_bound_ratio_vec,
 
                                  size_t base_shape_coeff_sz,
-                                 const tensor_model::tensor_std_float_t * shape_coeff_arr, size_t * shape_coeff_arr_offset, size_t shape_coeff_arr_cap,
-
-                                 local_exception_t * device_mem_err)
+                                 const tensor_model::tensor_std_float_t * shape_coeff_arr, size_t * shape_coeff_arr_offset, size_t shape_coeff_arr_cap)
     {
         #ifdef __CU_ACC__
         {
             size_t blk_per_grid_sz{};
             size_t thread_per_blk_sz{};
 
-            std::tie(blk_per_grid_sz, thread_per_blk_sz) = cuda_management::kernel_dispatch::get_block_thread(matrix_arr_sz);
+            std::shared_ptr<local_exception_t> cuda_err     = cuda_management::host_service::make_cuda_object<local_exception_t>(SUCCESS);
+            std::shared_ptr<size_t> cuda_success_counter    = cuda_management::host_service::make_cuda_object<size_t>(0u);
+
+            std::tie(blk_per_grid_sz, thread_per_blk_sz)    = cuda_management::kernel_dispatch::get_block_thread(matrix_arr_sz);
 
             stdx::smp_guard<std::semaphore> smp_grd(cuda_management::kernel_dispatch::get_semaphore());
 
@@ -149,27 +153,38 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_forward
                                                                            matrix_shape_vec,
 
                                                                            output,
-                                                                            
+
                                                                            focal_sz_vec,
                                                                            focal_suffix_map,
                                                                            rotation_sz_vec,
                                                                            parameter_bound_ratio_vec,
-                                                                        
+
                                                                            base_shape_coeff_sz,
                                                                            shape_coeff_arr, shape_coeff_arr_offset, shape_coeff_arr_cap,
-                                                                        
-                                                                           device_mem_err);
+
+                                                                           cuda_err.get(),
+                                                                           cuda_success_counter.get());
 
             cudaError_t sync_err = cudaDeviceSynchronize();
 
             if (sync_err != cudaSuccess)
             {
-                throw bad_cuda_synchronization{};
+                throw bad_cuda_synchronization(cudaGetErrorString(sync_err));
+            }
+
+            local_exception_t host_err  = cuda_management::host_service::read_cuda_object(cuda_err);
+            size_t host_success_counter = cuda_management::host_service::read_cuda_object(cuda_success_counter);
+
+            throw_error_code(host_err);
+
+            if (host_success_counter != matrix_arr_sz)
+            {
+                throw other_runtime_error("bad cuda launch, success head count mismatched");
             }
         }
         #else
         {
-            throw cuda_device_not_supported{};
+            throw cuda_device_not_supported();
         }
         #endif
     }

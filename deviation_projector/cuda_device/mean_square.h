@@ -3,12 +3,13 @@
 
 #include <stdint.h>
 #include <stdlib.h>
-#include <matrix/device_tensor_model.h>
-#include <utility.h>
+#include <matrix/device_tensor/model.h>
+#include <matrix/device_tensor/common_operation.h>
+#include "utility.h"
 
 namespace deviation_projector::cuda_device::mean_square
 {
-    using namespace device_tensor_model;
+    using namespace device_tensor::model;
     using namespace deviation_projector::cuda_device::local_exception;
 
     __device__ double mean_square(Matrix * lhs,
@@ -17,6 +18,7 @@ namespace deviation_projector::cuda_device::mean_square
     {
         using namespace deviation_projector::cuda_device::utility;
         using namespace cuda_management::utility;
+        using namespace device_tensor::common_operation;
 
         safe_ptr_access(lhs);
         safe_ptr_access(rhs);
@@ -44,7 +46,7 @@ namespace deviation_projector::cuda_device::mean_square
 
         if (lhs_shape != rhs_shape)
         {
-            *err = INCOMPATIBLE_SHAPE_ERROR;
+            *err = INCOMPATIBLE_SHAPE_ERROR_CODE;
             return {};     
         }
 
@@ -68,7 +70,7 @@ namespace deviation_projector::cuda_device::mean_square
             }
         }
 
-        size_t shape_sz = get_shape_size(lhs_shape);
+        size_t shape_sz = shape_size(lhs_shape);
 
         if (shape_sz == 0u)
         {

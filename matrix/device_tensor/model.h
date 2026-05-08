@@ -3,9 +3,9 @@
 
 #include <stdint.h>
 #include <stdlib.h>
-#include <arary>
+#include <array>
 
-namespace device_tensor_model
+namespace device_tensor::model
 {
     //__CONFIGURATION_SYNCHRONIZATION__
 

@@ -61,16 +61,11 @@ namespace cuda_management::scope_allocator
                 MemoryPoint value;
             };
 
-            struct SharedMemoryPool
-            {
-                
-            };
-
             cuda_vector::trivial_cuda_vector<MemorySegment, Allocator> stack_buffer_vec;
             cuda_vector::trivial_cuda_vector<SavedMemoryPoint, Allocator> saved_point_vec;
             std::optional<MemoryPoint> valid_point;
             size_t base_sz;
-            
+
         public:
 
             __device__ SplitStackAllocator(size_t base_sz): stack_buffer_vec(),

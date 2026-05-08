@@ -23,6 +23,16 @@ namespace taylor_matrix::cuda_matrix::local_exception
         waiting_kernel_complete(): std::runtime_error("waiting kernel complete"){}        
     };
 
+    struct bad_cuda_synchronization: std::runtime_error
+    {
+        bad_cuda_synchronization(const char * msg = "bad cuda synchronization"): std::runtime_error(msg){}
+    };
+
+    struct cuda_device_not_supported: std::invalid_argument
+    {
+        cuda_device_not_supported(): std::invalid_argument("cuda device not supported"){}
+    };
+
     struct other_invalid_argument: std::invalid_argument
     {
         other_invalid_argument(const char * msg): std::invalid_argument(msg){}
@@ -52,6 +62,14 @@ namespace taylor_matrix::cuda_matrix::local_exception
             case WAITING_KERNEL_COMPLETE_CODE:
             {
                 throw waiting_kernel_complete();
+            }
+            case BAD_CUDA_SYNCHRONIZATION_CODE:
+            {
+                throw bad_cuda_synchronization();
+            }
+            case CUDA_DEVICE_NOT_SUPPORTED_CODE:
+            {
+                throw cuda_device_not_supported();
             }
             case OTHER_INVALID_ARGUMENT_CODE:
             {

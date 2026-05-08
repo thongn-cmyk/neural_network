@@ -156,12 +156,6 @@ namespace data_loader::s3_source
 
             S3Loader(const ExternalS3LoaderConfig& config): S3Loader(to_internal_s3_loader_config(config)){}
 
-            ~S3Loader() noexcept
-            {
-                this->object_outcome = nullptr;
-                this->buf = nullptr;
-            }
-
             auto get(size_t tx_hint_sz) -> std::optional<std::vector<std::string>>
             {
                 if (this->is_bad_state)

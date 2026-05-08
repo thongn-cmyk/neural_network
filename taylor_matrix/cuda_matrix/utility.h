@@ -7,6 +7,7 @@
 #include <type_traits>
 #include "assert.h"
 #include <cuda_management/utility.h>
+#include <local_exception.h>
 
 namespace taylor_matrix::cuda_matrix::utility
 {
@@ -133,6 +134,44 @@ namespace taylor_matrix::cuda_matrix::utility
         assert(i < sz);
 
         return i;
+    }
+
+    template <size_t FIRST, size_t LAST, class Callbackable>
+    __device__ constexpr void to_constant_number(size_t value,
+                                                 const std::integral_constant<size_t, FIRST>,
+                                                 const std::integral_constant<size_t, LAST>,
+                                                 Callbackable&& callbackable,
+                                                 local_exception::local_exception_t * err = nullptr)
+    {
+        static_assert(LAST > FIRST);
+
+        constexpr size_t RANGE  = LAST - FIRST;
+        bool was_thru           = false;
+
+        [&]<size_t ...IDX>(const std::index_sequence<IDX...>)
+        {
+            (
+                [&]
+                {
+                    (void) IDX;
+                    constexpr size_t i = FIRST + IDX;
+
+                    if (i == value)
+                    {
+                        callbackable(std::integral_constant<size_t, i>{});
+                        was_thru = true;
+                    }
+                }(), ...
+            );
+        }(std::make_index_sequence<RANGE>{});
+
+        if (!was_thru)
+        {
+            if (err != nullptr)
+            {
+                *err = OTHER_INVALID_ARGUMENT;
+            }
+        }
     }
 }
 

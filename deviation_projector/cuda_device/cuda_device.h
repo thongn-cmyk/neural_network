@@ -3,12 +3,12 @@
 
 #include <stdint.h>
 #include <stdlib.h>
-#include <matrix/device_tensor_model.h>
+#include <matrix/device_tensor/model.h>
 #include "mean_square.h"
 
 namespace deviation_projector::cuda_device
 {
-    using namespace device_tensor_model;
+    using namespace device_tensor::model;
     using namespace deviation_projector::cuda_device::local_exception;
 
     using deviation_calculator_function = __device__ double (*)(Matrix *, Matrix *, local_exception_t *);
@@ -34,7 +34,7 @@ namespace deviation_projector::cuda_device
 
         if (calculator_id >= DEVIATION_CALCULATOR_FUNCTION_TABLE_SZ)
         {
-            *err = INVALID_CALCULATOR_DEVICE_ID;
+            *err = INVALID_CALCULATOR_DEVICE_ID_CODE;
             return {};
         }
 
