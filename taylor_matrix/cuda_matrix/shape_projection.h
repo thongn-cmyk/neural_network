@@ -83,7 +83,7 @@ namespace taylor_matrix::cuda_matrix::shape_projection
 
         for (size_t i = 0u; i < coeff_arr_sz_container.get(); ++i)
         {
-            euclid_coeff_arr[i] *= radian_coeff_arr[coeff_arr_sz_container.get() - 1u];
+            euclid_coeff_arr[i] *= (radian_coeff_arr[coeff_arr_sz_container.get() - 1u] + 1);
         }
     }
 
