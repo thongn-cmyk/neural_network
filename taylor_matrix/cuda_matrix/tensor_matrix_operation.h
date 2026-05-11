@@ -903,6 +903,51 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_operation
 
         return rs;
     }
+
+    //we'd still need to implement auto-focus, it's been a very tilting day for me
+
+    //I've already explained that addition is a low-entropy operation
+    //but because it is a low-entropy operation, it requires y z to be of the same context in the sense of f(x, y) + f(x, z)
+    //so if we add too many of those together, we have accidentially implied that those are of the same context, or we'd have to try incredibly hard to unhinge the similarity of those context points
+
+    //the difficulty that I'm trying to describe here is the limitation of the operation space and the distinct of those context similarities
+    
+    //so how precisely do we overcome the difficulties of (1): limit the logit search space, even though assigning different logits for each of the addition operation is a superset of what we are trying to achieve, the search space is too vast to be smart and of low-entropy    
+    //so the process group is precisely to solve such problem, to group similar context points into one group, and we'd just have to project and sum all of those together to have another low-entropy "point"
+
+    //but at the being-unit level, things are a little hazy, because each of the process_group is now not of the same level of entropy
+
+    //it just seems to me that if we can't add, then we just have to project it again, because we only have two operations, low_entropy_transform(x,y) and high_entropy_transform(x,y)
+    //and it just seems to apply at the being_unit too, not just the matrix_transform layer 
+
+    template <class FocalSizeVector,
+              class SuffixMap,
+              class RotationSizeVector,
+              class ParameterBoundRatioVector,
+              class ShapeBaseCoeffSizeContainer,
+              class AllocatorInterface>
+    __device__ constexpr auto matrix_transform_size(Matrix * matrix,
+    
+                                                    FocalSizeVector focal_sz_vec, size_t focal_sz_vec_offset,
+                                                    SuffixMap focal_suffix_map,
+
+                                                    RotationSizeVector rotation_sz_vec, size_t rotation_sz_vec_offset,
+                                                    ParameterBoundRatioVector parameter_bound_ratio_vec, size_t parameter_bound_ratio_vec_offset,
+
+                                                    ShapeBaseCoeffSizeContainer base_shape_coeff_sz_container,
+
+                                                    AllocatorInterface&& allocator,
+
+                                                    local_exception_t * err = nullptr,
+                                                    const Tag<ShapeBasePromotedFloatType>& shape_base_promotion_tag = Tag<ShapeBasePromotedFloatType>()
+
+                                                    bool has_logit_unit_reuse_tag = true,
+                                                    bool has_logit_group_logit_reuse_tag = true,
+                                                    bool has_being_logit_reuse_tag = true,
+                                                    bool has_base_matrix_logit_reuse_tag = true) -> size_t
+    {
+
+    }
 }
 
 #endif

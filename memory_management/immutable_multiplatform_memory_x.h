@@ -53,9 +53,6 @@ namespace immutable_multiplatform_memory_x
             virtual void evict_memory(const std::shared_ptr<void> * immutable_reference_arr,
                                       size_t immutable_reference_arr_sz) noexcept = 0;
 
-            virtual void evict_memory_unsafe(void ** immutable_reference_arr,
-                                             size_t immutable_reference_arr_sz) noexcept = 0;
-
             virtual auto max_consume_size() noexcept -> size_t = 0;
     };
 
