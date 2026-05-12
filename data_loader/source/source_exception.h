@@ -49,6 +49,12 @@ namespace data_loader::source_exception
         other_error(const char * err_msg = "other error",
                     const char * id = "other_error"): runtime_error_base(err_msg, id){}
     };
+
+    struct source_invalid_argument: invalid_argument_base
+    {
+        source_invalid_argument(const char * err_msg = "source invalid argument",
+                                const char * id = "source_invalid_argument"): invalid_argument_base(err_msg, id){}
+    };
 }
 
 #endif

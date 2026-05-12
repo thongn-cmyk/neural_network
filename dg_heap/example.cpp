@@ -200,6 +200,12 @@ void dirtify(dg_heap::heap::core::Allocatable& allocator){
 
 }
 
+//it's time we finna use our bad guys
+//because the other allocator takes too much space, potentially x20 -> x30 of what we'd want to use, or what we'd have
+//so I guess that dg::vector<>, dg::string etc. are kept, but for loops + non-expensive, non-persistent, scope-friendly operation
+//the only thing that has been stopping us from doing so is the range-compatibility of this allocator
+//it just seems to me that we dont have a reasonable way to not over-allocate things, and keep it to an exponential boundary
+
 int main(){
 
     using namespace std::chrono;

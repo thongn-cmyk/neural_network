@@ -33,9 +33,9 @@ namespace cuda_management::host_service_x
 
             static inline constexpr size_t BUMP_ALLOCATION_BUCKET_SZ    = size_t{1} << 16;
             static inline constexpr size_t BUMP_ALLOCATION_THRESHOLD    = size_t{1} << 12;
-        
+
         public:
-            
+
             PartialBumpAllocator(): bump_allocation_bucket(std::nullopt){}
 
             auto allocate(size_t sz) -> std::shared_ptr<char[]>
@@ -95,12 +95,13 @@ namespace cuda_management::host_service_x
 
                 auto destructor = [buf_holder = std::move(immutable_wrapper)](char * memory)
                 {
-                    *buf_holder = nullptr;
+                    *buf_holder = nullptr; //UB-check (this is to hinder optimizations that could happen, I don't yet know how???)
                     (void) memory;
                 };
 
                 char * memory                           = std::next(this->bump_allocation_bucket->buf.get(), this->bump_allocation_bucket->used_sz);
                 std::shared_ptr<char[]> rs              = std::unique_ptr<char[], decltype(destructor)>(memory, std::move(destructor));
+
                 this->bump_allocation_bucket->used_sz   += sz;
 
                 return rs;
@@ -118,21 +119,17 @@ namespace cuda_management::host_service_x
     };
 
     template <class Allocator = CudaAllocator>
-    auto make_cuda_buffer_from_size(size_t sz, Allocator&& allocator = Allocator()) -> std::shared_ptr<char[]>
+    auto make_cuda_buffer_from_size(size_t sz,
+                                    Allocator&& allocator = Allocator()) -> std::shared_ptr<char[]>
     {
         return allocator.allocate(sz);
     }
 
     template <class Allocator = CudaAllocator>
-    auto make_cuda_buffer_from_host_view(std::string_view host_view, Allocator&& allocator = Allocator()) -> std::shared_ptr<char[]>
+    auto make_cuda_buffer_from_host_view(std::string_view host_view,
+                                         Allocator&& allocator = Allocator()) -> std::shared_ptr<char[]>
     {
         std::shared_ptr<char[]> rs  = make_cuda_buffer_from_size(host_view.size(), allocator);
-
-        if (host_view.size() == 0u)
-        {
-            return rs;
-        }
-
         cuda_management::host_service::memcpy_host_to_device(rs.get(), host_view.data(), host_view.size());
 
         return rs;
@@ -159,35 +156,38 @@ namespace cuda_management::host_service_x
             }
         }
 
-        std::shared_ptr<char[]> rs  = std::unique_ptr<char[]>(new char[cuda_buf_sz]);
+        std::shared_ptr<char[]> rs  = std::make_unique<char[]>(cuda_buf_sz);
         cuda_management::host_service::memcpy_device_to_host(rs.get(), cuda_buf.get(), cuda_buf_sz);
-
-        if (err != cudaSuccess)
-        {
-            throw cuda_runtime_error(cudaGetErrorString(err));
-        }
 
         return rs;
     }
 
-    template <class T, class ...Args, class Allocator, std::enable_if_t<std::is_arithmetic_v<T>, bool> = true> //iec559 + compliances
+    template <class T, class ...Args,
+              class Allocator,
+              std::enable_if_t<std::is_arithmetic_v<T>, bool> = true> //iec559 + compliances
     auto make_cuda_object(Allocator&& allocator, Args&& ...args) -> std::shared_ptr<T>
     {
         static_assert(sizeof(T) != 0u);
 
         T obj                                   = T(std::forward<Args>(args)...);
         std::array<char, sizeof(T)> byte_rep    = std::bit_cast<std::array<char, sizeof(T)>>(obj);
+        std::shared_ptr<char[]> cuda_buf        = make_cuda_buffer_from_host_view(std::string_view(byte_rep.data(), byte_rep.size()), allocator);
 
-        return std::static_pointer_cast<T>(std::static_pointer_cast<void>(make_cuda_buffer_from_host_view(std::string_view(byte_rep.data(), byte_rep.size()), allocator)));
+        //we guarantee void -> T is safe because this is cuda pointer, and we don't touch the pointing data here in __host__, the otherwise can't be guaranteed
+
+        return std::static_pointer_cast<T>(std::static_pointer_cast<void>(cuda_buf));
     }
 
-    template <class T, std::enable_if_t<std::is_arithmetic_v<T>, bool> = true> //iec559 + compliances
+    template <class T, std::enable_if_t<std::is_arithmetic_v<T>, bool> = true>
     auto read_cuda_object(const std::shared_ptr<T>& obj) -> T
     {
         if (obj == nullptr)
         {
             throw std::invalid_argument("bad object, null");
         }
+
+        //we don't do strict types here because it has to be from make_cuda_object
+        //The constraint is now not mandatory, but it is mandatory in the make_cuda_object
 
         std::array<char, sizeof(T)> byte_rep    = {};
         std::shared_ptr<char[]> host_buf        = cuda_to_host_buffer(std::static_pointer_cast<char[]>(std::static_pointer_cast<void>(obj)), sizeof(T));

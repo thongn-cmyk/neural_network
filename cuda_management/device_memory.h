@@ -10,6 +10,7 @@
 #include "assert.h"
 #include "utility.h"
 #include <serializer/trivial_serializer.h>
+#include <cuda/std/limits>
 
 namespace cuda_management::device_memory
 {
@@ -54,7 +55,7 @@ namespace cuda_management::device_memory
     template <class T>
     __device__ static constexpr auto cuda_align_of() -> size_t
     {
-        return std::max(alignof(T), DEFAULT_OBJECT_ALIGNMENT_SZ);
+        return utility::max(alignof(T), DEFAULT_OBJECT_ALIGNMENT_SZ);
     }
 
     __device__ static constexpr auto dg_align(void * buf,
@@ -115,7 +116,7 @@ namespace cuda_management::device_memory
 
         const size_t max_fwd_sz = alignment + (sizeof(alignment_header_t) - 1u);
 
-        if (max_fwd_sz > std::numeric_limits<alignment_header_t>::max())
+        if (max_fwd_sz > cuda::std::numeric_limits<alignment_header_t>::max())
         {
             assert(false);
         }
@@ -134,7 +135,7 @@ namespace cuda_management::device_memory
         }
 
         void * aligned_ptr              = dg_align(utility::next(static_cast<char *>(ptr), sizeof(alignment_header_t)), alignment);
-        alignment_header_t difference   = std::distance(static_cast<char *>(ptr), static_cast<char *>(aligned_ptr));
+        alignment_header_t difference   = utility::distance(static_cast<char *>(ptr), static_cast<char *>(aligned_ptr));
         void * alignment_header_addr    = utility::prev(static_cast<char *>(aligned_ptr), sizeof(alignment_header_t));
 
         std::memcpy(alignment_header_addr, &difference, sizeof(alignment_header_t));
@@ -197,7 +198,7 @@ namespace cuda_management::device_memory
 
         const size_t max_fwd_sz = alignment + (METADATA_SZ - 1u);
 
-        if (max_fwd_sz > std::numeric_limits<alignment_header_t>::max())
+        if (max_fwd_sz > cuda::std::numeric_limits<alignment_header_t>::max())
         {
             assert(false);
         }
@@ -216,7 +217,7 @@ namespace cuda_management::device_memory
         }
 
         void * aligned_ptr              = dg_align(utility::next(static_cast<char *>(ptr), METADATA_SZ), alignment); //forward METADATA_SZ to reserve the METADATA_SZ, align the alignment (guaranteed to fit because we have extra ALIGMENT_SZ - 1u)
-        alignment_header_t difference   = std::distance(static_cast<char *>(ptr), static_cast<char *>(aligned_ptr));
+        alignment_header_t difference   = utility::distance(static_cast<char *>(ptr), static_cast<char *>(aligned_ptr));
         void * metadata_header_addr     = utility::prev(static_cast<char *>(aligned_ptr), METADATA_SZ);
 
         trivial_serializer::serialize_into(static_cast<char *>(metadata_header_addr), XAlignMetadata{.difference    = difference, 
@@ -288,7 +289,7 @@ namespace cuda_management::device_memory
             assert(false);
         }
 
-        return new (blk) T(std::forward<Args>(args)...);
+        return new (blk) T(utility::forward<Args>(args)...);
     }
 
     template <class = void>
@@ -297,7 +298,7 @@ namespace cuda_management::device_memory
     template <class T, class AllocatorInterface>
     __device__ auto std_delete_object(AllocatorInterface&& allocator, T * obj) noexcept
     {
-        std::destroy_at(obj);
+        utility::destroy_at(obj);
 
         if constexpr(cuda_align_of<T>() <= DEFAULT_ALIGNMENT_SZ)
         {
@@ -341,7 +342,7 @@ namespace cuda_management::device_memory
         size_t allocation_blk_sz    = dg_xaligned_blk_size(arr);
         size_t sz                   = allocation_blk_sz / sizeof(T);
 
-        std::destroy(arr, utility::next(arr, sz));
+        utility::destroy(arr, utility::next(arr, sz));
         obj_dg_xaligned_free(static_cast<void *>(arr), allocator);
     }
 }

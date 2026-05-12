@@ -122,6 +122,45 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_forward
         atomicAdd(success_launch_counter, 1u);
     }
 
+    __global__ void matrix_transform_size_helper(MatrixShapeVector matrix_shape_vec,
+                                                 FocalSizeVector focal_sz_vec,
+                                                 SuffixMap focal_suffix_map,
+                                                 RotationSizeVector rotation_sz_vec,
+                                                 ParameterBoundRatioVector parameter_bound_ratio_vec,
+
+                                                 size_t base_shape_coeff_sz,
+
+                                                 local_exception_t * err,
+                                                 size_t * result)
+    {
+        if (err == nullptr)
+        {
+            assert(false);
+        }
+
+        if (result == nullptr)
+        {
+            assert(false);
+        }
+
+        auto callback_handler = []<size_t BaseSize>(const std::integral_constant<size_t, BaseSize> base_sz_ic)
+        {
+            *result = taylor_matrix::cuda_matrix::tensor_matrix_operation::matrix_transform_size(matrix_shape_vec,
+                                                                                                 focal_sz_vec,
+                                                                                                 focal_suffix_map,
+                                                                                                 rotation_sz_vec,
+                                                                                                 parameter_bound_ratio_vec,
+                                                                                                 base_sz_ic,
+                                                                                                 err);
+        };
+
+        utility::to_constant_number(base_shape_coeff_sz,
+                                    std::integral_constant<size_t, MIN_BASE_SHAPE_COEFF_SZ>{},
+                                    std::integral_constant<size_t, MAX_BASE_SHAPE_COEFF_SZ>{},
+                                    callback_handler,
+                                    err);
+    }
+
     #endif
 
     extern void matrix_transform(tensor_model::tensor_std_float_t ** matrix_arr, size_t matrix_arr_sz,
@@ -188,6 +227,51 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_forward
         }
         #endif
     }
+
+    extern auto matrix_transform_size(MatrixShapeVector matrix_shape_vec,
+                                      FocalSizeVector focal_sz_vec,
+                                      SuffixMap focal_suffix_map,
+                                      RotationSizeVector rotation_sz_vec,
+                                      ParameterBoundRatioVector parameter_bound_ratio_vec,
+                                      size_t base_shape_coeff_sz) -> uint64_t
+    {
+        #ifdef __CU_ACC__
+        {
+            std::shared_ptr<local_exception_t> cuda_err     = cuda_management::host_service::make_cuda_object<local_exception_t>(SUCCESS);
+            std::shared_ptr<size_t> cuda_result             = cuda_management::host_service::make_cuda_object<size_t>();
+
+            stdx::smp_guard<std::semaphore> smp_grd(cuda_management::kernel_dispatch::get_semaphore());
+
+            matrix_transform_size_helper<<<1, 1>>>(matrix_shape_vec,
+                                                   focal_sz_vec,
+                                                   focal_suffix_map,
+                                                   rotation_sz_vec,
+                                                   parameter_bound_ratio_vec,
+                                                   base_shape_coeff_sz,
+                                                   cuda_err.get(),
+                                                   cuda_result.get());
+
+            cudaError_t sync_err = cudaDeviceSynchronize();
+
+            if (sync_err != cudaSuccess)
+            {
+                throw bad_cuda_synchronization(cudaGetErrorString(sync_err));
+            }
+
+            local_exception_t host_err  = cuda_management::host_service::read_cuda_object(cuda_err);
+            size_t host_result          = cuda_maangement::host_service::read_cuda_object(cuda_result);
+
+            throw_error_code(host_err);
+
+            return host_result;
+        }
+        #else
+        {
+            throw cuda_device_not_supported();
+        }
+        #endif
+    }
+
 }
 
 #endif

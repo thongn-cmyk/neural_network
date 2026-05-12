@@ -7,6 +7,7 @@
 #include "device_memory.h"
 #include <type_traits>
 #include <optional>
+#include "utility.h"
 
 namespace cuda_management::scope_allocator
 {
@@ -99,7 +100,7 @@ namespace cuda_management::scope_allocator
             {
                 if (this->valid_point.has_value() && this->stack_buffer_vec[this->valid_point->slot].buf_sz - this->valid_point->offset >= blk_sz) [[likley]]
                 {
-                    void * rs           = std::next(this->stack_buffer_vec[this->valid_point->slot].buf, this->valid_point->offset); 
+                    void * rs           = utility::next(this->stack_buffer_vec[this->valid_point->slot].buf, this->valid_point->offset); 
                     this->valid_point   = MemoryPoint
                     {
                         .slot   = this->valid_point->slot,
@@ -198,7 +199,7 @@ namespace cuda_management::scope_allocator
 
                     if (point_sz >= blk_sz)
                     {
-                        void * rs   = std::next(this->stack_buffer_vec[cur_point.slot].buf, cur_point.offset); 
+                        void * rs   = utility::next(this->stack_buffer_vec[cur_point.slot].buf, cur_point.offset); 
                         cur_point   = MemoryPoint
                         {
                             .slot   = cur_point.slot,
@@ -222,7 +223,7 @@ namespace cuda_management::scope_allocator
 
             __device__ void reserve_for_vector_size_of(size_t sz)
             {
-                size_t new_sz   = std::max(sz, static_cast<size_t>(this->stack_buffer_vec.size()));
+                size_t new_sz   = utility::max(sz, static_cast<size_t>(this->stack_buffer_vec.size()));
                 size_t old_sz   = this->stack_buffer_vec.size();
                 size_t diff_sz  = new_sz - old_sz; 
 

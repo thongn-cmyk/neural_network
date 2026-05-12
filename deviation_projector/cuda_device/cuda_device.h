@@ -20,6 +20,8 @@ namespace deviation_projector::cuda_device
         deviation_projector::cuda_device::mean_square::mean_square
     };
 
+    __device__ static inline uint8_t MEAN_SQUARE_DEVICE = 0u;
+
     __device__ double get_deviation(uint8_t calculator_id,
                                     Matrix * lhs,
                                     Matrix * rhs,

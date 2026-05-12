@@ -637,14 +637,14 @@ namespace taylor_matrix::cuda_matrix::the_cuda_matrix
             {
                 this->compute();
 
-                return make_the_matrix(this->get_matrix_shape(),
-                                       this->get_focal_size_vector(),
-                                       this->get_focal_suffix_map(),
-                                       this->get_rotation_size_vector(),
-                                       this->get_parameter_bound_ratio_vector(),
-                                       this->get_shape_coefficient_vector(),
-                                       this->get_base_shape_coefficient_size(),
-                                       this->get_deviation_operation_window());
+                return std::make_unique<TheCudaMatrix>(this->get_matrix_shape(),
+                                                       this->get_focal_size_vector(),
+                                                       this->get_focal_suffix_map(),
+                                                       this->get_rotation_size_vector(),
+                                                       this->get_parameter_bound_ratio_vector(),
+                                                       this->get_shape_coefficient_vector(),
+                                                       this->get_base_shape_coefficient_size(),
+                                                       this->get_deviation_operation_window());
             }
 
         private:
@@ -818,9 +818,40 @@ namespace taylor_matrix::cuda_matrix::the_cuda_matrix
                 return std::vector<double>(this->get_rotation_size_vector().size(), PARAMETER_BOUND_RATIO);
             }
 
+            auto get_cuda_matrix_shape() -> decltype(cuda_management::host_service::to_cuda_dgbuf(std::declval<self&>().get_matrix_shape()))
+            {
+                return cuda_management::host_service::to_cuda_dgbuf(this->get_matrix_shape());
+            }
+
+            auto get_cuda_focal_size_vector() -> decltype(cuda_management::host_service::to_cuda_dgbuf(std::declval<self&>().get_focal_size_vector()))
+            {
+                return cuda_management::host_service::to_cuda_dgbuf(this->get_focal_size_vector());
+            }
+
+            auto get_cuda_focal_suffix_vector() -> decltype(cuda_management::host_service::to_cuda_dgbuf(std::declval<self&>().get_focal_suffix_map()))
+            {
+                return cuda_management::host_service::to_cuda_dgbuf(this->get_focal_suffix_map());
+            }
+
+            auto get_cuda_rotation_size_vector() -> decltype(cuda_management::host_service::to_cuda_dgbuf(std::declval<self&>().get_rotation_size_vector()))
+            {
+                return cuda_management::host_service::to_cuda_dgbuf(this->get_rotation_size_vector());
+            }
+
+            auto get_cuda_parameter_bound_ratio_vector() -> decltype(cuda_management::host_service::to_cuda_dgbuf(std::declval<self&>().get_parameter_bound_ratio_vector()))
+            {
+                return cuda_management::host_service::to_cuda_dgbuf(this->get_parameter_bound_ratio_vector());
+            }
+
             auto get_shape_coefficient_vector() -> std::vector<tensor_std_float_t>
             {
-                return {};
+                return std::vector<tensor_std_float_t>(taylor_matrix::cuda_matrix::tensor_matrix_forward::matrix_transform_size(this->get_cuda_matrix_shape(),
+                                                                                                                                this->get_cuda_focal_size_vector(),
+                                                                                                                                this->get_cuda_focal_suffix_map(),
+                                                                                                                                this->get_cuda_rotation_size_vector(),
+                                                                                                                                this->get_cuda_parameter_bound_ratio_vector(),
+                                                                                                                                this->get_base_shape_coefficient_size()),
+                                                       0);
             }
 
             auto get_base_shape_coefficient_size() -> size_t

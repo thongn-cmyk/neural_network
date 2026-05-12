@@ -98,6 +98,49 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_operation
         return src;
     }
 
+    __device__ constexpr auto check_shape(size_t * shape_arr,
+                                          size_t shape_arr_sz) -> local_exception_t
+    {
+        if (shape_arr_sz > 4u)
+        {
+            return OTHER_INVALID_ARGUMENT_CODE;
+        }
+
+        if (0u < shape_arr_sz)
+        {
+            if (shape_arr[0u] == 0u)
+            {
+                return OTHER_INVALID_ARGUMENT_CODE;
+            }
+        }
+
+        if (1u < shape_arr_sz)
+        {
+            if (shape_arr[1u] == 0u)
+            {
+                return OTHER_INVALID_ARGUMENT_CODE;
+            }
+        }
+
+        if (2u < shape_arr_sz)
+        {
+            if (shape_arr[2u] != device_tensor::model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ)
+            {
+                return OTHER_INVALID_ARGUMENT_CODE;
+            }
+        }
+
+        if (3u < shape_arr_sz )
+        {
+            if (shape_arr[3u] != device_tensor::model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ)
+            {
+                return OTHER_INVALID_ARGUMENT_CODE;
+            }
+        }
+
+        return SUCCESS;
+    }
+
     //--OPERATION--
 
     __device__ constexpr void copy_to(Matrix * dst,
@@ -887,7 +930,7 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_operation
             }
         }
 
-        Matrix * tmp_rs = avg(incremental_matrix_vec, incremental_matrix_vec_sz, allocator, err);
+        Matrix * tmp_rs = avg(incremental_matrix_vec, incremental_matrix_vec_sz, allocator, err); //we are misisng a scaling factor
 
         if (*err != SUCCESS)
         {
@@ -904,49 +947,107 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_operation
         return rs;
     }
 
-    //we'd still need to implement auto-focus, it's been a very tilting day for me
-
-    //I've already explained that addition is a low-entropy operation
-    //but because it is a low-entropy operation, it requires y z to be of the same context in the sense of f(x, y) + f(x, z)
-    //so if we add too many of those together, we have accidentially implied that those are of the same context, or we'd have to try incredibly hard to unhinge the similarity of those context points
-
-    //the difficulty that I'm trying to describe here is the limitation of the operation space and the distinct of those context similarities
-    
-    //so how precisely do we overcome the difficulties of (1): limit the logit search space, even though assigning different logits for each of the addition operation is a superset of what we are trying to achieve, the search space is too vast to be smart and of low-entropy    
-    //so the process group is precisely to solve such problem, to group similar context points into one group, and we'd just have to project and sum all of those together to have another low-entropy "point"
-
-    //but at the being-unit level, things are a little hazy, because each of the process_group is now not of the same level of entropy
-
-    //it just seems to me that if we can't add, then we just have to project it again, because we only have two operations, low_entropy_transform(x,y) and high_entropy_transform(x,y)
-    //and it just seems to apply at the being_unit too, not just the matrix_transform layer 
-
-    template <class FocalSizeVector,
+    template <class MatrixShapeVector,
+              class FocalSizeVector,
               class SuffixMap,
               class RotationSizeVector,
               class ParameterBoundRatioVector,
-              class ShapeBaseCoeffSizeContainer,
-              class AllocatorInterface>
-    __device__ constexpr auto matrix_transform_size(Matrix * matrix,
-    
-                                                    FocalSizeVector focal_sz_vec, size_t focal_sz_vec_offset,
-                                                    SuffixMap focal_suffix_map,
+              class ShapeBaseCoeffSizeContainer>
+    __device__ constexpr  __attribute__((noinline)) auto matrix_transform_size(MatrixShapeVector matrix_shape_vec,
 
-                                                    RotationSizeVector rotation_sz_vec, size_t rotation_sz_vec_offset,
-                                                    ParameterBoundRatioVector parameter_bound_ratio_vec, size_t parameter_bound_ratio_vec_offset,
+                                                                               FocalSizeVector focal_sz_vec,
+                                                                               SuffixMap focal_suffix_map,
 
-                                                    ShapeBaseCoeffSizeContainer base_shape_coeff_sz_container,
+                                                                               RotationSizeVector rotation_sz_vec,
+                                                                               ParameterBoundRatioVector parameter_bound_ratio_vec,
 
-                                                    AllocatorInterface&& allocator,
+                                                                               ShapeBaseCoeffSizeContainer base_shape_coeff_sz_container,
 
-                                                    local_exception_t * err = nullptr,
-                                                    const Tag<ShapeBasePromotedFloatType>& shape_base_promotion_tag = Tag<ShapeBasePromotedFloatType>()
+                                                                               local_exception_t * err = nullptr, //this is the "new invention" for concurrent error write, last write last win, it's complicated but we now follow a write on error only
+                                                                               const Tag<ShapeBasePromotedFloatType>& shape_base_promotion_tag = Tag<ShapeBasePromotedFloatType>()
 
-                                                    bool has_logit_unit_reuse_tag = true,
-                                                    bool has_logit_group_logit_reuse_tag = true,
-                                                    bool has_being_logit_reuse_tag = true,
-                                                    bool has_base_matrix_logit_reuse_tag = true) -> size_t
+                                                                               bool has_logit_unit_reuse_tag = true,
+                                                                               bool has_logit_group_logit_reuse_tag = true,
+                                                                               bool has_being_logit_reuse_tag = true,
+                                                                               bool has_base_matrix_logit_reuse_tag = true) -> uint64_t
     {
+        using namespace cuda_management::scope_allocator;
+        using namespace cuda_management::device_memory;
 
+        local_exception_t local_err         = SUCCESS;
+
+        if (err == nullptr)
+        {
+            err = &local_err;
+        }
+
+        const uint64_t INITIAL_LOGIT_SZ     = uint64_t{1} << 10;
+        const uint64_t MULTIPLIER_BASE      = uint64_t{1} << 3;
+        const uint64_t EXPONENTIAL_RANGE    = 7u;
+
+        SplitStackAllocator stack_allocator{};
+
+        size_t * shape_arr  = std_new_array<size_t>(stack_allocator, matrix_shape_vec.size());
+
+        for (size_t i = 0u; i < matrix_shape_vec.size(); ++i)
+        {
+            shape_arr[i] = matrix_shape_vec[i];
+        }
+
+        local_exception_t shape_err = check_shape(shape_arr, matrix_shape_vec.size());
+
+        if (shape_err != SUCCESS)
+        {
+            *err = shape_err;
+            return {};
+        }
+
+        for (size_t i = 0u; i < EXPONENTIAL_RANGE; ++i)
+        {
+            scope_guard allocator_grd(&stack_allocator);
+
+            uint64_t tentative_logit_sz                     = INITIAL_LOGIT_SZ * cuda_matrix::utility::unsigned_pow(MULTIPLIER_BASE, i);
+            tensor_model::tensor_std_float_t * tensor_arr   = std_new_array<tensor_model::tensor_std_float_t>(stack_allocator, tentative_logit_sz);
+            Matrix * tmp_matrix                             = allocate(matrix_shape_vec[0], matrix_shape_vec[1], stack_allocator);
+            size_t tensor_arr_sz                            = 0u;
+
+            local_exception_t tmp_err                       = SUCCESS;
+
+            matrix_transform(tmp_matrix,
+                             
+                             focal_sz_vec, 0u,
+                             focal_suffix_map,
+                            
+                             rotation_sz_vec, 0u,
+                             parameter_bound_ratio_vec, 0u,
+                             
+                             base_shape_coeff_sz_container,
+                             tensor_arr, tensor_arr_sz, tentative_logit_sz,
+                             
+                             stack_allocator,
+                            
+                             &tmp_err,
+                             shape_base_promotion_tag,
+                             
+                             has_logit_unit_reuse_tag,
+                             has_logit_group_logit_reuse_tag,
+                             has_being_logit_reuse_tag,
+                             has_base_matrix_logit_reuse_tag);
+
+            if (tmp_err == SUCCESS)
+            {
+                return tensor_arr_sz;
+            }
+
+            if (tmp_err != INSUFFICIENT_LOGIT_VEC_SIZE_CODE)
+            {
+                *err = tmp_err;
+                return {};
+            }
+        }
+
+        *err = INSUFFICIENT_LOGIT_VEC_SIZE_CODE;
+        return {};        
     }
 }
 

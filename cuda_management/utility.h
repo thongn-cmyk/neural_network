@@ -26,6 +26,18 @@ namespace cuda_management::utility
             assert(false);
         }
 
+        static_assert(sizeof(T) <= sizeof(promoted_value));
+
+        if constexpr(sizeof(T) == sizeof(promoted_value))
+        {
+            const T last_bit_threshold  = T{1} << (sizeof(T) * CHAR_BIT - 1u);
+
+            if (val >= last_bit_threshold)
+            {
+                return sizeof(T) * CHAR_BIT - 1u;
+            }
+        }
+
         return static_cast<size_t>(sizeof(promoted_value) * CHAR_BIT - 1u) - static_cast<size_t>(__clzll(static_cast<promoted_value>(val)));
     }
 
@@ -174,7 +186,7 @@ namespace cuda_management::utility
         }
     }
 
-    template <class T>
+    template <class T, std::enable_if_t<std::numeric_limits<T>::is_integer, bool> = true>
     __device__ constexpr auto clamp(T val, T min_val, T max_val) -> T
     {
         if (val < min_val)
@@ -190,8 +202,127 @@ namespace cuda_management::utility
         return val;
     }
 
+    template <class T, std::enable_if_t<std::is_floating_point_v<T>, bool> = true>
+    __device__ constexpr auto clamp(T val, T min_val, T max_val) -> T
+    {
+        if (isnan(val))
+        {
+            return min_val;
+        }
+
+        if (val < min_val)
+        {
+            return min_val;
+        }
+
+        if (val > max_val)
+        {
+            return max_val;
+        }
+
+        return val;
+    }
+
+    template <class RandomAccessIterator> //check if RandomAccessIterator
+    __device__ constexpr auto distance(RandomAccessIterator first, RandomAccessIterator last) -> intmax_t
+    {
+        return last - first;
+    }
+
+    template <class T, class T_Like>
+    __device__ constexpr auto exchange(T& value, T_Like&& new_value) -> T
+    {
+        static_assert(std::is_trivial_v<std::decay_t<T>>);
+
+        T old_value = value;
+        value = std::forward<T_Like>(new_value);
+
+        return old_value;
+    }
+
+    template <class T>
+    __device__ constexpr void swap(T& lhs, T& rhs) noexcept(std::conjunction_v<std::is_nothrow_move_constructible<T>,
+                                                                               std::is_nothrow_move_assignable<T>>)
+    {
+        T tmp   = std::move(lhs);
+        lhs     = std::move(rhs);
+        rhs     = std::move(tmp);
+    }
+
+    template <class T>
+    __device__ constexpr auto max(T lhs, T rhs) -> T
+    {
+        if (lhs > rhs)
+        {
+            return lhs;
+        }
+        
+        return rhs;
+    }
+
+    template <class T>
+    __device__ constexpr auto min(T lhs, T rhs) -> T
+    {
+        if (lhs < rhs)
+        {
+            return lhs;
+        }
+
+        return rhs;
+    }
+
+    template <class T>
+    struct forward_helper{};
+
+    template <class T>
+    struct forward_helper<T&>
+    {
+        static_assert(std::is_same_v<std::remove_reference_t<T>, T>);
+
+        using type = std::add_rvalue_reference_t<T&>;
+    };
+
+    template <class T>
+    struct forward_helper<T>
+    {
+        static_assert(std::is_same_v<std::remove_reference_t<T>, T>);
+
+        using type = std::add_rvalue_reference_t<T>;
+    };
+
+    template <class T>
+    using forward_helper_t = typename forward_helper<T>::type;
+
+    template <class T>
+    __device__ constexpr auto forward(T& value) noexcept -> forward_helper_t<T>
+    {
+        return static_cast<forward_helper_t<T>>(value);
+    }
+
+    template <class T>
+    __device__ constexpr void destroy_at(T * obj)
+    {
+        if (obj == nullptr)
+        {
+            return;
+        }
+
+        obj->~T();
+    }
+
+    template <class T>
+    __device__ constexpr void destroy(T * first, T * last)
+    {
+        while (first != last)
+        {
+            first->~T();
+            advance(first, 1u);
+        }
+    }
+
     template <class FromIterator, class ToIterator>
-    __device__ constexpr auto copy(FromIterator first, FromIterator last, ToIterator dst) -> ToIterator
+    __device__ constexpr auto copy(FromIterator first, FromIterator last,
+                                   ToIterator dst) -> ToIterator
     {
         while (first != last)
         {

@@ -50,7 +50,6 @@ namespace immutable_memory
                                            public virtual OnDestructionRegisterManagerInterface,
                                            public virtual ImmutableMemoryInterface{};
 
-
     template <class ByteStreamContainer>
     class ImmutableMemory: public virtual ImmutableMemoryInterface
     {
@@ -61,6 +60,9 @@ namespace immutable_memory
         public:
 
             ImmutableMemory(std::string_view bstream_view): bstream(bstream_view.data(), bstream_view.size()){}
+
+            ImmutableMemory(const ImmutableMemory&) = delete;
+            ImmutableMemory& operator =(const ImmutableMemory&) = delete;
 
             ImmutableMemory(ImmutableMemory&&) = delete;
             ImmutableMemory& operator =(ImmutableMemory&&) = delete;
@@ -78,7 +80,7 @@ namespace immutable_memory
 
             std::unordered_set<size_t> registered_callback_id_set;
             std::vector<std::shared_ptr<OnDestructionCallbackInterface>> callbackable_vec;
-            std::shared_ptr<ImmutableMemoryHolderInterface> mem;
+            std::shared_ptr<ImmutableMemoryInterface> mem;
 
         public:
 

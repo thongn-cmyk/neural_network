@@ -6,7 +6,6 @@
 #include <functional>
 #include <stl_extension/stdx.h>
 #include <semaphore>
-#include <stl_extension/stdx.h>
 
 namespace cuda_management::kernel_dispatch
 {
@@ -14,7 +13,8 @@ namespace cuda_management::kernel_dispatch
 
     using SmpSingletonContainer = stdx::singleton_container<std::unique_ptr<std::semaphore>, SmpSignature>;
 
-    static inline constexpr size_t KERNEL_CONCURRENT_DISPATCH_COUNT = size_t{1} << 6;
+    static inline constexpr size_t KERNEL_CONCURRENT_DISPATCH_COUNT = size_t{1} << 4;
+    static inline constexpr size_t MAX_THREAD_SZ                    = size_t{1} << 8;
 
     void init()
     {
@@ -32,8 +32,6 @@ namespace cuda_management::kernel_dispatch
 
     constexpr auto get_block_thread(size_t concurrent_dispatch_sz) -> std::pair<size_t, size_t>
     {
-        const size_t MAX_THREAD_SZ = size_t{1} << 8;
-
         if (concurrent_dispatch_sz == 0u)
         {
             return std::make_pair(size_t{0u}, size_t{0u});

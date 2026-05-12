@@ -90,7 +90,7 @@ namespace data_loader::s3_source
     {
         private:
 
-            struct S3ObjectConnectionString
+            struct S3ObjectPointer
             {
                 std::string bucket_name;
                 std::string object_key;
@@ -110,17 +110,16 @@ namespace data_loader::s3_source
             bool was_completed;
             bool is_bad_state;
             size_t soft_read_error_sz;
-            S3ObjectConnectionString s3_connection_string;
+            S3ObjectPointer s3_object_pointer;
             Aws::Client::ClientConfiguration client_config;
             std::optional<BufferPointer> buf_pointer;
 
             static inline constexpr size_t SOFT_READ_ERROR_THRESHOLD    = size_t{1} << 3;
-
-        public:
-
             static inline constexpr size_t MAX_READ_SZ                  = size_t{1} << 20;
             static inline constexpr size_t MIN_BUFFER_SZ                = size_t{1} << 10;
             static inline constexpr size_t MAX_BUFFER_SZ                = size_t{1} << 20;
+
+        public:
 
             S3Loader(const S3LoaderConfig& config)
             {
@@ -143,7 +142,7 @@ namespace data_loader::s3_source
                 this->was_completed         = false;
                 this->is_bad_state          = false;
                 this->soft_read_error_sz    = 0u;
-                this->s3_connection_string  = S3ObjectConnectionString
+                this->s3_object_pointer  = S3ObjectPointer
                 {
                     .bucket_name    = config.bucket_name,
                     .object_key     = config.object_key
@@ -177,7 +176,7 @@ namespace data_loader::s3_source
                 }
 
                 std::string buf(tx_byte_sz, ' ');
-                intmax_t read_bytes;
+                intmax_t read_byte_sz;
 
                 if (this->object_outcome == nullptr)
                 {
@@ -200,7 +199,7 @@ namespace data_loader::s3_source
                     this->seek_outcome_stream(*this->object_outcome, this->buf_pointer->offset);
                     this->read_outcome_stream(*this->object_outcome, buf.data(), buf.size());
 
-                    read_bytes = this->gcount_outcome_stream(*this->object_outcome);
+                    read_byte_sz = this->gcount_outcome_stream(*this->object_outcome);
                 }
                 catch (...)
                 {
@@ -208,19 +207,19 @@ namespace data_loader::s3_source
                     throw;                    
                 }
 
-                if (read_bytes < 0)
+                if (read_byte_sz < 0)
                 {
                     throw std::runtime_error("file read went wrong, negative read bytes");
                 }
 
-                buf.resize(read_bytes);
-                this->buf_pointer->offset += read_bytes;
+                buf.resize(read_byte_sz);
+                this->buf_pointer->offset += read_byte_sz;
 
                 if (buf.size() == 0u)
                 {
                     if (this->buf_pointer->offset != this->buf_pointer->sz)
                     {
-                        this->revive_and_throw_size_inconsistency();
+                        this->revive_object_outcome_and_throw_size_inconsistency();
                         this->punch_one_soft_read_error();
                     }
 
@@ -328,7 +327,7 @@ namespace data_loader::s3_source
                 }
             }
 
-            void revive_and_throw_size_inconsistency()
+            void revive_object_outcome_and_throw_size_inconsistency()
             {
                 if (!this->buf_pointer.has_value())
                 {
@@ -367,8 +366,8 @@ namespace data_loader::s3_source
             {
                 Aws::S3::Model::GetObjectRequest objectRequest{};
 
-                objectRequest.SetBucket(this->s3_connection_string.bucket_name);
-                objectRequest.SetKey(this->s3_connection_string.object_key);
+                objectRequest.SetBucket(this->s3_object_pointer.bucket_name);
+                objectRequest.SetKey(this->s3_object_pointer.object_key);
 
                 if (this->buf != nullptr)
                 {

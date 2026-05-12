@@ -8,6 +8,7 @@
 #include "utility.h"
 #include <initializer_list>
 #include <iterator>
+#include <cuda/std/limits>
 
 namespace cuda_management::cuda_vector
 {
@@ -67,7 +68,7 @@ namespace cuda_management::cuda_vector
             {
                 //WARNING: unsafe stack unwind
  
-                intmax_t sz = std::distance(first, last);
+                intmax_t sz = utility::distance(first, last);
 
                 if (sz < 0)
                 {
@@ -104,9 +105,9 @@ namespace cuda_management::cuda_vector
                 *this = other;
             }
 
-            __device__ constexpr trivial_cuda_vector(self&& other) noexcept: arr(std::exchange(other.arr, allocate_zero_length_array())),
-                                                                             arr_sz(std::exchange(other.arr_sz, 0u)),
-                                                                             arr_cap(std::exchange(other.arr_cap, 0u)){}
+            __device__ constexpr trivial_cuda_vector(self&& other) noexcept: arr(utility::exchange(other.arr, allocate_zero_length_array())),
+                                                                             arr_sz(utility::exchange(other.arr_sz, 0u)),
+                                                                             arr_cap(utility::exchange(other.arr_cap, 0u)){}
 
             __device__ constexpr ~trivial_cuda_vector() noexcept
             {
@@ -139,18 +140,18 @@ namespace cuda_management::cuda_vector
 
                 this->free_resource();
 
-                this->arr       = std::exchange(other.arr, allocate_zero_length_array());
-                this->arr_sz    = std::exchange(other.arr_sz, 0u);
-                this->arr_cap   = std::exchange(other.arr_cap, 0u);
+                this->arr       = utility::exchange(other.arr, allocate_zero_length_array());
+                this->arr_sz    = utility::exchange(other.arr_sz, 0u);
+                this->arr_cap   = utility::exchange(other.arr_cap, 0u);
 
                 return *this;
             }
 
             __device__ constexpr void swap(self& other) noexcept
             {
-                std::swap(this->arr, other.arr);
-                std::swap(this->arr_sz, other.arr_sz);
-                std::swap(this->arr_cap, other.arr_cap);
+                utility::swap(this->arr, other.arr);
+                utility::swap(this->arr_sz, other.arr_sz);
+                utility::swap(this->arr_cap, other.arr_cap);
             }
 
             __device__ constexpr void reserve(size_t cap)
@@ -167,7 +168,7 @@ namespace cuda_management::cuda_vector
             {
                 this->reserve(sz);
 
-                size_t next_cover_sz    = std::max(sz, this->arr_sz);
+                size_t next_cover_sz    = utility::max(sz, this->arr_sz);
                 size_t prev_cover_sz    = this->arr_sz;
                 size_t uncovered_sz     = next_cover_sz - prev_cover_sz;
 
@@ -185,10 +186,10 @@ namespace cuda_management::cuda_vector
             {
                 if (this->arr_sz == this->arr_cap)
                 {
-                    this->move_data_to_capacity_of(std::max(this->arr_cap * room_scale_factor(), size_t{1}));
+                    this->move_data_to_capacity_of(utility::max(this->arr_cap * room_scale_factor(), size_t{1}));
                 }
 
-                this->arr[this->arr_sz++]   = std::forward<ValueLike>(value);
+                this->arr[this->arr_sz++]   = utility::forward<ValueLike>(value);
             }
 
             template <class ...Args>
@@ -196,10 +197,10 @@ namespace cuda_management::cuda_vector
             {
                 if (this->arr_sz == this->arr_cap)
                 {
-                    this->move_data_to_capacity_of(std::max(this->arr_cap * room_scale_factor(), size_t{1}));
+                    this->move_data_to_capacity_of(utility::max(this->arr_cap * room_scale_factor(), size_t{1}));
                 }
 
-                this->arr[this->arr_sz++]   = T(std::forward<Args>(args)...);
+                this->arr[this->arr_sz++]   = T(utility::forward<Args>(args)...);
             }
 
             __device__ constexpr void pop_back() noexcept
@@ -308,7 +309,7 @@ namespace cuda_management::cuda_vector
 
             __device__ static constexpr auto max_size() noexcept -> size_t
             {
-                return std::numeric_limits<size_t>::max();
+                return cuda::std::numeric_limits<size_t>::max();
             }
 
             __device__ constexpr auto empty() const noexcept -> bool
@@ -328,7 +329,7 @@ namespace cuda_management::cuda_vector
 
             __device__ constexpr auto operator <(const self& other) const noexcept -> bool
             {
-                size_t common_sz    = std::min(this->size(), other.size());
+                size_t common_sz    = utility::min(this->size(), other.size());
 
                 for (size_t i = 0u; i < common_sz; ++i)
                 {
@@ -358,7 +359,7 @@ namespace cuda_management::cuda_vector
 
             __device__ constexpr auto operator >(const self& other) const noexcept -> bool
             {
-                size_t common_sz    = std::min(this->size(), other.size());
+                size_t common_sz    = utility::min(this->size(), other.size());
 
                 for (size_t i = 0u; i < common_sz; ++i)
                 {
