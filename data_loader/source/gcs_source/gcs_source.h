@@ -317,12 +317,6 @@ namespace data_loader::gcs_source
                 std::string rs((std::istreambuf_iterator<char>(stream)),
                                 std::istreambuf_iterator<char>());
 
-                if (rs.size() != read_sz)
-                {
-                    this->is_bad_state = true;
-                    throw hard_file_read_error("Hard GCS file read error, range mismatched");
-                }
-
                 this->increment_read_pointer_by(read_sz);
 
                 return rs;

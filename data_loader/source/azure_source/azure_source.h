@@ -455,12 +455,6 @@ namespace data_loader::azure_source
                     this->handle_azure_exception(std::current_exception());
                 }
 
-                if (read_bytes != expected_read_bytes)
-                {
-                    this->is_bad_state = true;
-                    throw hard_file_read_error("Hard Azure file read error, range mismatched");
-                }
-
                 this->increment_read_pointer_by(read_bytes);
 
                 return buf;
