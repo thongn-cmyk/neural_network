@@ -11,10 +11,12 @@
 
 namespace data_loader::gcs_source
 {
+    namespace gcs   = ::google::cloud::storage;
+
     struct GCSLoaderConfig
     {
         data_loader::stream_reader::ExternalDelimitedStreamReaderConfig delim_config;
-        data_loader::gcs_source::SerializableGCSClientConfiguration gcs_client_configuration;
+        data_loader::gcs_source::SerializableGCSClientConfig gcs_client_config;
         std::string bucket_name;
         std::string object_key;
         std::optional<uint64_t> read_ahead_buffer_sz_hint;
@@ -24,7 +26,7 @@ namespace data_loader::gcs_source
         void dg_reflect(const Reflector& reflector) const
         {
             reflector(delim_config,
-                      gcs_client_configuration,
+                      gcs_client_config,
                       bucket_name,
                       object_key,
                       read_ahead_buffer_sz_hint,
@@ -35,7 +37,7 @@ namespace data_loader::gcs_source
         void dg_reflect(const Reflector& reflector)
         {
             reflector(delim_config,
-                      gcs_client_configuration,
+                      gcs_client_config,
                       bucket_name,
                       object_key,
                       read_ahead_buffer_sz_hint,
@@ -77,7 +79,7 @@ namespace data_loader::gcs_source
     {
         private:
 
-            struct GCSObjectConnectionString
+            struct GCSObjectPointer
             {
                 std::string bucket_name;
                 std::string object_key;
@@ -90,27 +92,27 @@ namespace data_loader::gcs_source
             };
 
             std::unique_ptr<data_loader::stream_reader::DelimitedStreamReaderInterface> delim_stream_reader;
-            std::unique_ptr<> gcs_file_object;
+            std::unique_ptr<gcs::Client> gcs_client;
+            size_t read_buf_sz;
+
             size_t tx_unit_sz;
             bool was_completed;
             bool is_bad_state;
-            size_t soft_read_error_sz;
-            GCSObjectConnectionString gcs_connection_string;
-            gcs::ClientConfiguration client_config;
+            GCSObjectPointer gcs_object_pointer;
+            data_loader::gcs_source::SerializableGCSClientConfig gcs_client_config;
             std::optional<BufferPointer> buf_pointer;
-        
-            static inline constexpr size_t SOFT_READ_ERROR_THRESHOLD    = size_t{1} << 3;
-        
+
+            static inline constexpr size_t MAX_READ_SZ      = size_t{1} << 20;
+            static inline constexpr size_t MIN_BUFFER_SZ    = size_t{1} << 10;
+            static inline constexpr size_t MAX_BUFFER_SZ    = size_t{1} << 20;
+
         public:
-            
-            static inline constexpr size_t MAX_READ_SZ                  = size_t{1} << 20;
-            static inline constexpr size_t MIN_BUFFER_SZ                = size_t{1} << 10;
-            static inline constexpr size_t MAX_BUFFER_SZ                = size_t{1} << 20;
 
             GCSLoader(const GCSLoaderConfig& config)
             {
                 this->delim_stream_reader   = std::make_unique<data_loader::stream_reader::DelimitedStreamReader>(config.delim_config);
-                this->gcs_file_object       = nullptr;
+                // this->gcs_client            = data_loader::gcs_source::get_client_from_serializable_config(config.gcs_client_config);
+                this->gcs_client            = nullptr;
                 this->tx_unit_sz            = 1u;
 
                 if (config.unit_byte_sz_hint.has_value())
@@ -120,8 +122,21 @@ namespace data_loader::gcs_source
 
                 if (config.read_ahead_buffer_sz_hint.has_value())
                 {
-
+                    this->read_buf_sz   = std::clamp(static_cast<size_t>(config.read_ahead_buffer_sz_hint.value()),
+                                                     MIN_BUFFER_SZ,
+                                                     MAX_BUFFER_SZ);
                 }
+
+                this->was_completed         = false;
+                this->is_bad_state          = false;
+                this->gcs_object_pointer    = GCSObjectPointer
+                {
+                    .bucket_name    = config.bucket_name,
+                    .object_key     = config.object_key
+                };
+
+                this->gcs_client_config     = config.gcs_client_config;
+                this->buf_pointer           = std::nullopt;
             }
 
             GCSLoader(const ExternalGCSLoaderConfig& config): GCSLoader(to_internal_gcs_loader_config(config)){}
@@ -146,14 +161,171 @@ namespace data_loader::gcs_source
                     return std::vector<std::string>();
                 }
 
-                std::string buf(tx_byte_sz, ' ');
+                std::string buf{};
                 intmax_t read_bytes;
 
-                if (this->gcs_file_object == nullptr)
+                if (this->gcs_client == nullptr)
                 {
+                    auto tmp_client     = this->get_gcs_client();
+                    this->buf_pointer   = 
+                    {
+                        .offset = size_t{0u},
+                        .sz     = this->get_download_content_length(*tmp_client, this->gcs_object_object)
+                    };
 
+                    this->gcs_client    = std::move(tmp_client);
                 }
 
+                if (!this->buf_pointer.has_value())
+                {
+                    std::abort();
+                }
+
+                if (this->buf_pointer->offset == this->buf_pointer->sz)
+                {
+                    this->was_completed = true;
+                    return std::nullopt;
+                }
+
+                try
+                {
+                    buf = this->download_one_chunk();
+                }
+                catch (...)
+                {
+                    this->gcs_client    = this->get_gcs_client();
+                    throw;
+                }
+
+                if (buf.size() == 0u)
+                {
+                    this->is_bad_state  = true;
+                    throw other_error("GCS Bucket read went wrong, wrong read byte size");
+                }
+
+                try
+                {
+                    return this->delim_stream_reader->put(buf);
+                }
+                catch (...)
+                {
+                    this->is_bad_state  = true;
+                    throw;
+                }
+            }
+        
+        private:
+            
+            void handle_gcs_exception(const google::cloud::Status& s)
+            {
+                using namespace data_loader::source_exception;
+
+                switch (s.code())
+                {
+                    case StatusCode::kOk:
+                    {
+                        break;
+                    }
+                    case StatusCode::kInvalidArgument:
+                    {
+                        throw source_invalid_argument("Bad GCS operation, InvalidArgument");
+                    }
+                    case StatusCode::kUnauthenticated:
+                    {
+                        throw authentication_error("Bad GCS operation, Unauthenticated");
+                    }
+                    case StatusCode::kPermissionDenied:
+                    {
+                        throw authentication_error("Bad GCS operation, PermissionDenied");
+                    }
+                    case StatusCode::kNotFound:
+                    {
+                        throw bad_resource_pointer_error("Bad GCS operation, NotFound");
+                    }
+                    case StatusCode::kFailedPrecondition:
+                    case StatusCode::kOutOfRange:
+                    {
+                        throw source_invalid_argument("Bad GCS operation, Range/Precondition");
+                    }
+                    case StatusCode::kResourceExhausted:
+                    case StatusCode::kUnavailable:
+                    case StatusCode::kDeadlineExceeded:
+                    case StatusCode::kInternal:
+                    case StatusCode::kAborted:
+                    {
+                        throw connection_error("Bad GCS operation, transient or server error");
+                    }
+                    default:
+                    {
+                        throw other_error("Bad GCS operation");
+                    }
+                }
+            }
+
+            auto get_gcs_client() -> std::unique_ptr<gcs::Client>
+            {
+                return data_loader::gcs_source::get_client_from_serializable_config(this->gcs_client_config);
+            }
+
+            auto get_download_content_length(gcs::Client& client,
+                                             const GCSObjectPointer& obj_pointer) -> size_t
+            {
+                auto metadata = client.GetObjectMetadata(obj_pointer.bucket_name, obj_pointer.object_key);
+                
+                if (!metadata)
+                {
+                    handle_gcs_exception(metadata.status());
+                }
+
+                return metadata->size();
+            }
+
+            void increment_read_pointer_by(size_t sz)
+            {
+                if (!this->buf_pointer.has_value())
+                {
+                    std::abort();
+                }
+
+                this->buf_pointer->offset += sz;
+            }
+
+            auto download_one_chunk() -> std::string
+            {
+                if (!this->buf_pointer.has_value())
+                {
+                    std::abort();
+                }
+
+                if (this->buf_pointer->offset > this->buf_pointer->sz)
+                {
+                    std::abort();
+                }
+
+                size_t max_read_sz  = this->buf_pointer->sz - this->buf_pointer->offset;
+                size_t read_sz      = std::min(this->read_buf_sz, max_read_sz);
+
+                auto stream         = this->gcs_client->ReadObject(this->gcs_object_pointer.bucket_name,
+                                                                   this->gcs_object_pointer.object_key,
+                                                                   gcs::ReadRange(this->buf_pointer->offset, read_sz));
+
+                if (!stream)
+                {
+                    handle_gcs_exception(stream.status());
+                }
+
+                std::string rs((std::istreambuf_iterator<char>(stream)),
+                                std::istreambuf_iterator<char>());
+
+                if (rs.size() != read_sz)
+                {
+                    this->is_bad_state = true;
+                    throw hard_file_read_error("Hard GCS file read error, range mismatched");
+                }
+
+                this->increment_read_pointer_by(read_sz);
+
+                return rs;
             }
     };
 }

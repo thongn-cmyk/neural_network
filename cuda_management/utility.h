@@ -19,26 +19,17 @@ namespace cuda_management::utility
     template <class T, std::enable_if_t<std::is_unsigned_v<T>, bool> = true>
     __device__ auto ulog2(T val) noexcept -> size_t
     {
-        using promoted_value = long long int; 
+        using promoted_value                = long long int; 
+        using counterpart_promoted_value    = uint64_t;
 
         if (val == 0u)
         {
             assert(false);
         }
 
-        static_assert(sizeof(T) <= sizeof(promoted_value));
+        static_assert(sizeof(T) <= sizeof(counterpart_promoted_value));
 
-        if constexpr(sizeof(T) == sizeof(promoted_value))
-        {
-            const T last_bit_threshold  = T{1} << (sizeof(T) * CHAR_BIT - 1u);
-
-            if (val >= last_bit_threshold)
-            {
-                return sizeof(T) * CHAR_BIT - 1u;
-            }
-        }
-
-        return static_cast<size_t>(sizeof(promoted_value) * CHAR_BIT - 1u) - static_cast<size_t>(__clzll(static_cast<promoted_value>(val)));
+        return static_cast<size_t>(sizeof(promoted_value) * CHAR_BIT - 1u) - static_cast<size_t>(__clzll(std::bit_cast<promoted_value>(static_cast<counterpart_promoted_value>(val))));
     }
 
     template <class T, std::enable_if_t<std::is_unsigned_v<T>, bool> = true>
@@ -158,22 +149,40 @@ namespace cuda_management::utility
         return safe_integer_cast_wrapper<T>{value};
     }
 
-    template <class RandomAccessIterator>
+    template <class Lhs, class Rhs, class = void>
+    struct can_add: std::false_type{};
+
+    template <class Lhs, class Rhs>
+    struct can_add<Lhs, Rhs, std::void_t<decltype(std::declval<Lhs>() + std::declval<Rhs>())>>: std::true_type{};
+
+    template <class Lhs, class Rhs>
+    __device__ static inline constexpr bool can_add_v = can_add<Lhs, Rhs>::value;
+
+    template <class Lhs, class Rhs, class = void>
+    struct can_sub: std::false_type{};
+
+    template <class Lhs, class Rhs>
+    struct can_sub<Lhs, Rhs, std::void_t<decltype(std::declval<Lhs>() - std::declval<Rhs>())>>: std::true_type{};
+
+    template <class Lhs, class Rhs>
+    __device__ static inline constexpr bool can_sub_v = can_sub<Lhs, Rhs>::value;
+
+    template <class RandomAccessIterator, std::enable_if_t<can_add_v<RandomAccessIterator&, intmax_t&>, bool> = true>
     __device__ constexpr auto next(RandomAccessIterator it, intmax_t sz = 1) -> RandomAccessIterator
     {
         return it + sz;
     }
 
-    template <class RandomAccessIterator>
+    template <class RandomAccessIterator, std::enable_if_t<can_sub_v<RandomAccessIterator&, intmax_t&>, bool> = true>
     __device__ constexpr auto prev(RandomAccessIterator it, intmax_t sz = 1) -> RandomAccessIterator
     {
         return it - sz;
     }
 
-    template <class RandomAccessIterator>
-    __device__ constexpr void advance(RandomAccessIterator& it, intmax_t displacement)
+    template <class Iterator>
+    __device__ constexpr void advance(Iterator& it, intmax_t displacement)
     {
-        it += displacement;
+        it = next(it, displacement);
     }
 
     template <class Iterator, class ValueLike>
@@ -223,7 +232,7 @@ namespace cuda_management::utility
         return val;
     }
 
-    template <class RandomAccessIterator> //check if RandomAccessIterator
+    template <class RandomAccessIterator, std::enable_if_t<can_sub_v<RandomAccessIterator&, RandomAccessIterator&>, bool> = true>
     __device__ constexpr auto distance(RandomAccessIterator first, RandomAccessIterator last) -> intmax_t
     {
         return last - first;

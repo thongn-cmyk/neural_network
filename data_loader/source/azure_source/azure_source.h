@@ -104,14 +104,13 @@ namespace data_loader::azure_source
             size_t tx_unit_sz;
             bool was_completed;
             bool is_bad_state;
-            size_t soft_read_error_sz;
             AzureObjectPointer azure_object_pointer;
             data_loader::azure_source::SerializableAzureClientConfig service_client_config;
             std::optional<BufferPointer> buf_pointer;
 
-            static inline constexpr size_t MAX_READ_SZ                  = size_t{1} << 20;
-            static inline constexpr size_t MIN_BUFFER_SZ                = size_t{1} << 10;
-            static inline constexpr size_t MAX_BUFFER_SZ                = size_t{1} << 20;
+            static inline constexpr size_t MAX_READ_SZ      = size_t{1} << 20;
+            static inline constexpr size_t MIN_BUFFER_SZ    = size_t{1} << 10;
+            static inline constexpr size_t MAX_BUFFER_SZ    = size_t{1} << 20;
 
         public:
 
@@ -135,7 +134,6 @@ namespace data_loader::azure_source
 
                 this->was_completed         = false;
                 this->is_bad_state          = false;
-                this->soft_read_error_sz    = 0u;
                 this->azure_object_pointer  = AzureObjectPointer
                 {
                     .container_name = config.container_name,
@@ -168,7 +166,7 @@ namespace data_loader::azure_source
                     return std::vector<std::string>();
                 }
 
-                std::string buf(tx_byte_sz, ' ');
+                std::string buf{};
 
                 if (this->blob_client == nullptr)
                 {
@@ -195,7 +193,7 @@ namespace data_loader::azure_source
 
                 try
                 {
-                    this->read_download_content_to(buf, *this->blob_client);
+                    buf = this->download_one_chunk();
                 }
                 catch (...)
                 {
@@ -386,7 +384,7 @@ namespace data_loader::azure_source
 
                 if (this->buf_pointer->offset > this->buf_pointer->sz)
                 {
-                    throw hard_file_read_error("hard Azure file read error, range not satisfiable");
+                    std::abort();
                 }
 
                 size_t max_read_sz  = this->buf_pointer->sz - this->buf_pointer->offset;
@@ -394,7 +392,7 @@ namespace data_loader::azure_source
 
                 if (read_sz == 0u)
                 {
-                    throw hard_file_read_error("hard Azure file read error, range not satisfiable");   
+                    std::abort();
                 }
 
                 return Azure::Storage::Blobs::DownloadBlobToOptions
@@ -435,14 +433,20 @@ namespace data_loader::azure_source
                 this->buf_pointer->offset += sz;
             }
 
-            void read_download_content_to(std::string& buf, BlobClient& blob_client)
+            auto download_one_chunk() -> std::string
             {
                 size_t read_bytes{};
                 size_t expected_read_bytes{};
+                std::string buf{};
 
                 try
                 {
-                    auto rs             = blob_client.DownloadTo(buffer.data(), buffer.size(), this->get_download_options());
+                    buf.resize(this->get_expected_download_size());
+
+                    auto rs             = this->blob_client->DownloadTo(buf.data(),
+                                                                        this->get_expected_download_size(),
+                                                                        this->get_download_options());
+
                     read_bytes          = rs.Value.Details.Range.Value().Length;
                     expected_read_bytes = this->get_expected_download_size();
                 }
@@ -453,11 +457,13 @@ namespace data_loader::azure_source
 
                 if (read_bytes != expected_read_bytes)
                 {
+                    this->is_bad_state = true;
                     throw hard_file_read_error("Hard Azure file read error, range mismatched");
                 }
 
-                buf.resize(read_bytes);
                 this->increment_read_pointer_by(read_bytes);
+
+                return buf;
             }
     };
 }
