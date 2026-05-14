@@ -554,7 +554,6 @@ namespace taylor_matrix::host_matrix::tensor_matrix_operation
         stdx::transparent_vector<std::shared_ptr<Matrix>, Allocator> incremental_matrix_vec(allocator);
         incremental_matrix_vec.push_back(matrix);
 
-
         for (size_t i = 0u; i < rotation_sz; ++i)
         {
             stdx::transparent_vector<std::shared_ptr<Matrix>, Allocator> focused_matrix_vec = matrix_to_focal(up_to_point_matrix,

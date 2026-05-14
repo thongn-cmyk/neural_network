@@ -54,6 +54,7 @@ class SomeEquation: public virtual time_machine::TimeMachineInterface
 void test_some_equation()
 {
     const size_t TEST_SZ    = size_t{1} << 24;
+    const size_t COUT_SZ    = size_t{1} << 12;
 
     std::optional<double> x = std::nullopt;
     std::optional<double> y = std::nullopt;
@@ -88,6 +89,11 @@ void test_some_equation()
             x = cand_x;
             y = cand_y;
         }
+
+        if (i % COUT_SZ == 0u)
+        {
+            std::cout << i << "/" << TEST_SZ << "\n";
+        }
     }
 
     if (!y.has_value())
@@ -103,6 +109,7 @@ void test_some_equation()
 void test_some_equation_2()
 {
     const size_t TEST_SZ    = size_t{1} << 24;
+    const size_t COUT_SZ    = size_t{1} << 12;
 
     std::optional<double> x = std::nullopt;
     std::optional<double> y = std::nullopt;
@@ -152,6 +159,11 @@ void test_some_equation_2()
         else
         {
             // tensor->feedback(0);
+        }
+
+        if (i % COUT_SZ == 0u)
+        {
+            std::cout << i << "/" << TEST_SZ << "\n";
         }
     }
 

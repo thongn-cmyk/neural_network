@@ -184,10 +184,10 @@ namespace shape_projection
                                         const FloatType * radian_coeff_arr, SzContainer coeff_arr_sz_container,
                                         const stdx::Tag<PromotedFloatType>& promotion_tag = stdx::Tag<PromotedFloatType>{}) -> PromotedFloatType
     {
-        base_taylor_shape_project(x,
-                                  radian_coeff_arr, coeff_arr_sz_container,
-                                  promotion_tag,
-                                  std::integral_constant<bool, true>{});
+        return base_taylor_shape_project(x,
+                                         radian_coeff_arr, coeff_arr_sz_container,
+                                         promotion_tag,
+                                         std::integral_constant<bool, true>{});
     }
 
     constexpr auto get_multivariate_taylor_shape_projection_coefficient_size(size_t in_feature_sz, size_t base_coeff_sz) -> size_t

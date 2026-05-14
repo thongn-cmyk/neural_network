@@ -289,7 +289,7 @@ namespace cuda_management::device_memory
             assert(false);
         }
 
-        return new (blk) T(utility::forward<Args>(args)...);
+        return new (blk) T(std::forward<Args>(args)...);
     }
 
     template <class = void>

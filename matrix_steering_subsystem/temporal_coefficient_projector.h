@@ -13,6 +13,7 @@
 #include "conventional_randomizer.h"
 #include "coefficient_randomizer.h"
 #include "space_operation.h"
+#include "shape_projection.h"
 #include "taylor_projection.h"
 
 namespace temporal_coefficient_projector
@@ -510,6 +511,34 @@ namespace temporal_coefficient_projector
                 {
                     PromotedFloatType projection_result = taylor_projection::taylor_project(promoted_time_lapsed,
                                                                                             coefficient_vec.data(), stdx::to_size_container(coefficient_vec.size()));
+
+                    result_vec.push_back(projection_result);
+                }
+
+                return result_vec;
+            }
+    };
+
+    template <class PromotedFloatType = std_float_t>
+    class TaylorRadianSeriesProjector: public virtual TemporalCoefficientProjectorInterface
+    {
+        private:
+
+            std::vector<std::vector<PromotedFloatType>> coefficient_2d_vec;
+
+        public:
+
+            TaylorRadianSeriesProjector(std::vector<std::vector<PromotedFloatType>> coefficient_2d_vec) noexcept: coefficient_2d_vec(std::move(coefficient_2d_vec)){}
+
+            auto project(std_float_t t) -> std::vector<std_float_t>
+            {
+                PromotedFloatType promoted_time_lapsed  = static_cast<PromotedFloatType>(t);
+                std::vector<std_float_t> result_vec     = {};
+
+                for (const auto& coefficient_vec: this->coefficient_2d_vec)
+                {
+                    PromotedFloatType projection_result = shape_projection::taylor_shape_project(promoted_time_lapsed,
+                                                                                                 coefficient_vec.data(), stdx::to_size_container(coefficient_vec.size()));
 
                     result_vec.push_back(projection_result);
                 }

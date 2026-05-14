@@ -189,7 +189,7 @@ namespace cuda_management::cuda_vector
                     this->move_data_to_capacity_of(utility::max(this->arr_cap * room_scale_factor(), size_t{1}));
                 }
 
-                this->arr[this->arr_sz++]   = utility::forward<ValueLike>(value);
+                this->arr[this->arr_sz++]   = std::forward<ValueLike>(value);
             }
 
             template <class ...Args>
@@ -200,7 +200,7 @@ namespace cuda_management::cuda_vector
                     this->move_data_to_capacity_of(utility::max(this->arr_cap * room_scale_factor(), size_t{1}));
                 }
 
-                this->arr[this->arr_sz++]   = T(utility::forward<Args>(args)...);
+                this->arr[this->arr_sz++]   = T(std::forward<Args>(args)...);
             }
 
             __device__ constexpr void pop_back() noexcept

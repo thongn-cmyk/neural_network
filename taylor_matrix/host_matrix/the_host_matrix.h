@@ -458,7 +458,7 @@ namespace taylor_matrix::host_matrix::the_host_matrix
                                         has_base_matrix_logit_reuse_tag,
                                         project_concurrent_sz);
 
-                constexpr size_t LOGIT_VEC_CAPACITY = size_t{1} << 28u;
+                constexpr size_t LOGIT_VEC_CAPACITY = size_t{1} << 24u;
 
                 std::vector<tensor_std_float_t> coeff_vec(LOGIT_VEC_CAPACITY);
                 std::vector<tensor_std_float_t> shape_coeff_vec(LOGIT_VEC_CAPACITY);

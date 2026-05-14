@@ -29,7 +29,7 @@ namespace cuda_management::utility
 
         static_assert(sizeof(T) <= sizeof(counterpart_promoted_value));
 
-        return static_cast<size_t>(sizeof(promoted_value) * CHAR_BIT - 1u) - static_cast<size_t>(__clzll(std::bit_cast<promoted_value>(static_cast<counterpart_promoted_value>(val))));
+        return (sizeof(promoted_value) * CHAR_BIT - 1u) - __clzll(std::bit_cast<promoted_value>(static_cast<counterpart_promoted_value>(val)));
     }
 
     template <class T, std::enable_if_t<std::is_unsigned_v<T>, bool> = true>
@@ -278,34 +278,6 @@ namespace cuda_management::utility
         }
 
         return rhs;
-    }
-
-    template <class T>
-    struct forward_helper{};
-
-    template <class T>
-    struct forward_helper<T&>
-    {
-        static_assert(std::is_same_v<std::remove_reference_t<T>, T>);
-
-        using type = std::add_rvalue_reference_t<T&>;
-    };
-
-    template <class T>
-    struct forward_helper<T>
-    {
-        static_assert(std::is_same_v<std::remove_reference_t<T>, T>);
-
-        using type = std::add_rvalue_reference_t<T>;
-    };
-
-    template <class T>
-    using forward_helper_t = typename forward_helper<T>::type;
-
-    template <class T>
-    __device__ constexpr auto forward(T& value) noexcept -> forward_helper_t<T>
-    {
-        return static_cast<forward_helper_t<T>>(value);
     }
 
     template <class T>

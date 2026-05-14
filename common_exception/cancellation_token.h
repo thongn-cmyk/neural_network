@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <atomic>
 #include <memory>
+#include <mutex_extension/fair_mutex.h>
 
 namespace common_exception
 {
@@ -62,16 +63,20 @@ namespace common_exception
         private:
 
             common_exception::CancellationTokenInterface * base;
-            std::atomic<bool> is_out_of_scope;
+            bool is_out_of_scope;
+            std::unique_ptr<fair_mutex::fair_atomic_flag> mtx;
 
         public:
 
             ObjectLifeCancellationToken(common_exception::CancellationTokenInterface& base): base(&base),
-                                                                                             is_out_of_scope(false){}
+                                                                                             is_out_of_scope(false),
+                                                                                             mtx(fair_mutex::make_unique_fair_atomic_flag()){}
 
             auto is_canceled() noexcept -> bool
             {
-                if (this->is_out_of_scope.load(std::memory_order_relaxed))
+                fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*this->mtx);
+
+                if (this->is_out_of_scope)
                 {
                     return true;
                 }
@@ -81,7 +86,9 @@ namespace common_exception
 
             void out_scope() noexcept
             {
-                this->is_out_of_scope.exchange(true, std::memory_order_relaxed);
+                fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*this->mtx);
+
+                this->is_out_of_scope = true;
             }
     };
 

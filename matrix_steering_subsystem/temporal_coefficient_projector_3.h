@@ -14,6 +14,7 @@
 #include "activation.h"
 #include "temporal_coefficient_projector.h"
 #include <general_definition/float_def.h>
+#include "range_optimizer.h"
 
 namespace temporal_coefficient_projector_3
 {
@@ -21,6 +22,10 @@ namespace temporal_coefficient_projector_3
 
     //to simply put it, we can't code it in another way that guarantees 100% accuracy
     //it's hard, and time-consuming and not production-realistic to have smart and unnecessary variables that are not extensible
+    //let's just have a 50% learnable size just for the sake of context optimization
+
+    //it's just complicated is all, we are only 20% through the context engineerings
+    //but I guess that we are heading in the right way of what it is supposed to mean, and be extensible
 
     class DynamicFocalTemporalCoefficientProjectorGenerator: public virtual TemporalCoefficientProjectorGeneratorInterface
     {
@@ -28,6 +33,8 @@ namespace temporal_coefficient_projector_3
 
             std::unique_ptr<virtual_interval_coefficient_optimizer_tree::BatchCoefficientOptimizerTreeInterface> focal_organizer;
             std::unique_ptr<temporal_coefficient_projector_2::TemporalCoefficientProjectorGeneratorInterface> base;
+            std::unique_ptr<range_optimizer::RangePredictorInterface> range_predictor;
+
             conventional_randomizer::RandomizerObject raw_randomizer;
             conventional_randomizer::ApplicationRandomizerObject app_randomizer;
 
@@ -41,6 +48,8 @@ namespace temporal_coefficient_projector_3
 
             DynamicFocalTemporalCoefficientProjectorGenerator(std::unique_ptr<virtual_interval_coefficient_optimizer_tree::BatchCoefficientOptimizerTreeInterface> focal_organizer,
                                                               std::unique_ptr<temporal_coefficient_projector_2::TemporalCoefficientProjectorGeneratorInterface> base,
+                                                              std::unique_ptr<range_optimizer::RangePredictorInterface> range_predictor,
+
                                                               conventional_randomizer::RandomizerObject raw_randomizer,
                                                               conventional_randomizer::ApplicationRandomizerObject app_randomizer,
 
@@ -48,6 +57,7 @@ namespace temporal_coefficient_projector_3
                                                               size_t refocal_threshold,
                                                               size_t projection_sz) noexcept: focal_organizer(std::move(focal_organizer)),
                                                                                               base(std::move(base)),
+                                                                                              range_predictor(std::move(range_predictor)),
                                                                                               raw_randomizer(std::move(raw_randomizer)),
                                                                                               app_randomizer(std::move(app_randomizer)),
                                                                                               refocal_counter(refocal_counter),
@@ -63,7 +73,17 @@ namespace temporal_coefficient_projector_3
                     this->refocal_counter = 0u;
                 }
 
-                auto [projector, translation_segment_vec] = this->get_random_projector(this->projection_sz);
+                auto [projector, translation_segment_vec] = [&]
+                {
+                    if (this->raw_randomizer.flip_a_coin())
+                    {
+                        return this->get_random_projector();
+                    }
+                    else
+                    {
+                        return this->get_predicted_projector();
+                    }
+                }();
 
                 std::unique_ptr<virtual_interval_coefficient_optimizer_tree::BatchCoefficientSpaceTensorInterface> feedbackable;
                 std::vector<std::pair<size_t, size_t>> retranslation_segment_vec{};
@@ -206,9 +226,10 @@ namespace temporal_coefficient_projector_3
                 return total;
             }
 
-            auto get_random_projector(size_t sz) -> std::pair<std::shared_ptr<temporal_coefficient_projector_2::TemporalCoefficientProjectorContainerInterface>,
-                                                              std::vector<std::pair<size_t, size_t>>>
+            auto get_random_projector() -> std::pair<std::shared_ptr<temporal_coefficient_projector_2::TemporalCoefficientProjectorContainerInterface>,
+                                                     std::vector<std::pair<size_t, size_t>>>
             {
+                size_t sz               = this->projection_sz;
                 size_t chunk_sz         = this->randomize_vector_chunk_size(sz);
                 size_t segment_sz       = sz / chunk_sz + static_cast<size_t>(sz % chunk_sz != 0u);
                 size_t activation_sz    = this->randomize_activation_size_within(segment_sz);
@@ -224,6 +245,59 @@ namespace temporal_coefficient_projector_3
                 size_t actual_projection_sz                                         = this->count_activated_nodes(activated_suffix_array, chunk_sz, segment_sz, rem_sz);
 
                 return std::make_pair(this->base->get(actual_projection_sz), std::move(translation_table));
+            }
+
+            class InternalRangePredictedProjectorContainer: public virtual temporal_coefficient_projector_2::TemporalCoefficientProjectorContainerInterface
+            {
+                private:
+
+                    std::shared_ptr<temporal_coefficient_projector_2::TemporalCoefficientProjectorContainerInterface> base;
+                    std::unique_ptr<range_optimizer::RangePredictionResultInterface> range_prediction_result;
+
+                public:
+
+                    InternalRangePredictedProjectorContainer(std::shared_ptr<temporal_coefficient_projector_2::TemporalCoefficientProjectorContainerInterface> base,
+                                                             std::unique_ptr<range_optimizer::RangePredictionResultInterface> range_prediction_result): base(std::move(base)),
+                                                                                                                                                        range_prediction_result(std::move(range_prediction_result)){}
+
+                    auto get() -> std::shared_ptr<temporal_coefficient_projector::TemporalCoefficientProjectorInterface>
+                    {
+                        return this->base->get();
+                    }
+
+                    void feedback(double rating)
+                    {
+                        this->base->feedback(rating);
+                        this->range_prediction_result->feedback(rating);
+                    }
+            };
+
+            auto get_predicted_projector() -> std::pair<std::shared_ptr<temporal_coefficient_projector_2::TemporalCoefficientProjectorContainerInterface>,
+                                                        std::vector<std::pair<size_t, size_t>>>
+            {
+                std::unique_ptr<range_optimizer::RangePredictionResultInterface> range_prediction_result    = this->range_predictor->next();
+                
+                size_t max_activation_sz    = std::min(range_prediction_result->get_range(), this->projection_sz);
+                size_t chunk_sz             = this->randomize_vector_chunk_size(max_activation_sz);
+                size_t max_segment_sz       = max_activation_sz / chunk_sz + static_cast<size_t>(max_activation_sz % chunk_sz != 0u);
+                size_t activation_sz        = this->randomize_activation_size_within(max_segment_sz);
+
+                size_t sz                   = this->projection_sz;
+                size_t segment_sz           = sz / chunk_sz + static_cast<size_t>(sz % chunk_sz != 0u);
+                size_t rem_sz               = segment_sz * chunk_sz - sz;
+
+                std::vector<activation::activation_codex_t> activation_codex_vec    = this->randomize_activation_vector(activation_sz);
+                std::vector<size_t> suffix_array                                    = std::vector<size_t>(segment_sz);
+
+                std::iota(suffix_array.begin(), suffix_array.end(), 0u);
+
+                std::vector<size_t> activated_suffix_array                          = activation::activate(suffix_array, activation_codex_vec);
+                std::vector<std::pair<size_t, size_t>> translation_table            = this->to_range_translation_table(activated_suffix_array, chunk_sz, segment_sz, rem_sz);
+                size_t actual_projection_sz                                         = this->count_activated_nodes(activated_suffix_array, chunk_sz, segment_sz, rem_sz);
+
+                return std::make_pair(std::make_shared<InternalRangePredictedProjectorContainer>(this->base->get(actual_projection_sz),
+                                                                                                 std::move(range_prediction_result)),
+                                      std::move(translation_table));
             }
 
             auto get_translation_projector(const std::shared_ptr<temporal_coefficient_projector::TemporalCoefficientProjectorInterface>& base,
@@ -288,6 +362,8 @@ namespace temporal_coefficient_projector_3
 
                 return std::make_unique<DynamicFocalTemporalCoefficientProjectorGenerator>(virtual_interval_coefficient_optimizer_tree::TreeFactory::get_mid_duty_dynamic_focal_tree(coefficient_sz, LEAF_SZ),
                                                                                            temporal_coefficient_projector_2::GeneratorFactory::get_best_generator<PromotedFloatType>(),
+                                                                                           std::make_unique<range_optimizer::ExponentialRangePredictor>(coefficient_sz),
+
                                                                                            conventional_randomizer::RandomizerObject{},
                                                                                            conventional_randomizer::ApplicationRandomizerObject{},
 

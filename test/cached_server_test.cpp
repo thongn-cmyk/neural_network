@@ -3,8 +3,6 @@
 
 #include <stdint.h>
 #include <stdlib.h>
-#include <deviation_projection_server/starter.h>
-#include <deviation_projection_client/deviation_projection_client.h>
 #include <iostream>
 #include <functional>
 #include <random>
@@ -14,8 +12,6 @@
 #include <internal_rest/network_rest_frame.h>
 #include <global_config/rest_config.h>
 #include <connectivity_subsystem/connectivity_subsystem.h>
-#include <coroutine_subsystem/coroutine_x.h>
-#include <iostream>
 #include <internal_rest/network_concurrency.h>
 #include <string>
 #include <thread>
@@ -27,12 +23,10 @@
 #include <internal_rest/network_rest_frame.h>
 #include <logging_subsystem/logging_subsystem.h>
 #include <coroutine_subsystem/coroutine_x.h>
-#include <deviation_projection_ingestion_aid_server/starter.h>
-#include <deviation_projection_ingestion_aid_client/deviation_projection_ingestion_aid_client.h>
 #include <data_loader/hex_encoder/hex_encoder.h>
 #include <main_service/main_service.h>
-#include <deviation_projection_ingestion_aid/deviation_projection_ingestion_aid.h>
 #include <serializer/trivial_serializer.h>
+#include <resource_disposer/resource_disposer.h>
 
 using namespace dg_sock::network_rest_frame::model;
 using ResponseInterface = dg_sock::network_rest_frame::client::ResponseInterface;
@@ -522,12 +516,6 @@ void initialize_resource()
 
     std::cout << "initializing connectivity subsystem...\n";
     connectivity_subsystem::init();
-
-    // std::cout << "starting deviation projection server...\n";
-    // deviation_projection_server::start_server();
-
-    // std::cout << "starting deviation projection ingestion aid server...\n";
-    // deviation_projection_ingestion_aid_server::start_server();
 
     std::cout << "initializing resource disposer...\n";
     resource_disposer::init();
