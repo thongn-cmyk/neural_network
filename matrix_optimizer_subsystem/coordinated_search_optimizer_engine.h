@@ -115,7 +115,14 @@ namespace matrix_optimizer_subsystem
 
         //so it's complicated
 
-    //
+    //let's investigate what we could actually optimize for the context
+    //I guess that we could:
+
+    //(1): group the projection actionables to make it unit-compatible (because it just seems to make that a list of actions say more than just a particular continuous action)
+    //(2): hierarchical iterative_context generator
+    //(3): apart from score contexts, I could not find another context that is reasonable in this particular flow, so I guess that we'd stick to the score contexts, but we'd have to do our best in de-entropizing the context
+
+    //you wouldn't believe it, but 3 layers of score context is better than 2 layers of score context
 
     class CoordinatedSearchOptimizerEngine: public virtual MatrixOptimizerEngineInterface
     {
@@ -187,24 +194,35 @@ namespace matrix_optimizer_subsystem
                           matrix_evaluator::MatrixEvaluatorInterface& matrix_evaluator,
                           common_exception::CancellationTokenInterface& cancellation_token) -> std::shared_ptr<the_matrix::MatrixInterface>
             {
-                std::unique_ptr<score_context_optimizer::IterationContextGeneratorInterface> projector_gen      = score_context_optimizer::ContextOptimizerFactory::get_best_binary_progress_context_optimizer(std::make_unique<HeuristicProjectorGenerator>(matrix.get_coefficient_vector().size()));
-                std::unique_ptr<score_context_optimizer::IterationContextGeneratorInterface> time_machine_gen   = score_context_optimizer::ContextOptimizerFactory::get_best_binary_progress_context_optimizer(std::make_unique<HeuristicTimeMachineGenerator>());
-                std::shared_ptr<the_matrix::MatrixInterface> best_matrix                                        = matrix.clone();
+                std::unique_ptr<score_context_optimizer::IterationContextGeneratorInterface> iteration_projector_gen                = score_context_optimizer::ContextOptimizerFactory::get_best_binary_progress_context_optimizer(std::make_unique<IterationHeuristicProjectorGenerator>(matrix.get_coefficient_vector().size(),
+                                                                                                                                                                                                                                                                                          this->coefficient_projector_float_byte_width));
+
+                std::unique_ptr<score_context_optimizer::IterationContextGeneratorInterface> iteration_iteration_time_machine_gen   = score_context_optimizer::ContextOptimizerFactory::get_best_binary_progress_context_optimizer(std::make_unique<IterationIterationHeuristicTimeMachineGenerator>(this->time_machine_optimizer_float_byte_width));
+                std::shared_ptr<the_matrix::MatrixInterface> best_matrix                                                            = matrix.clone();
+
+                std::unique_ptr<score_context_optimizer::IterationContextInterface> iteration_projector_gen_it                      = iteration_projector_gen->get();
+                std::unique_ptr<score_context_optimizer::IterationContextInterface> iteration_iteration_time_machine_gen_it         = iteration_iteration_time_machine_gen->get();
 
                 for (size_t i = 0u; i < this->optimization_epoch_sz; ++i)
                 {
-                    std::shared_ptr<the_matrix::MatrixInterface> tmp_matrix                                     = best_matrix->clone();
-                    std::unique_ptr<score_context_optimizer::IterationContextInterface> projector_iteration_ctx = projector_gen->get();
+                    std::unique_ptr<score_context_optimizer::ActionableResultInterface> projector_iteration_ctx_wrapper             = iteration_projector_gen_it->next();
+                    std::unique_ptr<score_context_optimizer::ActionableResultInterface> outer_time_machine_iteration_ctx_wrapper    = iteration_iteration_time_machine_gen_it->next();
+
+                    std::shared_ptr<the_matrix::MatrixInterface> tmp_matrix                                                         = best_matrix->clone();
+
+                    std::unique_ptr<score_context_optimizer::IterationContextInterface> projector_iteration_ctx                     = std::dynamic_pointer_cast<score_context_optimizer::IterationContextGeneratorInterface>(projector_iteration_ctx_wrapper->get_statistical_machine())->get();
+                    std::unique_ptr<score_context_optimizer::IterationContextInterface> outer_time_machine_iteration_ctx            = std::dynamic_pointer_cast<score_context_optimizer::IterationContextGeneratorInterface>(outer_time_machine_iteration_ctx_wrapper->get_statistical_machine())->get();
 
                     for (size_t j = 0u; j < this->optimization_step_sz; ++j)
                     {
                         std::unique_ptr<score_context_optimizer::ActionableResultInterface> heuristic_projector_wrapper                         = projector_iteration_ctx->next();
                         std::shared_ptr<temporal_coefficient_projector_3::TemporalCoefficientProjectorGeneratorInterface> heuristic_projector   = std::dynamic_pointer_cast<temporal_coefficient_projector_3::TemporalCoefficientProjectorGeneratorInterface>(heuristic_projector_wrapper->get_statistical_machine());
                         std::shared_ptr<temporal_coefficient_projector_3::TemporalCoefficientProjectorContainerInterface> projector_container   = heuristic_projector->get();
-                        
                         std::shared_ptr<temporal_coefficient_projector::TemporalCoefficientProjectorInterface> coefficient_projector            = this->get_projector_from(best_matrix->get_coefficient_vector(), projector_container->get());
                         double projection_score                                                                                                 = 0;
-                        std::unique_ptr<score_context_optimizer::IterationContextInterface> time_machine_iteration_ctx                          = time_machine_gen->get();
+
+                        std::unique_ptr<score_context_optimizer::ActionableResultInterface> time_machine_iteration_ctx_wrapper                  = outer_time_machine_iteration_ctx->next();
+                        std::unique_ptr<score_context_optimizer::IterationContextInterface> time_machine_iteration_ctx                          = std::dynamic_pointer_cast<score_context_optimizer::IterationContextGeneratorInterface>(time_machine_iteration_ctx_wrapper->get_statistical_machine())->get();
 
                         for (size_t z = 0u; z < this->optimization_loop_sz; ++z)
                         {
@@ -244,11 +262,19 @@ namespace matrix_optimizer_subsystem
 
                         projector_container->feedback(projection_score);
                         heuristic_projector_wrapper->feedback(projection_score);
+                        time_machine_iteration_ctx_wrapper->feedback(projection_score);
                     }
 
                     if (stdx::nan_cmp(matrix_evaluator.get_deviation(*tmp_matrix), matrix_evaluator.get_deviation(*best_matrix)) < 0)
                     {
                         best_matrix = tmp_matrix;
+                        outer_time_machine_iteration_ctx_wrapper->feedback(1u);
+                        projector_iteration_ctx_wrapper->feedback(1u);
+                    }
+                    else
+                    {
+                        outer_time_machine_iteration_ctx_wrapper->feedback(0u);
+                        projector_iteration_ctx_wrapper->feedback(0u);
                     }
                 }
 
@@ -270,34 +296,6 @@ namespace matrix_optimizer_subsystem
                 std::unique_ptr<temporal_coefficient_projector::TemporalCoefficientProjectorInterface> chained_projector    = std::make_unique<temporal_coefficient_projector::ChainedTemporalCoefficientProjector>(stdx::to_variadic_vector_initializer(std::move(up_projectile), std::move(point_projector)));
 
                 return chained_projector;
-            }
-
-            auto get_projector_generator(size_t projection_sz) -> std::unique_ptr<temporal_coefficient_projector_3::TemporalCoefficientProjectorGeneratorInterface>
-            {
-                std::unique_ptr<temporal_coefficient_projector_3::TemporalCoefficientProjectorGeneratorInterface> projector_gen;
-
-                auto callback = [&]<class T>(T)
-                {
-                    projector_gen = temporal_coefficient_projector_3::GeneratorFactory::get_best_generator(projection_sz, 8u);
-                };
-
-                float_def::get_float_type_by_byte_width(callback, this->coefficient_projector_float_byte_width);
-
-                return projector_gen;
-            }
-
-            auto get_time_machine_optimizer_factory() -> std::unique_ptr<global_optimality_approximator::TensorFactoryInterface>
-            {
-                std::unique_ptr<global_optimality_approximator::TensorFactoryInterface> time_machine_optimizer_factory;
-
-                auto callback = [&]<class T>(T)
-                {
-                    time_machine_optimizer_factory = global_optimality_approximator::TensorFactoryFactory::get_best_factory<T>();
-                };
-
-                float_def::get_float_type_by_byte_width(callback, this->time_machine_optimizer_float_byte_width);
-
-                return time_machine_optimizer_factory;
             }
 
             auto optimize_one(the_matrix::MatrixInterface& matrix,
@@ -412,14 +410,65 @@ namespace matrix_optimizer_subsystem
                 private:
 
                     size_t projection_sz;
+                    size_t float_byte_width;
 
                 public:
 
-                    HeuristicProjectorGenerator(size_t projection_sz): projection_sz(projection_sz){}
+                    HeuristicProjectorGenerator(size_t projection_sz,
+                                                size_t float_byte_width): projection_sz(projection_sz),
+                                                                          float_byte_width(float_byte_width){}
 
                     auto get() -> std::unique_ptr<score_context_optimizer::StatisticalMachineInterface>
                     {
-                        return std::make_unique<HeuristicProjectorAsStatisticalMachine>(temporal_coefficient_projector_3::GeneratorFactory::get_best_generator(this->projection_sz, 8u)); //memory
+                        std::unique_ptr<score_context_optimizer::StatisticalMachineInterface> rs{};
+
+                        auto callback = [&]<class T>(T)
+                        {
+                            rs = std::make_unique<HeuristicProjectorAsStatisticalMachine>(temporal_coefficient_projector_3::GeneratorFactory::get_best_generator<T>(this->projection_sz, 8u)); //memory
+                        };
+
+                        float_def::get_float_type_by_byte_width(callback, this->float_byte_width);
+
+                        return rs;
+                    }
+            };
+
+            class IterationHeuristicProjectorAsStatisticalMachine: public virtual score_context_optimizer::StatisticalMachineInterface,
+                                                                   public virtual score_context_optimizer::IterationContextGeneratorInterface
+            {
+                private:
+
+                    std::unique_ptr<score_context_optimizer::IterationContextGeneratorInterface> base;
+                
+                public:
+
+                    IterationHeuristicProjectorAsStatisticalMachine(std::unique_ptr<score_context_optimizer::IterationContextGeneratorInterface> base): base(std::move(base)){}
+
+                    auto get() -> std::unique_ptr<score_context_optimizer::IterationContextInterface>
+                    {
+                        return this->base->get();
+                    }
+            };
+
+            class IterationHeuristicProjectorGenerator: public virtual score_context_optimizer::StatisticalMachineGeneratorInterface
+            {
+                private:
+
+                    size_t projection_sz;
+                    size_t float_byte_width;
+
+                public:
+
+                    IterationHeuristicProjectorGenerator(size_t projection_sz,
+                                                         size_t float_byte_width): projection_sz(projection_sz),
+                                                                                   float_byte_width(float_byte_width){}
+
+                    auto get() -> std::unique_ptr<score_context_optimizer::StatisticalMachineInterface>
+                    {
+                        auto optimizer = score_context_optimizer::ContextOptimizerFactory::get_best_binary_progress_context_optimizer(std::make_unique<HeuristicProjectorGenerator>(this->projection_sz,
+                                                                                                                                                                                    this->float_byte_width));
+
+                        return std::make_unique<IterationHeuristicProjectorAsStatisticalMachine>(std::move(optimizer));
                     }
             };
 
@@ -442,11 +491,96 @@ namespace matrix_optimizer_subsystem
 
             class HeuristicTimeMachineGenerator: public virtual score_context_optimizer::StatisticalMachineGeneratorInterface
             {
+                private:
+
+                    size_t float_byte_width;
+
                 public:
+
+                    HeuristicTimeMachineGenerator(size_t float_byte_width): float_byte_width(float_byte_width){}
 
                     auto get() -> std::unique_ptr<score_context_optimizer::StatisticalMachineInterface>
                     {
-                        return std::make_unique<HeuristicTimeMachineAsStatisticalMachine>(global_optimality_approximator::TensorFactoryFactory::get_best_factory());
+                        std::unique_ptr<score_context_optimizer::StatisticalMachineInterface> rs{};
+
+                        auto callback = [&]<class T>(T)
+                        {
+                            rs = std::make_unique<HeuristicTimeMachineAsStatisticalMachine>(global_optimality_approximator::TensorFactoryFactory::get_best_factory<T>());
+                        };
+
+                        float_def::get_float_type_by_byte_width(callback, this->float_byte_width);
+
+                        return rs;
+                    }
+            };
+
+            class IterationHeuristicTimeMachineAsStatisticalMachine: public virtual score_context_optimizer::StatisticalMachineInterface,
+                                                                     public virtual score_context_optimizer::IterationContextGeneratorInterface
+            {
+                private:
+
+                    std::unique_ptr<score_context_optimizer::IterationContextGeneratorInterface> base;
+
+                public:
+
+                    IterationHeuristicTimeMachineAsStatisticalMachine(std::unique_ptr<score_context_optimizer::IterationContextGeneratorInterface> base): base(std::move(base)){}
+
+                    auto get() -> std::unique_ptr<score_context_optimizer::IterationContextInterface>
+                    {
+                        return this->base->get();
+                    }
+            };
+
+            class IterationHeuristicTimeMachineGenerator: public virtual score_context_optimizer::StatisticalMachineGeneratorInterface
+            {
+                private:
+
+                    size_t float_byte_width;
+
+                public:
+
+                    IterationHeuristicTimeMachineGenerator(size_t float_byte_width): float_byte_width(float_byte_width){}
+
+                    auto get() -> std::unique_ptr<score_context_optimizer::StatisticalMachineInterface>
+                    {
+                        auto optimizer = score_context_optimizer::ContextOptimizerFactory::get_best_binary_progress_context_optimizer(std::make_unique<HeuristicTimeMachineGenerator>(this->float_byte_width));
+
+                        return std::make_unique<IterationHeuristicTimeMachineAsStatisticalMachine>(std::move(optimizer));
+                    }
+            };
+
+            class IterationIterationHeuristicTimeMachineAsStatisticalMachine: public virtual score_context_optimizer::StatisticalMachineInterface,
+                                                                              public virtual score_context_optimizer::IterationContextGeneratorInterface
+            {
+                private:
+
+                    std::unique_ptr<score_context_optimizer::IterationContextGeneratorInterface> base;
+
+                public:
+
+                    IterationIterationHeuristicTimeMachineAsStatisticalMachine(std::unique_ptr<score_context_optimizer::IterationContextGeneratorInterface> base): base(std::move(base)){}
+
+                    auto get() -> std::unique_ptr<score_context_optimizer::IterationContextInterface>
+                    {
+                        return this->base->get();                        
+                    }
+            };
+
+            class IterationIterationHeuristicTimeMachineGenerator: public virtual score_context_optimizer::StatisticalMachineGeneratorInterface
+            {
+                private:
+
+                    size_t float_byte_width;
+
+                public:
+
+                    IterationIterationHeuristicTimeMachineGenerator(size_t float_byte_width): float_byte_width(float_byte_width){}
+
+                    auto get() -> std::unique_ptr<score_context_optimizer::StatisticalMachineInterface>
+                    {
+                        auto optimizer = score_context_optimizer::ContextOptimizerFactory::get_best_binary_progress_context_optimizer(std::make_unique<IterationHeuristicTimeMachineGenerator>(this->float_byte_width));
+
+                        return std::make_unique<IterationIterationHeuristicTimeMachineAsStatisticalMachine>(std::move(optimizer));
                     }
             };
     };

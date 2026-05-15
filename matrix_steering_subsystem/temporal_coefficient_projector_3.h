@@ -151,7 +151,7 @@ namespace temporal_coefficient_projector_3
                 return rs;
             }
 
-            auto randomize_activation_size_within(size_t sz) -> size_t
+            auto randomize_activation_size_inclusive(size_t sz) -> size_t
             {
                 if (sz == 0u)
                 {
@@ -169,7 +169,7 @@ namespace temporal_coefficient_projector_3
                 return sz / MAX_VECTOR_SIZE + static_cast<size_t>(sz % MAX_VECTOR_SIZE != 0u);
             }
 
-            auto randomize_vector_chunk_size(size_t sz) -> size_t
+            auto randomize_vector_chunk_size_inclusive(size_t sz) -> size_t
             {
                 size_t tentative_chunk_size     = this->app_randomizer.ld_randomize_percentage_focal() * sz;
                 const size_t MIN_CHUNK_SIZE     = 1u;
@@ -230,9 +230,9 @@ namespace temporal_coefficient_projector_3
                                                      std::vector<std::pair<size_t, size_t>>>
             {
                 size_t sz               = this->projection_sz;
-                size_t chunk_sz         = this->randomize_vector_chunk_size(sz);
+                size_t chunk_sz         = this->randomize_vector_chunk_size_inclusive(sz);
                 size_t segment_sz       = sz / chunk_sz + static_cast<size_t>(sz % chunk_sz != 0u);
-                size_t activation_sz    = this->randomize_activation_size_within(segment_sz);
+                size_t activation_sz    = this->randomize_activation_size_inclusive(segment_sz);
                 size_t rem_sz           = segment_sz * chunk_sz - sz;
 
                 std::vector<activation::activation_codex_t> activation_codex_vec    = this->randomize_activation_vector(activation_sz);
@@ -278,9 +278,9 @@ namespace temporal_coefficient_projector_3
                 std::unique_ptr<range_optimizer::RangePredictionResultInterface> range_prediction_result    = this->range_predictor->next();
                 
                 size_t max_activation_sz    = std::min(range_prediction_result->get_range(), this->projection_sz);
-                size_t chunk_sz             = this->randomize_vector_chunk_size(max_activation_sz);
+                size_t chunk_sz             = this->randomize_vector_chunk_size_inclusive(max_activation_sz);
                 size_t max_segment_sz       = max_activation_sz / chunk_sz + static_cast<size_t>(max_activation_sz % chunk_sz != 0u);
-                size_t activation_sz        = this->randomize_activation_size_within(max_segment_sz);
+                size_t activation_sz        = this->randomize_activation_size_inclusive(max_segment_sz);
 
                 size_t sz                   = this->projection_sz;
                 size_t segment_sz           = sz / chunk_sz + static_cast<size_t>(sz % chunk_sz != 0u);

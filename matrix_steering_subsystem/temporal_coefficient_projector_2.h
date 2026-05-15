@@ -775,7 +775,7 @@ namespace temporal_coefficient_projector_2
             {
                 std::unique_ptr<cosine_recommender_machine_x::CosineRecommendationResultInterface> recommendable = this->cosine_recommender->next();
 
-                std::vector<PromotedFloatType> coefficient_vec                  = recommendable->get();
+                std::vector<PromotedFloatType> coefficient_vec                  = stdx::to_castable_vector_initializer(recommendable->get());
                 std::vector<std::vector<PromotedFloatType>> coefficient_2d_vec  = {};
 
                 for (size_t i = 0u; i < coefficient_sz; ++i)

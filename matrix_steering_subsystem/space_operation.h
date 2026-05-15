@@ -322,7 +322,6 @@ namespace space_operation
                                   distance,
                                   output_arr);
     }
-
 }
 
 #endif

@@ -82,7 +82,6 @@ namespace cuda_immutable_memory
         get_instance()->evict_memory(&immutable_reference, 1u);
     }
 
-
     auto get_cu_memspan(MemoryReference memory_reference) noexcept -> std::pair<void *, size_t>
     {
         return std::make_pair(memory_reference.device_ptr, memory_reference.ptr_mem_sz);

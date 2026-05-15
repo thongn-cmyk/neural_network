@@ -658,7 +658,7 @@ namespace temporal_coefficient_projector
             {
                 std::vector<std_float_t> unit_vec = clamp_vector(get_random_unit_vector(coefficient_sz));
 
-                return std::make_unique<LineTemporalCoefficientProjector<PromotedFloatType>>(stdx::to_castable_vector_initializer<PromotedFloatType>(std::move(unit_vec)));
+                return std::make_unique<LineTemporalCoefficientProjector<PromotedFloatType>>(stdx::to_castable_vector_initializer(std::move(unit_vec)));
             }
 
             template <class PromotedFloatType = std_float_t>
@@ -668,9 +668,9 @@ namespace temporal_coefficient_projector
                 std::vector<std_float_t> radian_vec       = clamp_vector(get_random_radian_coordinate(coefficient_sz));
                 std::vector<std_float_t> radius_vec       = clamp_vector(space_operation::mul_vector(get_random_unit_vector(coefficient_sz), static_cast<std_float_t>(FocalRandomizer::ld_randomize_focal())));
 
-                return std::make_unique<OvalTemporalCoefficientProjector<PromotedFloatType>>(LineTemporalCoefficientProjector<PromotedFloatType>(stdx::to_castable_vector_initializer<PromotedFloatType>(std::move(directional_vec))),
-                                                                                             stdx::to_castable_vector_initializer<PromotedFloatType>(std::move(radian_vec)),
-                                                                                             stdx::to_castable_vector_initializer<PromotedFloatType>(std::move(radius_vec)));
+                return std::make_unique<OvalTemporalCoefficientProjector<PromotedFloatType>>(LineTemporalCoefficientProjector<PromotedFloatType>(stdx::to_castable_vector_initializer(std::move(directional_vec))),
+                                                                                             stdx::to_castable_vector_initializer(std::move(radian_vec)),
+                                                                                             stdx::to_castable_vector_initializer(std::move(radius_vec)));
             }
 
             template <class PromotedFloatType = std_float_t>

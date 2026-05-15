@@ -33,7 +33,6 @@ namespace range_optimizer
             virtual auto size() -> size_t = 0;
     };
 
-
     class ExponentialRangePredictor: public virtual RangePredictorInterface
     {
         private:

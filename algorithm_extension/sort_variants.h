@@ -31,6 +31,7 @@
 #include "assert.h"
 #include <type_traits>
 #include <bit>
+#include <climits>
 
 namespace dg::sort_variants::quicksort{
 

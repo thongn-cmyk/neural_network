@@ -382,6 +382,8 @@ namespace dg::network_compact_serializer::exception_space{
 
 namespace dg::network_compact_serializer::types_space{
 
+    using utc_clock_t   = std::chrono::high_resolution_clock;
+
     static constexpr auto nil_lambda = []<class ...Args>(Args&&...){}; 
 
     template <class T, class = void>
@@ -454,7 +456,7 @@ namespace dg::network_compact_serializer::types_space{
     struct is_utc_timepoint: std::false_type{};
 
     template <>
-    struct is_utc_timepoint<std::chrono::time_point<std::chrono::utc_clock, std::chrono::nanoseconds>>: std::bool_constant<std::is_same_v<typename std::chrono::utc_clock::rep, int64_t>>{};
+    struct is_utc_timepoint<std::chrono::time_point<utc_clock_t, std::chrono::nanoseconds>>: std::bool_constant<std::is_same_v<typename utc_clock_t::rep, int64_t>>{};
 
     template <class T>
     struct is_std_duration: std::false_type{};

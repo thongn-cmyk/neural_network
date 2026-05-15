@@ -13,6 +13,7 @@
 #include <stl_extension/unordered_node_map.h>
 #include <stl_extension/hasher.h>
 #include "assert.h"
+#include <algorithm_extension/short_heap.h>
 
 namespace virtual_interval_coefficient_optimizer_tree
 {
@@ -73,19 +74,17 @@ namespace virtual_interval_coefficient_optimizer_tree
             };
 
             std::vector<size_t> translation_table;
-            std::deque<Edge> promotion_queue;
+            std::vector<Edge> promotion_queue;
 
             size_t base_sz;
             size_t leaf_sz;
             size_t promotion_queue_cap;
-            size_t hint_sample_sz;
 
         public:
 
             SegmentMapper(size_t base_sz,
                           size_t leaf_sz,
-                          size_t promotion_queue_cap,
-                          size_t hint_sample_sz)
+                          size_t promotion_queue_cap)
             {
                 if (leaf_sz == 0u)
                 {
@@ -97,11 +96,10 @@ namespace virtual_interval_coefficient_optimizer_tree
                 this->translation_table     = std::vector<size_t>(translation_table_sz);
                 std::iota(translation_table.begin(), translation_table.end(), 0u);
 
-                this->promotion_queue       = std::deque<Edge>();
+                this->promotion_queue       = std::vector<Edge>();
                 this->base_sz               = base_sz;
                 this->leaf_sz               = leaf_sz;
                 this->promotion_queue_cap   = promotion_queue_cap;
-                this->hint_sample_sz        = hint_sample_sz;
             }
 
             void hint(const std::vector<std::pair<size_t, size_t>>& segment_vec, std_float_t rating)
@@ -116,10 +114,14 @@ namespace virtual_interval_coefficient_optimizer_tree
                     return;
                 }
 
+                if (rating <= 0)
+                {
+                    return;
+                }
+
                 this->check_segment_vector_bound(segment_vec);
 
                 std::unordered_set<size_t> cmb_idx_set{};
-                size_t hint_counter = 0u;
 
                 for (size_t i = 0u; i < segment_vec.size(); ++i)
                 {
@@ -133,19 +135,12 @@ namespace virtual_interval_coefficient_optimizer_tree
                 {
                     for (size_t j = i + 1; j < cmb_idx_vec.size(); ++j)
                     {
-                        if (hint_counter == this->hint_sample_sz)
-                        {
-                            return;
-                        }
-
                         this->push_promotion_queue(Edge
                         {
                             .src_vtx    = cmb_idx_vec[i],
                             .dst_vtx    = cmb_idx_vec[j],
                             .score      = rating
                         });
-
-                        hint_counter += 1;
                     }
                 }
             }
@@ -170,7 +165,7 @@ namespace virtual_interval_coefficient_optimizer_tree
                     });
                 }
 
-                for (const Edge& internal_edge: this->accum_and_filter_edges({this->promotion_queue.begin(), this->promotion_queue.end()}))
+                for (const Edge& internal_edge: this->accum_and_filter_edges(this->promotion_queue))
                 {
                     optimizing_edge_vec.push_back(graph_optimizer::BinaryFCDEdgeInformation
                     {
@@ -458,10 +453,19 @@ namespace virtual_interval_coefficient_optimizer_tree
 
                 if (this->promotion_queue.size() == this->promotion_queue_cap)
                 {
-                    this->promotion_queue.pop_front();
+                    this->promotion_queue.pop_back();
                 }
 
                 this->promotion_queue.push_back(edge);
+
+                auto is_greater_eq_cmp = [](const auto& lhs, const auto& rhs)
+                {
+                    return lhs.score >= rhs.score;
+                };
+
+                algorithm_extension::push_heap(this->promotion_queue.begin(),
+                                               this->promotion_queue.end(),
+                                               is_greater_eq_cmp);
             }
     };
 
@@ -487,7 +491,9 @@ namespace virtual_interval_coefficient_optimizer_tree
                     tensor_vec.push_back(this->base_tree->get_coefficient_span(range));
                 }
 
-                return std::make_unique<InternalBatchCoefficientSpaceTensor>(range_vec, std::move(tensor_vec), this->segment_mapper);
+                return std::make_unique<InternalBatchCoefficientSpaceTensor>(range_vec,
+                                                                             std::move(tensor_vec),
+                                                                             this->segment_mapper);
             }
 
             auto translate(const std::pair<size_t, size_t>& interval) -> std::vector<std::pair<size_t, size_t>>
@@ -581,8 +587,7 @@ namespace virtual_interval_coefficient_optimizer_tree
                 using namespace interval_coefficient_optimizer_tree;
 
                 const size_t MULTIPLIER             = leaf_sz;
-                const size_t PROMOTION_QUEUE_CAP    = size_t{1} << 16;
-                const size_t HINT_SAMPLE_SZ         = size_t{1} << 4;
+                const size_t PROMOTION_QUEUE_CAP    = size_t{1} << 8;
 
                 if (space_sz % MULTIPLIER != 0u)
                 {
@@ -593,8 +598,7 @@ namespace virtual_interval_coefficient_optimizer_tree
 
                 std::unique_ptr<SegmentMapperInterface> segment_mapper          = std::make_unique<SegmentMapper>(upceil_space_sz,
                                                                                                                   MULTIPLIER,
-                                                                                                                  PROMOTION_QUEUE_CAP,
-                                                                                                                  HINT_SAMPLE_SZ);
+                                                                                                                  PROMOTION_QUEUE_CAP);
 
                 std::unique_ptr<CoefficientOptimizerTreeInterface> optimizer    = std::make_unique<ExternalCoefficientOptimizerTree>(space_sz, MULTIPLIER);
 
