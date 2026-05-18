@@ -1,5 +1,7 @@
 #include <serializer/dg_buf.h>
 #include <cuda_management/host_service_header.h>
+#include <cuda_management/host_service.h>
+#include <cuda_management/host_service_dgbuf.h>
 #include <iostream>
 #include <type_traits>
 
@@ -64,6 +66,16 @@ void host_test_vector()
     cudaDeviceSynchronize();
 }
 
+void host_test_vector_2()
+{
+    std::vector<size_t> total_vec{1, 2, 3, 4, 5, 6};
+
+    auto cuda_total_vec = cuda_management::host_service::to_cuda_dgbuf(total_vec);
+
+    test_vector<<<1, 1>>>(*cuda_total_vec, 21);
+    cudaDeviceSynchronize();
+}
+
 void host_test_2d_vector()
 {
     std::vector<std::vector<size_t>> total_vec{{1, 2}, {3, 4}, {5, 6}};
@@ -99,13 +111,27 @@ void host_test_2d_vector()
     cudaDeviceSynchronize();    
 }
 
+void host_test_2d_vector_2()
+{
+    std::vector<std::vector<size_t>> total_vec{{1, 2}, {3, 4}, {5, 6}};
+
+    auto cuda_total_vec = cuda_management::host_service::to_cuda_dgbuf(total_vec);
+
+    test_2d_vector<<<1, 1>>>(*cuda_total_vec, 21);
+    cudaDeviceSynchronize();    
+}
+
 void run_test()
 {
     std::cout << "__BEGIN_CU_DG_BUF_TEST__\n";
     std::cout << "testing host vector...\n";
     host_test_vector();
+    std::cout << "testing host vector (alternative implementation)...\n";
+    host_test_vector_2();
     std::cout << "testing host 2d vector...\n";
     host_test_2d_vector();
+    std::cout << "testing host 2d vector (alternative implementation)...\n";
+    host_test_2d_vector_2();
     std::cout << "__END_CU_DG_BUF_TEST__\n";
 }
 

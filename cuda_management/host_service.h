@@ -19,7 +19,7 @@ namespace cuda_management::host_service
 
     extern auto make_cuda_buffer_from_size(size_t sz) -> std::shared_ptr<char[]>
     {
-        #ifdef __CUACC__
+        #ifdef __CUDACC__
         {
             if (sz == 0u)
             {
@@ -55,7 +55,7 @@ namespace cuda_management::host_service
 
     extern void memcpy_host_to_device(void * dst, const void * src, size_t sz)
     {
-        #ifdef __CUACC__
+        #ifdef __CUDACC__
         {
             if (sz == 0u)
             {
@@ -78,7 +78,7 @@ namespace cuda_management::host_service
 
     extern void memcpy_device_to_host(void * dst, const void * src, size_t sz)
     {
-        #ifdef __CUACC__
+        #ifdef __CUDACC__
         {
             if (sz == 0u)
             {
@@ -101,7 +101,7 @@ namespace cuda_management::host_service
 
     extern auto make_cuda_buffer_from_host_view(std::string_view host_view) -> std::shared_ptr<char[]>
     {
-        #ifdef __CUACC__
+        #ifdef __CUDACC__
         {
             std::shared_ptr<char[]> rs  = make_cuda_buffer_from_size(host_view.size());
             memcpy_host_to_device(rs.get(), host_view.data(), host_view.size());
@@ -117,7 +117,7 @@ namespace cuda_management::host_service
 
     extern auto cuda_to_host_buffer(const std::shared_ptr<char[]>& cuda_buf, size_t cuda_buf_sz) -> std::shared_ptr<char[]>
     {
-        #ifdef __CUACC__
+        #ifdef __CUDACC__
         {
             if (cuda_buf == nullptr)
             {

@@ -13,7 +13,7 @@ namespace float_def
     using std_float_t               = double;
     using tm_float_t                = double;
     using eval_float_t              = double;
-    using mdc_float_t               = double;
+    using mdc_float_t               = float;
     using highest_precision_float_t = long double;
 
     static_assert(sizeof(double) == 8u);

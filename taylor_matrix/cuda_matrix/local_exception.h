@@ -6,7 +6,7 @@
 
 namespace taylor_matrix::cuda_matrix::local_exception
 {
-    using local_exception_t = uint8_t;
+    using local_exception_t = uint32_t;
 
     static inline constexpr local_exception_t SUCCESS                                   = 0u;
     static inline constexpr local_exception_t OUT_OF_BOUND_ACCESS_CODE                  = 1u;

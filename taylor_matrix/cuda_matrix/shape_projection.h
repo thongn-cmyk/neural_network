@@ -400,7 +400,7 @@ namespace taylor_matrix::cuda_matrix::shape_projection
                                                                                               CoeffSizeContainer base_coeff_sz_container,
                                                                                               const FloatType * coeff_arr, size_t& coeff_arr_offset, size_t coeff_arr_cap,
                                                                                               FloatType * output_arr, size_t output_arr_sz,
-                                                                                              local_exception_t * err,
+                                                                                              local_exception_t * err = nullptr,
                                                                                               const Tag<PromotedFloatType>& promotion_tag = Tag<PromotedFloatType>{},
                                                                                               bool has_logit_reuse_tag = true)
     {

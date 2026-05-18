@@ -39,28 +39,28 @@ namespace cuda_management::scope_allocator
             }
     };
 
+    struct MemorySegment
+    {
+        char * buf;
+        size_t buf_sz;
+    };
+
+    struct MemoryPoint
+    {
+        size_t slot;
+        size_t offset;
+    };
+
+    struct SavedMemoryPoint
+    {
+        bool is_optional;
+        MemoryPoint value;
+    };
+
     template <class Allocator = cuda_management::device_memory::CudaAllocator>
     class SplitStackAllocator
     {
         private:
-
-            struct MemorySegment
-            {
-                char * buf;
-                size_t buf_sz;
-            };
-
-            struct MemoryPoint
-            {
-                size_t slot;
-                size_t offset;
-            };
-
-            struct SavedMemoryPoint
-            {
-                bool is_optional;
-                MemoryPoint value;
-            };
 
             cuda_vector::trivial_cuda_vector<MemorySegment, Allocator> stack_buffer_vec;
             cuda_vector::trivial_cuda_vector<SavedMemoryPoint, Allocator> saved_point_vec;

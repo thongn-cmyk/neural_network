@@ -27,7 +27,7 @@ namespace cuda_management::host_service
         static_assert(sizeof(T) != 0u);
         static_assert(std::endian::native == std::endian::little);
 
-        T obj                                   = T(std::forward<Args>(args...));
+        T obj                                   = T(std::forward<Args>(args)...);
         std::array<char, sizeof(T)> byte_rep    = std::bit_cast<std::array<char, sizeof(T)>>(obj);
 
         return std::static_pointer_cast<T>(std::static_pointer_cast<void>(make_cuda_buffer_from_host_view(std::string_view(byte_rep.data(), byte_rep.size()))));
@@ -49,3 +49,5 @@ namespace cuda_management::host_service
         return std::bit_cast<T>(byte_rep);
     }
 }
+
+#endif

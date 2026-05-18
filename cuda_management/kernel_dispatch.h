@@ -11,16 +11,19 @@ namespace cuda_management::kernel_dispatch
 {
     struct SmpSignature{};
 
-    using SmpSingletonContainer = stdx::singleton_container<std::unique_ptr<std::semaphore>, SmpSignature>;
-
     static inline constexpr size_t KERNEL_CONCURRENT_DISPATCH_COUNT = size_t{1} << 4;
+
+    using semaphore = std::counting_semaphore<KERNEL_CONCURRENT_DISPATCH_COUNT>; 
+
+    using SmpSingletonContainer = stdx::singleton_container<std::unique_ptr<semaphore>, SmpSignature>;
+
     static inline constexpr size_t MAX_THREAD_SZ                    = size_t{1} << 8;
 
     void init()
     {
         stdx::memtransaction_guard tx_grd;
 
-        SmpSingletonContainer::get() = std::make_unique<std::semaphore>(KERNEL_CONCURRENT_DISPATCH_COUNT);
+        SmpSingletonContainer::get() = std::make_unique<semaphore>(KERNEL_CONCURRENT_DISPATCH_COUNT);
     }
 
     void deinit() noexcept
@@ -48,7 +51,7 @@ namespace cuda_management::kernel_dispatch
         return std::make_pair(blk_sz, MAX_THREAD_SZ);
     }
 
-    auto get_semaphore() -> std::semaphore&
+    auto get_semaphore() -> semaphore&
     {
         if (SmpSingletonContainer::get() == nullptr)
         {

@@ -10,17 +10,25 @@
 #include <unordered_map>
 #include <utility>
 #include "local_exception.h"
+#include "local_host_exception.h"
 #include "tensor_matrix_forward_header.h"
 #include <cuda_management/scope_allocator.h>
 #include <cuda_management/device_memory.h>
 #include <cuda_management/host_service_header.h>
+#include <cuda_management/host_service.h>
+#include "utility.h"
+#include "tensor_matrix_operation.h"
+#include <cuda_management/kernel_dispatch.h>
 
 namespace taylor_matrix::cuda_matrix::tensor_matrix_forward
 {
     //I just dont understand how people would use extern or separate header, .cpp files in modern C++
     //it just seems to me that 99% of the new features involve templates
 
-    #ifdef __CU_ACC__
+    #ifdef __CUDACC__
+
+    __device__ static constexpr inline size_t MIN_BASE_SHAPE_COEFF_SZ   = 1u;
+    __device__ static constexpr inline size_t MAX_BASE_SHAPE_COEFF_SZ   = 6u;
 
     __global__ void matrix_transform_helper(tensor_model::tensor_std_float_t ** matrix_arr, size_t matrix_arr_sz,
                                             MatrixShapeVector matrix_shape_vec,
@@ -36,10 +44,12 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_forward
                                             const tensor_model::tensor_std_float_t * shape_coeff_arr, size_t * shape_coeff_arr_offset, size_t shape_coeff_arr_cap,
 
                                             local_exception_t * err,
-                                            size_t * success_launch_counter)
+                                            uint32_t * success_launch_counter)
     {
         using namespace cuda_management::scope_allocator;
+        using namespace cuda_management::device_memory;
         using namespace device_tensor::model;
+        using namespace local_exception;
 
         size_t offset = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -62,16 +72,30 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_forward
         local_exception_t local_err = SUCCESS;
 
         {
-            scope_guard<SplitStackAllocator> scope_grd(&allocator);
+            scope_guard scope_grd(&allocator);
 
             auto callback_handler = [&]<size_t BaseSize>(const std::integral_constant<size_t, BaseSize> base_sz_ic)
             {
-                if (matrix_shape_vec.size() < 2u)
+                size_t * shape_arr  = std_new_array<size_t>(allocator, matrix_shape_vec.size());
+
+                for (size_t i = 0u; i < matrix_shape_vec.size(); ++i)
                 {
-                    atomicExch(err, OTHER_INVALID_ARGUMENT);
+                    shape_arr[i] = matrix_shape_vec[i];
+                }
+
+                local_exception_t shape_err = taylor_matrix::cuda_matrix::tensor_matrix_operation::check_shape(shape_arr, matrix_shape_vec.size());
+
+                if (shape_err != SUCCESS)
+                {
+                    atomicExch(err, shape_err);
                     return;
                 }
 
+                if (matrix_shape_vec.size() < 2u)
+                {
+                    assert(false);
+                }
+                
                 size_t local_shape_coeff_arr_offset{};
 
                 if (shape_coeff_arr_offset == nullptr)
@@ -119,7 +143,7 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_forward
             }
         }
 
-        atomicAdd(success_launch_counter, 1u);
+        atomicAdd(success_launch_counter, uint32_t{1});
     }
 
     __global__ void matrix_transform_size_helper(MatrixShapeVector matrix_shape_vec,
@@ -131,7 +155,8 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_forward
                                                  size_t base_shape_coeff_sz,
 
                                                  local_exception_t * err,
-                                                 size_t * result)
+                                                 size_t * result,
+                                                 bool * kernel_call_flag)
     {
         if (err == nullptr)
         {
@@ -143,14 +168,19 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_forward
             assert(false);
         }
 
-        auto callback_handler = []<size_t BaseSize>(const std::integral_constant<size_t, BaseSize> base_sz_ic)
+        if (kernel_call_flag == nullptr)
+        {
+            assert(false);
+        }
+
+        auto callback_handler = [&]<size_t BaseSize>(const std::integral_constant<size_t, BaseSize> base_sz_ic)
         {
             *result = taylor_matrix::cuda_matrix::tensor_matrix_operation::matrix_transform_size(matrix_shape_vec,
                                                                                                  focal_sz_vec,
                                                                                                  focal_suffix_map,
                                                                                                  rotation_sz_vec,
                                                                                                  parameter_bound_ratio_vec,
-                                                                                                 base_sz_ic,
+                                                                                                 utility::to_size_container(base_sz_ic),
                                                                                                  err);
         };
 
@@ -159,6 +189,8 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_forward
                                     std::integral_constant<size_t, MAX_BASE_SHAPE_COEFF_SZ>{},
                                     callback_handler,
                                     err);
+
+        *kernel_call_flag = true;
     }
 
     #endif
@@ -176,33 +208,34 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_forward
                                  size_t base_shape_coeff_sz,
                                  const tensor_model::tensor_std_float_t * shape_coeff_arr, size_t * shape_coeff_arr_offset, size_t shape_coeff_arr_cap)
     {
-        #ifdef __CU_ACC__
+        #ifdef __CUDACC__
         {
+            using namespace local_exception;
+
             size_t blk_per_grid_sz{};
             size_t thread_per_blk_sz{};
 
             std::shared_ptr<local_exception_t> cuda_err     = cuda_management::host_service::make_cuda_object<local_exception_t>(SUCCESS);
-            std::shared_ptr<size_t> cuda_success_counter    = cuda_management::host_service::make_cuda_object<size_t>(0u);
-
+            std::shared_ptr<uint32_t> cuda_success_counter  = cuda_management::host_service::make_cuda_object<uint32_t>(0u);
             std::tie(blk_per_grid_sz, thread_per_blk_sz)    = cuda_management::kernel_dispatch::get_block_thread(matrix_arr_sz);
 
-            stdx::smp_guard<std::semaphore> smp_grd(cuda_management::kernel_dispatch::get_semaphore());
+            stdx::smp_guard smp_grd(cuda_management::kernel_dispatch::get_semaphore());
 
-            matrix_transform_helper<<<blk_per_grd_sz, thread_per_blk_sz>>>(matrix_arr, matrix_arr_sz,
-                                                                           matrix_shape_vec,
+            matrix_transform_helper<<<blk_per_grid_sz, thread_per_blk_sz>>>(matrix_arr, matrix_arr_sz,
+                                                                            matrix_shape_vec,
 
-                                                                           output,
+                                                                            output,
 
-                                                                           focal_sz_vec,
-                                                                           focal_suffix_map,
-                                                                           rotation_sz_vec,
-                                                                           parameter_bound_ratio_vec,
+                                                                            focal_sz_vec,
+                                                                            focal_suffix_map,
+                                                                            rotation_sz_vec,
+                                                                            parameter_bound_ratio_vec,
 
-                                                                           base_shape_coeff_sz,
-                                                                           shape_coeff_arr, shape_coeff_arr_offset, shape_coeff_arr_cap,
+                                                                            base_shape_coeff_sz,
+                                                                            shape_coeff_arr, shape_coeff_arr_offset, shape_coeff_arr_cap,
 
-                                                                           cuda_err.get(),
-                                                                           cuda_success_counter.get());
+                                                                            cuda_err.get(),
+                                                                            cuda_success_counter.get());
 
             cudaError_t sync_err = cudaDeviceSynchronize();
 
@@ -211,8 +244,8 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_forward
                 throw bad_cuda_synchronization(cudaGetErrorString(sync_err));
             }
 
-            local_exception_t host_err  = cuda_management::host_service::read_cuda_object(cuda_err);
-            size_t host_success_counter = cuda_management::host_service::read_cuda_object(cuda_success_counter);
+            local_exception_t host_err      = cuda_management::host_service::read_cuda_object(cuda_err);
+            uint32_t host_success_counter   = cuda_management::host_service::read_cuda_object(cuda_success_counter);
 
             throw_error_code(host_err);
 
@@ -235,12 +268,15 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_forward
                                       ParameterBoundRatioVector parameter_bound_ratio_vec,
                                       size_t base_shape_coeff_sz) -> uint64_t
     {
-        #ifdef __CU_ACC__
+        #ifdef __CUDACC__
         {
+            using namespace local_exception;
+
             std::shared_ptr<local_exception_t> cuda_err     = cuda_management::host_service::make_cuda_object<local_exception_t>(SUCCESS);
             std::shared_ptr<size_t> cuda_result             = cuda_management::host_service::make_cuda_object<size_t>();
+            std::shared_ptr<bool> cuda_kernel_call_flag     = cuda_management::host_service::make_cuda_object<bool>(false);
 
-            stdx::smp_guard<std::semaphore> smp_grd(cuda_management::kernel_dispatch::get_semaphore());
+            stdx::smp_guard smp_grd(cuda_management::kernel_dispatch::get_semaphore());
 
             matrix_transform_size_helper<<<1, 1>>>(matrix_shape_vec,
                                                    focal_sz_vec,
@@ -249,7 +285,8 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_forward
                                                    parameter_bound_ratio_vec,
                                                    base_shape_coeff_sz,
                                                    cuda_err.get(),
-                                                   cuda_result.get());
+                                                   cuda_result.get(),
+                                                   cuda_kernel_call_flag.get());
 
             cudaError_t sync_err = cudaDeviceSynchronize();
 
@@ -258,8 +295,15 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_forward
                 throw bad_cuda_synchronization(cudaGetErrorString(sync_err));
             }
 
+            bool host_kernel_call_flag  = cuda_management::host_service::read_cuda_object(cuda_kernel_call_flag);
+
+            if (host_kernel_call_flag == false)
+            {
+                throw other_runtime_error("kernel call failed");
+            }
+
             local_exception_t host_err  = cuda_management::host_service::read_cuda_object(cuda_err);
-            size_t host_result          = cuda_maangement::host_service::read_cuda_object(cuda_result);
+            size_t host_result          = cuda_management::host_service::read_cuda_object(cuda_result);
 
             throw_error_code(host_err);
 

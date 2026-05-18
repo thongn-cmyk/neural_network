@@ -11,11 +11,11 @@ namespace deviation_projector::cuda_device
     using namespace device_tensor::model;
     using namespace deviation_projector::cuda_device::local_exception;
 
-    using deviation_calculator_function = __device__ double (*)(Matrix *, Matrix *, local_exception_t *);
+    using deviation_calculator_function = double (*)(Matrix *, Matrix *, local_exception_t *);
 
-    __device__ static inline size_t DEVIATION_CALCULATOR_FUNCTION_TABLE_SZ  = 1u;
+    __device__ static constexpr inline size_t DEVIATION_CALCULATOR_FUNCTION_TABLE_SZ  = 1u;
 
-    __device__ static inline deviation_calculator_function deviation_calculation_table[DEVIATION_CALCULATOR_FUNCTION_TABLE_SZ]
+    __device__ static deviation_calculator_function deviation_calculation_table[DEVIATION_CALCULATOR_FUNCTION_TABLE_SZ]
     {
         deviation_projector::cuda_device::mean_square::mean_square
     };

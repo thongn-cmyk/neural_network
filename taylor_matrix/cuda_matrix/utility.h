@@ -7,7 +7,7 @@
 #include <type_traits>
 #include "assert.h"
 #include <cuda_management/utility.h>
-#include <local_exception.h>
+#include "local_exception.h"
 
 namespace taylor_matrix::cuda_matrix::utility
 {
@@ -169,7 +169,7 @@ namespace taylor_matrix::cuda_matrix::utility
         {
             if (err != nullptr)
             {
-                *err = OTHER_INVALID_ARGUMENT;
+                *err = local_exception::OTHER_INVALID_ARGUMENT_CODE;
             }
         }
     }

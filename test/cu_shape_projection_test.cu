@@ -64,9 +64,9 @@ __global__ void test_multidimensional_taylor_shape_projection()
     size_t coeff_arr_offset = 0u;
 
     taylor_matrix::cuda_matrix::shape_projection::multidimensional_taylor_shape_project(x_arr, taylor_matrix::cuda_matrix::utility::to_size_container(3),
-                                                                    taylor_matrix::cuda_matrix::utility::to_size_container(3),
-                                                                    coeff_arr, coeff_arr_offset, 81u,
-                                                                    y_arr, 3);
+                                                                                        taylor_matrix::cuda_matrix::utility::to_size_container(3),
+                                                                                        coeff_arr, coeff_arr_offset, 81u,
+                                                                                        y_arr, 3);
 
     assert((y_arr[0] != getnan(y_arr[0])));
     assert((y_arr[1] != getnan(y_arr[1])));

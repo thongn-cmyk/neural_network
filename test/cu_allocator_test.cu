@@ -19,7 +19,7 @@ __device__ void sum(size_t& value, size_t sz, ScopeAllocator&& allocator)
 
     for (size_t i = 0u; i < sz; ++i)
     {
-        value += i;
+        value += arr[i];
     }
 } 
 
@@ -64,7 +64,7 @@ __global__ void test_scope_allocator()
     SplitStackAllocator allocator{};
     size_t total        = 0u;
     const size_t SUM_SZ = 100u;
-    const size_t RUN_SZ = 100000u; 
+    const size_t RUN_SZ = 1'000'000u; 
 
     for (size_t i = 0u; i < RUN_SZ; ++i)
     {

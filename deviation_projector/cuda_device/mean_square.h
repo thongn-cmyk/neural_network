@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <matrix/device_tensor/model.h>
 #include <matrix/device_tensor/common_operation.h>
-#include "utility.h"
+#include <cuda_management/utility.h>
 
 namespace deviation_projector::cuda_device::mean_square
 {
@@ -16,9 +16,8 @@ namespace deviation_projector::cuda_device::mean_square
                                   Matrix * rhs,
                                   local_exception_t * err = nullptr)
     {
-        using namespace deviation_projector::cuda_device::utility;
-        using namespace cuda_management::utility;
         using namespace device_tensor::common_operation;
+        using namespace cuda_management::utility;
 
         safe_ptr_access(lhs);
         safe_ptr_access(rhs);
@@ -30,19 +29,8 @@ namespace deviation_projector::cuda_device::mean_square
             err = &local_err;
         }
 
-        auto lhs_shape = get_shape(lhs, err);
-
-        if (*err != SUCCESS)
-        {
-            return {};
-        }
-
-        auto rhs_shape = get_shape(rhs, err);
-
-        if (*err != SUCCESS)
-        {
-            return {};
-        }
+        auto lhs_shape = get_shape(lhs);
+        auto rhs_shape = get_shape(rhs);
 
         if (lhs_shape != rhs_shape)
         {

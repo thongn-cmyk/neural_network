@@ -1860,7 +1860,8 @@ namespace dg::dgbuf::std_iterator
         }
         else
         {
-            static_assert(constants::FALSE_VAL<>);
+            assert(false);
+            // static_assert(constants::FALSE_VAL<>);
         }
     }
 }

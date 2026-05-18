@@ -22,7 +22,7 @@ namespace cuda_management::host_service
 
         auto deallocator = [mem_holder = std::move(immutable_wrapper)](decltype(result) * obj)
         {
-            *mem_holder = nullptr;
+            *mem_holder = nullptr; //this is to avoid undefined, mem_holder can be optimized away...
             delete obj;
         };
 

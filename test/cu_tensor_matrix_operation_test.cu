@@ -22,13 +22,16 @@ __global__ void test(FocalSizeVector focal_sz_vec,
     size_t sz{};
 
     taylor_matrix::cuda_matrix::tensor_matrix_operation::matrix_transform({},
+
                                                                           focal_sz_vec, {},
                                                                           suffix_map,
-                                                                          suffix_map,
+
                                                                           rotation_sz_vec, {},
                                                                           param_bound_ratio_vec, {},
+
                                                                           to_size_container(std::integral_constant<size_t, 1>{}),
                                                                           {}, sz, {},
+
                                                                           allocator);
 }
 

@@ -430,7 +430,7 @@ namespace trivial_serializer::archive{
         constexpr void put(const char *& buf, T&& data) const noexcept{
 
             using btype = types_space::base_type_t<T>;
-            static constexpr size_t VARIANT_COUNT = std::variant_size_v<btype>;
+            constexpr size_t VARIANT_COUNT = std::variant_size_v<btype>;
             constexpr size_t MAX_CONTAINABLE_VARIANT = static_cast<size_t>(std::numeric_limits<types::variant_index_type>::max()) + 1u;
 
             static_assert(VARIANT_COUNT <= MAX_CONTAINABLE_VARIANT);

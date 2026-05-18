@@ -28,6 +28,17 @@
 #include <serializer/trivial_serializer.h>
 #include <resource_disposer/resource_disposer.h>
 
+//You are right, I have not found a stable solution for large size messages with unexpected connection drops
+//Because we are coding system. We are expecting that our network is up and running 100% at all times, the otherwise just cannot be implemented without some kind of derangement
+
+//What I have not been able to implement yet is fixed outdegree and fixed outbound bandwidth
+//as we have already observed, best bandwidth or the ideal number "unacknowledged packet count" lies probably around 1 << 10 -> 1 << 16
+//so with fixed bandwidth for each of the outdegree, which is 1 << 8 -> 1 << 14, we can 100% guarantee that our packets are delivered in a timely manner, but that's out of the scope of our system, because most of the time, we only do 1-1 heavy transfer and just some calls to synchronize   
+//but the implementation I would guess is we'd have some kind of congestion, or an unusual amount of in-transit memory, which we'd have to make sure by synchronization at the caller points, so master-slave is a mandatory, not an optional choice in this case
+
+//So ideally in our case, this operation is a scope operation with on-demand spawns, and a kernel termination as a job cleanup guarantee
+//I just cannot see it otherwise 
+
 using namespace dg_sock::network_rest_frame::model;
 using ResponseInterface = dg_sock::network_rest_frame::client::ResponseInterface;
 
