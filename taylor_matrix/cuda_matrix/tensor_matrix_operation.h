@@ -526,6 +526,29 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_operation
     }
 
     //scope-operation
+    template <class AllocatorInterface>
+    __device__ constexpr auto series_normalize(Matrix ** matrix_arr,
+                                               size_t matrix_arr_sz,
+                                               AllocatorInterface&& allocator,
+                                               local_exception_t * err = nullptr) -> Matrix *
+    {
+        using namespace cuda_management::device_memory;
+
+        constexpr double RATIO_EXP_BASE = 10;
+
+        Matrix ** e_normed_arr  = std_new_array<std::add_pointer_t<Matrix>>(allocator, matrix_arr_sz);
+        double current_ratio    = 1u;
+
+        for (size_t i = 0u; i < matrix_arr_sz; ++i)
+        {
+            e_normed_arr[i] = div(matrix_arr[i], current_ratio, allocator);
+            current_ratio   *= RATIO_EXP_BASE;
+        }
+
+        return accumulate(e_normed_arr, matrix_arr_sz, allocator, err);
+    }
+
+    //scope-operation
     template <class AllocatorInterface, class SuffixMap>
     __device__ constexpr auto unfocal_matrix(Matrix ** matrix_vec, size_t matrix_vec_sz,
                                              size_t i,
@@ -930,7 +953,7 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_operation
             }
         }
 
-        Matrix * tmp_rs = avg(incremental_matrix_vec, incremental_matrix_vec_sz, allocator, err); //we are misisng a scaling factor
+        Matrix * tmp_rs = series_normalize(incremental_matrix_vec, incremental_matrix_vec_sz, allocator, err); //we are misisng a scaling factor
 
         if (*err != SUCCESS)
         {

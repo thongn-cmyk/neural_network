@@ -1,5 +1,8 @@
-#ifndef __REST_CONFIG_H__
-#define __REST_CONFIG_H__
+#ifndef __GLOBAL_REST_CONFIG_H__
+#define __GLOBAL_REST_CONFIG_H__
+
+#include <stdint.h>
+#include <stdlib.h>
 
 namespace global_config::rest_config
 {

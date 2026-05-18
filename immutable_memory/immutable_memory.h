@@ -6,6 +6,8 @@
 #include <memory>
 #include <string_view>
 #include <string>
+#include <unordered_set>
+#include <vector>
 
 namespace immutable_memory
 {

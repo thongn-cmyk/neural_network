@@ -5,7 +5,6 @@
 #include <stdlib.h>
 #include <functional>
 #include <memory>
-#include <cuda_runtime.h>
 #include <cstring>
 #include <string_view>
 #include <exception>
@@ -31,16 +30,31 @@ namespace cuda_management::host_service_x
 
             std::optional<BumpAllocationBucket> bump_allocation_bucket;
 
-            static inline constexpr size_t BUMP_ALLOCATION_BUCKET_SZ    = size_t{1} << 16;
-            static inline constexpr size_t BUMP_ALLOCATION_THRESHOLD    = size_t{1} << 12;
+            static inline constexpr size_t DEFAULT_BUMP_ALLOCATION_BUCKET_SZ    = size_t{1} << 16;
+            static inline constexpr size_t DEFAULT_BUMP_ALLOCATION_THRESHOLD    = size_t{1} << 12;
+
+            size_t bump_allocation_bucket_sz;
+            size_t bump_allocation_threshold;
 
         public:
 
-            PartialBumpAllocator(): bump_allocation_bucket(std::nullopt){}
+            PartialBumpAllocator(size_t bump_allocation_bucket_sz,
+                                 size_t bump_allocation_threshold): bump_allocation_bucket_sz(bump_allocation_bucket_sz),
+                                                                    bump_allocation_threshold(bump_allocation_threshold),
+                                                                    bump_allocation_bucket(std::nullopt)
+            {
+                if (bump_allocation_bucket_sz < bump_allocation_threshold)
+                {
+                    throw std::invalid_argument("bad bump_allocation_bucket_sz, bump_allocation_bucket_sz must be greater or equal to bump_allocation_threshold");
+                }
+            }
+
+            PartialBumpAllocator(): PartialBumpAllocator(DEFAULT_BUMP_ALLOCATION_BUCKET_SZ,
+                                                         DEFAULT_BUMP_ALLOCATION_THRESHOLD){}
 
             auto allocate(size_t sz) -> std::shared_ptr<char[]>
             {
-                if (sz > BUMP_ALLOCATION_THRESHOLD)
+                if (sz > this->bump_allocation_threshold)
                 {
                     return this->huge_allocate(sz);
                 }
@@ -56,15 +70,15 @@ namespace cuda_management::host_service_x
             {
                 this->bump_allocation_bucket = BumpAllocationBucket
                 {
-                    .buf        = cuda_management::host_service::make_cuda_buffer_from_size(BUMP_ALLOCATION_BUCKET_SZ),
+                    .buf        = cuda_management::host_service::make_cuda_buffer_from_size(this->bump_allocation_bucket_sz),
                     .used_sz    = size_t{0},
-                    .buf_sz     = BUMP_ALLOCATION_BUCKET_SZ
+                    .buf_sz     = this->bump_allocation_bucket_sz
                 };
             }
 
             auto huge_allocate(size_t sz) -> std::shared_ptr<char[]>
             {
-                return cu_x::make_cuda_buffer_from_size(sz);
+                return cuda_management::host_service::make_cuda_buffer_from_size(sz);
             }
 
             auto small_allocate(size_t sz) -> std::shared_ptr<char[]>
@@ -74,7 +88,7 @@ namespace cuda_management::host_service_x
                     return nullptr;
                 }
 
-                if (sz > BUMP_ALLOCATION_THRESHOLD)
+                if (sz > this->bump_allocation_threshold)
                 {
                     std::abort();
                 }

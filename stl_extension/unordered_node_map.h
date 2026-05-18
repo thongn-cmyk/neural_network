@@ -14,6 +14,7 @@
 #include <limits>
 #include <atomic>
 #include <algorithm>
+#include <climits>
 
 namespace unordered_map_variants{
 

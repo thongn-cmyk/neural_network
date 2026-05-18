@@ -6,8 +6,10 @@
 #include <string_view>
 #include <memory>
 #include <cuda_management/host_service_header.h>
+#include <cuda_management/host_service_x.h>
 #include "immutable_multiplatform_memory_x.h"
 #include <stl_extension/stdx.h>
+#include <global_config/cuda_immutable_memory_config.h>
 
 namespace cuda_immutable_memory
 {
@@ -20,17 +22,26 @@ namespace cuda_immutable_memory
 
     class InternalAllocator: public virtual immutable_multiplatform_memory_x::MemoryAllocatorInterface
     {
+        private:
+
+            cuda_management::host_service_x::PartialBumpAllocator base;
+
         public:
+
+            InternalAllocator(): base(global_config::cuda_immutable_memory_config::BUMP_ALLOCATION_SZ,
+                                      global_config::cuda_immutable_memory_config::BUMP_ALLOCATION_THRESHOLD){}
 
             auto allocate_from_view(std::string_view buffer_view) -> std::shared_ptr<void>
             {
-                return cuda_management::host_service::make_cuda_buffer_from_host_view(buffer_view);
+                return cuda_management::host_service_x::make_cuda_buffer_from_host_view(buffer_view, this->base);
             }
     };
 
-    void init(size_t cache_sz)
+    void init()
     {
-        SingletonObject::get() = std::make_unique<immutable_multiplatform_memory_x::ImmutableMemoryCache>(cache_sz);
+        SingletonObject::get() = std::make_unique<immutable_multiplatform_memory_x::ImmutableMemoryCache>(std::make_unique<InternalAllocator>(),
+                                                                                                          global_config::cuda_immutable_memory_config::GLOBAL_CACHE_SZ);
+
         std::atomic_thread_fence(std::memory_order_seq_cst);
     }
 

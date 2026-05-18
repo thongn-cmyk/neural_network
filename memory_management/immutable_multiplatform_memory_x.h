@@ -61,7 +61,7 @@ namespace immutable_multiplatform_memory_x
         std::shared_ptr<void> immutable_reference;
         std::shared_ptr<void> device_mem_ptr;
         size_t device_mem_ptr_sz;
-        size_t last_updated;
+        __uint128_t last_updated;
         size_t reference_counter;
     };
 
@@ -129,7 +129,7 @@ namespace immutable_multiplatform_memory_x
 
             size_t occupied_memory_sz;
             size_t auto_evict_memory_threshold;
-            size_t self_paced_clock;
+            __uint128_t self_paced_clock;
 
             std::unique_ptr<fair_mutex::fair_atomic_flag> mtx;
 
@@ -300,7 +300,7 @@ namespace immutable_multiplatform_memory_x
 
                 std::shared_ptr<void> device_mem_ptr    = this->allocator->allocate_from_view(arg.host_memory);
                 size_t device_mem_ptr_mem_sz            = arg.host_memory.size();
-                size_t last_updated                     = this->self_paced_clock++;
+                __uint128_t last_updated                = this->self_paced_clock++;
                 size_t reference_counter                = 1u;
 
                 MemoryNode mem_node                     = MemoryNode

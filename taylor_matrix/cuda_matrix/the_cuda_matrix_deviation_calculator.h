@@ -11,23 +11,28 @@
 #include <mutex_extension/fair_mutex.h>
 #include <matrix/tensor_model.h>
 #include "tensor_matrix_forward_to_deviation_header.h"
+#include "tensor_matrix_forward_header.h"
 #include <cuda_management/host_service_header.h>
+#include <cuda_management/host_service_dgbuf.h>
 #include <funnel/funnel.h>
 #include <bit>
 #include <cuda_management/host_service_x.h>
 #include <serializer/trivial_serializer.h>
 #include <deviation_projector/training_token_factory.h>
-#include <matrix/tensor_model.h>
 #include <matrix/tensor_factory.h>
 #include <immutable_memory/immutable_memory.h>
 #include <deviation_projector/cuda_device/host_code.h>
+#include <optional>
+#include <global_string_encoder/generic_encoder.h>
+#include <iterator>
+#include <memory>
 
 namespace taylor_matrix::cuda_matrix::the_cuda_matrix_deviation_calculator
 {
-    using mdc_float_t           = float_def::mdc_float_t;
-    using tensor_std_float_t    = tensor_model::tensor_std_float_t;
-
     using namespace taylor_matrix::cuda_matrix::tensor_matrix_forward_to_deviation;
+    using namespace tensor_model;
+
+    using mdc_float_t           = float_def::mdc_float_t;
 
     struct MatrixLayout
     {
@@ -209,20 +214,25 @@ namespace taylor_matrix::cuda_matrix::the_cuda_matrix_deviation_calculator
                 tmp_cuda_resource.focal_suffix_map          = cuda_management::host_service::to_cuda_dgbuf(this->focal_suffix_map);
                 tmp_cuda_resource.rotation_sz_vec           = cuda_management::host_service::to_cuda_dgbuf(this->rotation_sz_vec);
                 tmp_cuda_resource.parameter_bound_ratio_vec = cuda_management::host_service::to_cuda_dgbuf(this->parameter_bound_ratio_vec);
-                tmp_cuda_resource.logit_cuda_arr            = std::static_pointer_cast<tensor_std_float_t[]>(std::static_pointer_cast<void>(cuda_management::host_service::make_cuda_buffer_from_host_view(std::string_view(static_cast<char *>(static_cast<void *>(this->shape_coeff_vec.data())),
-                                                                                                                                                                                                                            this->shape_coeff_vec.size() * sizeof(tensor_std_float_t)))));
 
-                this->cuda_resource                         = tmp_cuda_resource;
+                std::string_view logit_view                 = std::string_view(static_cast<const char *>(static_cast<void *>(this->shape_coeff_vec.data())),
+                                                                               this->shape_coeff_vec.size() * sizeof(tensor_std_float_t));
+
+                std::shared_ptr<char[]> cuda_logit_view     = cuda_management::host_service::make_cuda_buffer_from_host_view(logit_view);
+                tmp_cuda_resource.logit_cuda_arr            = std::static_pointer_cast<tensor_std_float_t[]>(std::static_pointer_cast<void>(cuda_logit_view));
+
+                this->cuda_resource                         = std::move(tmp_cuda_resource);
             }
 
             static auto read_mem_layout(void * device_flat_buf) -> MatrixLayout
             {
                 constexpr size_t mem_layout_sz  = trivial_serializer::size(MatrixLayout{});
+
                 std::array<char, mem_layout_sz> mem_layout_buf{};
                 MatrixLayout mem_layout{};
 
                 cuda_management::host_service::memcpy_device_to_host(mem_layout_buf.data(), device_flat_buf, mem_layout_sz);
-                trivial_serializer::deserialize_to(mem_layout, mem_layout_buf.data());
+                trivial_serializer::deserialize_into(mem_layout, mem_layout_buf.data());
 
                 return mem_layout;
             }
@@ -230,18 +240,18 @@ namespace taylor_matrix::cuda_matrix::the_cuda_matrix_deviation_calculator
             static auto get_input_matrix_header(void * device_flat_buf) -> tensor_std_float_t *
             {
                 return static_cast<tensor_std_float_t *>(static_cast<void *>(std::next(static_cast<char *>(device_flat_buf),
-                                                                             read_mem_layout(device_flat_buf).inp_matrix_offset)));
+                                                                                       read_mem_layout(device_flat_buf).inp_matrix_offset)));
             }
 
             static auto get_expected_matrix_header(void * device_flat_buf) -> tensor_std_float_t *
             {
-                return static_cast<tensor_std_float_t *>(static_cast<void *>(std::next(static_cast<char *>(device_flat_buf)),
-                                                                             read_mem_layout(device_flat_buf).expected_matrix_offset));
+                return static_cast<tensor_std_float_t *>(static_cast<void *>(std::next(static_cast<char *>(device_flat_buf),
+                                                                                       read_mem_layout(device_flat_buf).expected_matrix_offset)));
             }
 
-            auto transform_token(const std::string& tok) -> std::string
+            auto transform_token(std::string_view tok) -> std::string
             {
-                std::pair<std::shared_ptr<tensor_model::Matrix>, std::shared_ptr<tensor_model::Matrix>> training_pair = deviation_projector::training_token_factory::decode_training_token(this->str_transformer->encode(tok));
+                std::pair<std::shared_ptr<tensor_model::Matrix>, std::shared_ptr<tensor_model::Matrix>> training_pair = deviation_projector::training_token_factory::decode_training_token(this->str_transformer->encode(std::string(tok)));
                 std::vector<size_t> inp_matrix_shape{};
 
                 tensor_factory::get_shape(training_pair.first, inp_matrix_shape);
@@ -275,7 +285,7 @@ namespace taylor_matrix::cuda_matrix::the_cuda_matrix_deviation_calculator
                 {
                     .inp_matrix_offset         = trivial_serializer::size(MatrixLayout{}),
                     .expected_matrix_offset    = static_cast<size_t>(trivial_serializer::size(MatrixLayout{})
-                                                                        + inp_matrix_vec.size() * sizeof(tensor_std_float_t))
+                                                    + inp_matrix_vec.size() * sizeof(tensor_std_float_t))
                 };
 
                 char * buf          = trivial_serializer::serialize_into(rs.data(), layout);
@@ -308,17 +318,17 @@ namespace taylor_matrix::cuda_matrix::the_cuda_matrix_deviation_calculator
 
             auto token_to_cuda_dispatchable(const std::shared_ptr<immutable_memory::ImmutableMemoryInterface>& token) -> std::shared_ptr<CudaTokenDispatchable>
             {
-                std::shared_ptr<void> token_pass                = this->get_immutable_memory_representation(token);
-                std::optional<MemoryReference> mem_reference    = cuda_immutable_memory::acquire_memory(token_pass);
+                if (token == nullptr)
+                {
+                    throw std::invalid_argument("bad token, null");
+                }
+
+                std::shared_ptr<void> token_pass                                    = this->get_immutable_memory_representation(token);
+                std::optional<cuda_immutable_memory::MemoryReference> mem_reference = cuda_immutable_memory::acquire_memory(token_pass);
 
                 if (!mem_reference.has_value())
                 {
-                    if (token == nullptr)
-                    {
-                        throw std::invalid_argument("bad token, null");
-                    }
-
-                    std::string transformed_token   = this->transform_token(*token);
+                    std::string transformed_token   = this->transform_token(token->get());
                     mem_reference                   = cuda_immutable_memory::cache_and_acquire_memory(token_pass, transformed_token);
 
                     if (immutable_memory::ManagedImmutableMemoryInterface * obj = dynamic_cast<immutable_memory::ManagedImmutableMemoryInterface *>(token.get()); obj != nullptr)
@@ -330,7 +340,8 @@ namespace taylor_matrix::cuda_matrix::the_cuda_matrix_deviation_calculator
                         }
                         catch (...)
                         {
-                            std::abort();
+                            cuda_immutable_memory::release_memory(mem_reference.value());
+                            throw;
                         }
                     }
                 }
@@ -388,14 +399,14 @@ namespace taylor_matrix::cuda_matrix::the_cuda_matrix_deviation_calculator
                     expected_cuda_matrix_arr[i] = dispatchable_vec.back()->expected_cuda_matrix;
                 }
 
-                std::shared_ptr<char[]> cu_mem_arr                  = cuda_management::host_service_x::make_cuda_buffer_from_host_view(std::string_view(static_cast<char *>(static_cast<void *>(rs.get())),
+                std::shared_ptr<char[]> cu_mem_arr                  = cuda_management::host_service_x::make_cuda_buffer_from_host_view(std::string_view(static_cast<const char *>(static_cast<void *>(rs.get())),
                                                                                                                                                         rs_sz * sizeof(std::add_pointer_t<tensor_std_float_t>)),
                                                                                                                                        this->cuda_allocator);
 
                 std::shared_ptr<std::add_pointer_t<tensor_std_float_t>[]> cu_float_arr  = std::static_pointer_cast<std::add_pointer_t<tensor_std_float_t>[]>(std::static_pointer_cast<void>(cu_mem_arr));
 
-                tensor_std_float_t ** cu_inp_cuda_matrix_arr        = cu_float_arr.get();
-                tensor_std_float_t ** cu_expected_cuda_matrix_arr   = std::next(cu_float_arr.get(), token_arr_sz);
+                tensor_std_float_t ** cu_inp_cuda_matrix_ptr        = cu_float_arr.get();
+                tensor_std_float_t ** cu_expected_cuda_matrix_ptr   = std::next(cu_float_arr.get(), token_arr_sz);
 
                 auto immutable_holder                               = std::make_unique<std::pair<decltype(dispatchable_vec), decltype(cu_float_arr)>>(std::make_pair(std::move(dispatchable_vec), std::move(cu_float_arr)));
                 auto destructor                                     = [holder = std::move(immutable_holder)](CudaTokenDispatchables * obj) noexcept
@@ -404,8 +415,8 @@ namespace taylor_matrix::cuda_matrix::the_cuda_matrix_deviation_calculator
                     delete obj;
                 };
 
-                return std::unique_ptr<CudaTokenDispatchables, decltype(destructor)>(new CudaTokenDispatchables(CudaTokenDispatchables{.inp_cuda_matrix_arr         = cu_inp_cuda_matrix_arr,
-                                                                                                                                       .expected_cuda_matrix_arr    = cu_expected_cuda_matrix_arr}),
+                return std::unique_ptr<CudaTokenDispatchables, decltype(destructor)>(new CudaTokenDispatchables(CudaTokenDispatchables{.inp_cuda_matrix_arr         = cu_inp_cuda_matrix_ptr,
+                                                                                                                                       .expected_cuda_matrix_arr    = cu_expected_cuda_matrix_ptr}),
                                                                                      std::move(destructor));
             }
     };
@@ -646,7 +657,7 @@ namespace taylor_matrix::cuda_matrix::the_cuda_matrix_deviation_calculator
 
             global_string_encoder::StringTransformationRule str_transformation_rule;
 
-            std::optional<size_t> operational_window;
+            std::optional<size_t> operation_window;
             uint8_t deviation_calculator_device;
 
         public:
@@ -656,7 +667,7 @@ namespace taylor_matrix::cuda_matrix::the_cuda_matrix_deviation_calculator
                                                        vector_sz(std::nullopt),
                                                        logit_vec(std::nullopt),
                                                        str_transformation_rule(global_string_encoder::get_empty_transformation_rule()),
-                                                       operational_window(std::nullopt),
+                                                       operation_window(std::nullopt),
                                                        deviation_calculator_device(deviation_projector::cuda_device::host_code::MEAN_SQUARE_DEVICE){}
 
             auto set_matrix(const CudaMatrixIdentifiable& cuda_matrix) -> TheCudaMatrixDeviationCalculatorFactory&
@@ -680,9 +691,9 @@ namespace taylor_matrix::cuda_matrix::the_cuda_matrix_deviation_calculator
                 return *this;
             }
 
-            auto set_operational_window(std::optional<size_t> operational_window) -> TheCudaMatrixDeviationCalculatorFactory&
+            auto set_operation_window(std::optional<size_t> operation_window) -> TheCudaMatrixDeviationCalculatorFactory&
             {
-                this->operational_window = operational_window;
+                this->operation_window = operation_window;
 
                 return *this;
             }
@@ -721,7 +732,7 @@ namespace taylor_matrix::cuda_matrix::the_cuda_matrix_deviation_calculator
                                                                           this->get_rotation_size_vector(),
                                                                           this->get_parameter_bound_ratio_vector(),
                                                                           this->get_shape_coefficient_vector(),
-                                                                          this->get_base_shape_coefficient_vector(),
+                                                                          this->get_base_shape_coefficient_size(),
                                                                           this->deviation_calculator_device,
                                                                           this->operation_window,
                                                                           this->str_transformation_rule);
@@ -747,7 +758,7 @@ namespace taylor_matrix::cuda_matrix::the_cuda_matrix_deviation_calculator
 
                 for (const std::vector<size_t>& shape: map_ptr->second)
                 {
-                    if (self::shape_to_size(shape) == this->vector_sz.value())
+                    if (tensor_factory::shape_size(shape) == this->vector_sz.value())
                     {
                         return shape;
                     }
@@ -791,7 +802,7 @@ namespace taylor_matrix::cuda_matrix::the_cuda_matrix_deviation_calculator
                     std::abort();
                 }
 
-                auto expected_shape = this->get_matrix_shape();
+                auto shape = this->get_matrix_shape();
 
                 for (size_t i = 0u; i < map_ptr->second.size(); ++i)
                 {
@@ -902,7 +913,7 @@ namespace taylor_matrix::cuda_matrix::the_cuda_matrix_deviation_calculator
                 return rs;
             }
 
-            auto get_focal_suffix_map() -> std::unordered_map<std::unordered_map<size_t, std::vector<std::vector<size_t>>>>
+            auto get_focal_suffix_map() -> std::unordered_map<size_t, std::unordered_map<size_t, std::vector<std::vector<size_t>>>>
             {
                 return this->get_uniform_focal_map(this->get_rotation_size_vector(),
                                                    this->get_matrix_shape());
@@ -935,7 +946,7 @@ namespace taylor_matrix::cuda_matrix::the_cuda_matrix_deviation_calculator
                 return cuda_management::host_service::to_cuda_dgbuf(this->get_focal_size_vector());
             }
 
-            auto get_cuda_focal_suffix_vector() -> decltype(cuda_management::host_service::to_cuda_dgbuf(std::declval<self&>().get_focal_suffix_map()))
+            auto get_cuda_focal_suffix_map() -> decltype(cuda_management::host_service::to_cuda_dgbuf(std::declval<self&>().get_focal_suffix_map()))
             {
                 return cuda_management::host_service::to_cuda_dgbuf(this->get_focal_suffix_map());
             }
@@ -952,11 +963,17 @@ namespace taylor_matrix::cuda_matrix::the_cuda_matrix_deviation_calculator
 
             auto get_shape_coefficient_vector() -> std::vector<tensor_std_float_t>
             {
-                return std::vector<tensor_std_float_t>(taylor_matrix::cuda_matrix::tensor_matrix_forward::matrix_transform_size(this->get_cuda_matrix_shape(),
-                                                                                                                                this->get_cuda_focal_size_vector(),
-                                                                                                                                this->get_cuda_focal_suffix_map(),
-                                                                                                                                this->get_cuda_rotation_size_vector(),
-                                                                                                                                this->get_cuda_parameter_bound_ratio_vector(),
+                auto shape              = this->get_cuda_matrix_shape();
+                auto focal_vec          = this->get_cuda_focal_size_vector();
+                auto suffix_map         = this->get_cuda_focal_suffix_map();
+                auto rotation_vec       = this->get_cuda_rotation_size_vector();
+                auto param_bound_vec    = this->get_cuda_parameter_bound_ratio_vector();
+
+                return std::vector<tensor_std_float_t>(taylor_matrix::cuda_matrix::tensor_matrix_forward::matrix_transform_size(*shape,
+                                                                                                                                *focal_vec,
+                                                                                                                                *suffix_map,
+                                                                                                                                *rotation_vec,
+                                                                                                                                *param_bound_vec,
                                                                                                                                 this->get_base_shape_coefficient_size()),
                                                        0);
             }

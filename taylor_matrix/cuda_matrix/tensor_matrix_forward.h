@@ -315,7 +315,6 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_forward
         }
         #endif
     }
-
 }
 
 #endif

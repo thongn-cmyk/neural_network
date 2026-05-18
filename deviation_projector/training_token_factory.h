@@ -99,7 +99,8 @@ namespace deviation_projector::training_token_factory
 
         return {tensor_factory::make_matrix_from_flat_vec(std::vector<size_t>(stdx::to_castable_vector_initializer(training_token.inp.shape)),
                                                           training_token.inp.logit_vec),
-                tensor_factory::make_matrix_from_flat_vec(std::vector<size_t>(training_token.out.shape),
+
+                tensor_factory::make_matrix_from_flat_vec(std::vector<size_t>(stdx::to_castable_vector_initializer(training_token.out.shape)),
                                                           training_token.out.logit_vec)};
     }
 }

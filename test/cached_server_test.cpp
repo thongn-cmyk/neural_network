@@ -39,6 +39,9 @@
 //So ideally in our case, this operation is a scope operation with on-demand spawns, and a kernel termination as a job cleanup guarantee
 //I just cannot see it otherwise 
 
+//I understand that we'd want to make it one-core, and no-batch
+//but we are sensitive people, I literally benchmarked and found that the socket is as stable as normal RAM BUS transfer, definitely with correct configurations and affinity and concurrent sockets
+
 using namespace dg_sock::network_rest_frame::model;
 using ResponseInterface = dg_sock::network_rest_frame::client::ResponseInterface;
 
