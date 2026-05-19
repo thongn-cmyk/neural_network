@@ -15,10 +15,12 @@
 #include <aws/s3/S3Client.h>
 #include <aws/s3/model/GetObjectRequest.h>
 #include <aws/core/utils/stream/PreallocatedStreamBuf.h>
-#include "serializable.h"
+#include "model.h"
 #include <algorithm>
 #include <functional>
 #include <utility>
+#include "client_builder.h"
+#include "client_config_builder.h"
 
 namespace data_loader::s3_source
 {
@@ -27,7 +29,7 @@ namespace data_loader::s3_source
     struct S3LoaderConfig
     {
         data_loader::stream_reader::ExternalDelimitedStreamReaderConfig delim_config;
-        data_loader::s3_source::SerializableS3ClientConfiguration s3_client_config;
+        data_loader::s3_source::ExternalS3ClientConfiguration s3_client_config;
         std::string bucket_name;
         std::string object_key;
         std::optional<uint64_t> read_ahead_buffer_sz_hint;
@@ -86,6 +88,14 @@ namespace data_loader::s3_source
         return dg::network_compact_serializer::dgstd_deserialize<S3LoaderConfig>(config.config_bytestream);
     }
 
+    //the merits, morals behind data loader is that we have a region <a, b>
+    //we want to read each segment once, for segments = <a, b>
+
+    //and we'd have to retry indefinitely to read each segment once, or we'd have to prune by throwing different errors or max retry reached by retryer
+    //that's it
+
+    //the assumption that we have is the data being immutable, and the implementation that we have is safely undefined otherwise
+
     class S3Loader: public virtual data_loader::SourceLoaderInterface
     {
         private:
@@ -111,7 +121,7 @@ namespace data_loader::s3_source
             bool is_bad_state;
             size_t soft_read_error_sz;
             S3ObjectPointer s3_object_pointer;
-            Aws::Client::ClientConfiguration client_config;
+            data_loader::s3_source::S3ClientConfiguration client_config;
             std::optional<BufferPointer> buf_pointer;
 
             static inline constexpr size_t SOFT_READ_ERROR_THRESHOLD    = size_t{1} << 3;
@@ -142,14 +152,13 @@ namespace data_loader::s3_source
                 this->was_completed         = false;
                 this->is_bad_state          = false;
                 this->soft_read_error_sz    = 0u;
-                this->s3_object_pointer  = S3ObjectPointer
+                this->s3_object_pointer     = S3ObjectPointer
                 {
                     .bucket_name    = config.bucket_name,
                     .object_key     = config.object_key
                 };
 
-                this->client_config         = {};
-                // this->client_config         = data_loader::s3_source::to_legacy_s3_client_config(config.s3_client_config);
+                this->client_config         = data_loader::s3_source::to_internal_s3_client_configuration(config.s3_client_config);
                 this->buf_pointer           = std::nullopt;
             }
 
@@ -357,9 +366,9 @@ namespace data_loader::s3_source
                 throw soft_file_read_error("soft S3 read error");
             }
 
-            auto get_s3_client() -> Aws::S3::S3Client
+            auto get_s3_client() -> std::unique_ptr<Aws::S3::S3Client>
             {
-                return Aws::S3::S3Client(this->client_config);
+                return S3ClientBuilder{}.set(this->client_config).get();
             }
 
             void initialize_object_outcome()
@@ -377,7 +386,7 @@ namespace data_loader::s3_source
                     });
                 }
 
-                auto tmp = std::make_unique<Aws::S3::Model::GetObjectOutcome>(this->get_s3_client().GetObject(objectRequest));
+                auto tmp = std::make_unique<Aws::S3::Model::GetObjectOutcome>(this->get_s3_client()->GetObject(objectRequest));
 
                 if (!tmp->IsSuccess())
                 {

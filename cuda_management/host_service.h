@@ -5,7 +5,14 @@
 #include <stdlib.h>
 #include <functional>
 #include <memory>
+
+#ifdef __CUDACC__
+
 #include <cuda_runtime.h> //
+#include "cuda_malloc.h"
+
+#endif
+
 #include <cstring>
 #include <string_view>
 #include <exception>
@@ -21,30 +28,13 @@ namespace cuda_management::host_service
     {
         #ifdef __CUDACC__
         {
-            if (sz == 0u)
+            auto destructor = [](char * mem) noexcept
             {
-                return nullptr;
-            }
-
-            void * cuda_buf = nullptr;
-            cudaError_t err = cudaMalloc(static_cast<void **>(&cuda_buf), sz);
-
-            if (err != cudaSuccess)
-            {
-                throw cuda_bad_alloc();
-            }
-
-            if (cuda_buf == nullptr)
-            {
-                throw cuda_corruption();
-            }
-
-            auto destructor = [](char * buf) noexcept
-            {
-                cudaFree(static_cast<void *>(buf));
+                cuda_management::cuda_malloc::free(mem);
             };
+            char * mem      = static_cast<char *>(cuda_management::cuda_malloc::malloc(sz));
 
-            return std::unique_ptr<char[], decltype(destructor)>(static_cast<char *>(cuda_buf), destructor);
+            return std::unique_ptr<char[], decltype(destructor)>(mem, std::move(destructor));
         }
         #else
         {

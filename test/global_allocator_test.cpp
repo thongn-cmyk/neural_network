@@ -273,8 +273,8 @@ void jagged_bench()
 
 void run_test()
 {
-    const size_t TEST_SZ  = size_t{1} << 10;
-    
+    const size_t TEST_SZ  = size_t{1} << 20;
+
     for (size_t i = 0u; i < TEST_SZ; ++i)
     {
         run_one_test();

@@ -156,6 +156,7 @@ namespace deviation_projection_ingestion_aid_server
                 {
                     if (hard_close)
                     {
+                        this->task->interrupt();
                         this->task = nullptr;
                     }
                     else
@@ -479,6 +480,13 @@ namespace deviation_projection_ingestion_aid_server
 
             void close_client_box(uint64_t client_box_id)
             {
+                std::shared_ptr<ConnectionBoundClientBox> client_box = this->get_client_box(client_box_id);
+
+                if (client_box != nullptr)
+                {
+                    client_box->close();
+                }
+
                 this->base->close(client_box_id);
             }
     };

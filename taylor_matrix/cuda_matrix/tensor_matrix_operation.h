@@ -640,6 +640,13 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_operation
         return avg(result_vec, focal_sz, allocator, err);
     }
 
+    //I have thought very hard about what that means
+    //the series_normalize(...) is a power_series normalization method to increase search speed, and it only works for same entropy transformation. In this sense, the final output
+    //why can't we do series_normalize(...) for the immediate layer, but avg was used instead?
+    //it's because the previous transformations aren't of the same entropy, we are "moving" one step to another layer of neural network, so we are operating on the neural network layer, the previous results are NOT to accumulate
+    //series_normalize normalize the powers with respect to the initial input Matrix *, so it makes sense that we recursively call series_normalize at the end of each function
+    //because the initial Matrix * of each of the function is one power higher than the previous of it in the caller function
+
     template <class FocalSizeVector, /*inplace_vector<size_t>*/
               class SuffixMap, /*inplace_unordered_map<size_t, inplace_unordered_map<size_t, inplace_vector<inplace_vector<size_t>>?*/
               class RotationSizeVector, /*inplace_vector<size_t>*/
@@ -775,7 +782,7 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_operation
         {
             incremental_matrix_vec[i] = copy(matrix, allocator);
         }
- 
+
         for (size_t i = 0u; i < rotation_sz; ++i)
         {
             scope_guard scope_grd(&allocator); //
@@ -788,7 +795,7 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_operation
                                                                                   focal_suffix_map,
                                                                                   allocator,
                                                                                   err);
-            
+
             if (*err != SUCCESS)
             {
                 return {};
@@ -945,7 +952,7 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_operation
                 return {};
             }
 
-            copy_to(incremental_matrix_vec[i], incremental_result, err);
+            copy_to(incremental_matrix_vec[i + 1], incremental_result, err);
 
             if (*err != SUCCESS)
             {

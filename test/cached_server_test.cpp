@@ -42,6 +42,11 @@
 //I understand that we'd want to make it one-core, and no-batch
 //but we are sensitive people, I literally benchmarked and found that the socket is as stable as normal RAM BUS transfer, definitely with correct configurations and affinity and concurrent sockets
 
+//I reckoned that the number of "unacknowledged packets" is much lower, probably around 1-32 packets per connection, in cloud env like Google or Amazon or MSFT
+//so there is no such thing as our socket cannot handle, but we must bottleneck the requests pipe, such that all the concurrent requestors must self-restraint by configuration to fit in the request pipe
+//and it's incredibly fast
+//and within the duration of failure, we must guarantee that 99.999999% chance the request does not reach thereafter, to force a soft synchronization by using time measurements, otherwise we are "out of sync"
+
 using namespace dg_sock::network_rest_frame::model;
 using ResponseInterface = dg_sock::network_rest_frame::client::ResponseInterface;
 

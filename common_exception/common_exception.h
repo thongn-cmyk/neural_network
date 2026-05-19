@@ -36,30 +36,30 @@ namespace common_exception
         virtual auto what() const noexcept -> std::add_pointer_t<const char> = 0;
     };
 
-    template <class BaseException>
-    struct stack_embedded_error: BaseException
-    {
-        private:
+    // template <class BaseException>
+    // struct stack_embedded_error: BaseException
+    // {
+    //     private:
 
-            decltype(std::stacktrace::current()) trace;
-            std::unique_ptr<std::string> what_inquiry;
+    //         decltype(std::stacktrace::current()) trace;
+    //         std::unique_ptr<std::string> what_inquiry;
 
-        public:
+    //     public:
 
-            stack_embedded_error(): trace(std::stacktrace::current()),
-                                    what_inquiry(std::make_unique<std::string>()),
-                                    BaseException(){}
+    //         stack_embedded_error(): trace(std::stacktrace::current()),
+    //                                 what_inquiry(std::make_unique<std::string>()),
+    //                                 BaseException(){}
 
-            virtual const char * what() const noexcept(noexcept(std::declval<const BaseException&>().what()))
-            {
-                if (this->what_inquiry == nullptr)
-                {
-                    *this->what_inquiry = std::string(BaseException::what()) + "<trace>" + std::to_string(this->trace);
-                }
+    //         virtual const char * what() const noexcept(noexcept(std::declval<const BaseException&>().what()))
+    //         {
+    //             if (this->what_inquiry == nullptr)
+    //             {
+    //                 *this->what_inquiry = std::string(BaseException::what()) + "<trace>" + std::to_string(this->trace);
+    //             }
 
-                return this->what_inquiry->data();
-            }
-    };
+    //             return this->what_inquiry->data();
+    //         }
+    // };
 
     static inline constexpr exception_t SUCCESS                                 = 0u;
     static inline constexpr exception_t SEGFAULT                                = 1u;
@@ -627,24 +627,24 @@ namespace common_exception
                                                 codex_base(OPERATION_GRACEFUL_TERMINATION_ERROR){}
     };
 
-    template <class T>
-    class stack_embedded_polymorphic_exception: public virtual polymorphic_exception_interface
-    {
-        public:
+    // template <class T>
+    // class stack_embedded_polymorphic_exception: public virtual polymorphic_exception_interface
+    // {
+    //     public:
 
-            void throw_me()
-            {
-                throw stack_embedded_error<T>{};
-            }
+    //         void throw_me()
+    //         {
+    //             throw stack_embedded_error<T>{};
+    //         }
 
-            auto what() const noexcept -> const char *
-            {
-                static T tmp{};
-                static_assert(noexcept(tmp.what()));
+    //         auto what() const noexcept -> const char *
+    //         {
+    //             static T tmp{};
+    //             static_assert(noexcept(tmp.what()));
 
-                return tmp.what();
-            }
-    };
+    //             return tmp.what();
+    //         }
+    // };
 
     template <class T>
     class polymorphic_exception: public virtual polymorphic_exception_interface
