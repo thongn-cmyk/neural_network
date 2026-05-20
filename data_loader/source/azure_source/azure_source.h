@@ -17,7 +17,7 @@ namespace data_loader::azure_source
     struct AzureLoaderConfig
     {
         data_loader::stream_reader::ExternalDelimitedStreamReaderConfig delim_config;
-        data_loader::azure_source::SerializableAzureClientConfig service_client_config;
+        data_loader::azure_source::ExternalSecuredAzureClientConfig service_client_config;
         std::string container_name;
         std::string blob_name;
         std::optional<uint64_t> read_ahead_buffer_sz_hint;
@@ -105,12 +105,15 @@ namespace data_loader::azure_source
             bool was_completed;
             bool is_bad_state;
             AzureObjectPointer azure_object_pointer;
-            data_loader::azure_source::SerializableAzureClientConfig service_client_config;
+            data_loader::azure_source::ExternalSecuredAzureClientConfig service_client_config;
             std::optional<BufferPointer> buf_pointer;
 
             static inline constexpr size_t MAX_READ_SZ      = size_t{1} << 20;
             static inline constexpr size_t MIN_BUFFER_SZ    = size_t{1} << 10;
             static inline constexpr size_t MAX_BUFFER_SZ    = size_t{1} << 20;
+
+            static inline constexpr size_t MIN_TX_UNIT_SZ   = size_t{1} << 10;
+            static inline constexpr size_t MAX_TX_UNIT_SZ   = size_t{1} << 20;
 
         public:
 
@@ -118,19 +121,26 @@ namespace data_loader::azure_source
             {
                 this->delim_stream_reader   = std::make_unique<data_loader::stream_reader::DelimitedStreamReader>(config.delim_config);
                 this->blob_client           = nullptr;
-                this->tx_unit_sz            = 1u;
+                this->tx_unit_sz            = MIN_TX_UNIT_SZ;
 
                 if (config.unit_byte_sz_hint.has_value())
                 {
-                    this->tx_unit_sz = std::max(this->tx_unit_sz, static_cast<size_t>(config.unit_byte_sz_hint.value()));
+                    this->tx_unit_sz = std::clamp(static_cast<size_t>(config.unit_byte_sz_hint.value()),
+                                                  MIN_TX_UNIT_SZ,
+                                                  MAX_TX_UNIT_SZ);
                 }
+
+                size_t buf_sz   = MIN_BUFFER_SZ;
 
                 if (config.read_ahead_buffer_sz_hint.has_value())
                 {
-                    size_t buf_sz               = std::clamp(static_cast<size_t>(config.read_ahead_buffer_sz_hint.value()), MIN_BUFFER_SZ, MAX_BUFFER_SZ);
-                    this->preallocated_buf      = std::make_unique<unsigned char[]>(buf_sz);
-                    this->preallocated_buf_sz   = buf_sz;
+                    buf_sz      = std::clamp(static_cast<size_t>(config.read_ahead_buffer_sz_hint.value()),
+                                             MIN_BUFFER_SZ,
+                                             MAX_BUFFER_SZ);
                 }
+
+                this->preallocated_buf      = std::make_unique<unsigned char[]>(buf_sz);
+                this->preallocated_buf_sz   = buf_sz;
 
                 this->was_completed         = false;
                 this->is_bad_state          = false;
@@ -200,13 +210,6 @@ namespace data_loader::azure_source
                     this->blob_client = this->get_blob_client();
                     throw;
                 }
-
-                if (buf.size() == 0u)
-                {
-                    this->is_bad_state = true;
-                    throw other_error("Azure Bucket read went wrong, wrong read byte size");
-                }
-
                 try
                 {
                     return this->delim_stream_reader->put(buf);
@@ -453,6 +456,12 @@ namespace data_loader::azure_source
                 catch (...)
                 {
                     this->handle_azure_exception(std::current_exception());
+                }
+
+                if (read_bytes != expected_read_bytes)
+                {
+                    this->is_bad_state = true;
+                    throw hard_file_read_error("Bad Azure operation, mismatched read range");
                 }
 
                 this->increment_read_pointer_by(read_bytes);

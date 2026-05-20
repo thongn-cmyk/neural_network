@@ -8,11 +8,12 @@
 #include <optional>
 
 namespace data_loader::gcs_source
-{
+{   
     struct GCSClientConfig
     {
-        std::optional<std::string> project_id;
-        std::optional<std::string> quota_project_id;
+        std::optional<std::string> application_name;
+        std::optional<std::string> environment;
+        std::optional<std::string> deployment_region;
 
         std::optional<std::string> endpoint;
         std::optional<std::string> universe_domain;
@@ -44,6 +45,28 @@ namespace data_loader::gcs_source
         std::optional<bool> verify_upload_checksums;
 
         
+    };
+
+    struct SecuredGCSClientConfig
+    {
+
+    };
+
+    struct ExternalSecuredGCSClientConfig
+    {
+        std::string config_bytestream;
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector) const
+        {
+            reflector(config_bytestream);
+        }
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector)
+        {
+            reflector(config_bytestream);
+        }
     };
 }
 

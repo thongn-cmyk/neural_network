@@ -16,6 +16,7 @@
 // #include "tensor_matrix_operation.h"
 #include <matrix/tensor_factory.h>
 #include "matrix_optimizer_interface.h"
+
 #include <numeric>
 #include <functional>
 #include "matrix_optimizer.h"
@@ -23,20 +24,8 @@
 
 namespace stock_solution
 {
-    //let's see if we can make it 1 million bucks/ second this week, stay very tuned
-    //are you IN THE MONEY or OUT THE MONEY?
-    //we'd attempt to do a 10-100 million extraction, then that's it. On the candlesticks!
-    //we only need to be confident once in a while, that's how we do that, baby!
-
-    //we actually rotate all the stocks in the world at once, by using focal and suffix compression (you wont believe how efficient suffix compression is in the semantic space)
-    //and we'd want to predict the next second to be on the candlesticks
-
-    //ideally, we'd want to buy immediately and sell to a higher bidder, or cut loss in the next second
-    //we'd try something tmr, just for the proof of concept, we'd dry run if it could turn 1$ -> 1M
-    //I'm positive at this point that we could literally put everything in the matrix for consensus
-    //the problem is still that we'd have to have an exponential input -> output window + entropy scope for the matrix, larger context requires multiple previous transformation means next input
-    //this requires two matrices, the action matrix and the mind matrix
-    //or we'd just have one very big matrix, because essentially we could logically mask the input, to reduce the ambiguity
+    //we'd try to work on this for the next week
+    //it's complicated
 
     struct TickerData
     {

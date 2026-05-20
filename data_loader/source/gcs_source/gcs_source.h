@@ -99,7 +99,7 @@ namespace data_loader::gcs_source
             bool was_completed;
             bool is_bad_state;
             GCSObjectPointer gcs_object_pointer;
-            data_loader::gcs_source::ExternalSecuredGCSlientConfig gcs_client_config;
+            data_loader::gcs_source::SecuredGCSlientConfig gcs_client_config;
             std::optional<BufferPointer> buf_pointer;
 
             static inline constexpr size_t MAX_READ_SZ      = size_t{1} << 20;
@@ -141,7 +141,7 @@ namespace data_loader::gcs_source
                     .object_key     = config.object_key
                 };
 
-                this->gcs_client_config     = config.gcs_client_config;
+                this->gcs_client_config     = to_internal_secured_gcs_client_config(config.gcs_client_config);
                 this->buf_pointer           = std::nullopt;
             }
 
@@ -201,12 +201,6 @@ namespace data_loader::gcs_source
                 {
                     this->gcs_client    = this->get_gcs_client();
                     throw;
-                }
-
-                if (buf.size() == 0u)
-                {
-                    this->is_bad_state  = true;
-                    throw other_error("GCS Bucket read went wrong, wrong read byte size");
                 }
 
                 try
@@ -303,17 +297,16 @@ namespace data_loader::gcs_source
                     std::abort();
                 }
 
-                if (this->buf_pointer->offset > this->buf_pointer->sz)
+                if (this->buf_pointer->offset >= this->buf_pointer->sz)
                 {
                     std::abort();
                 }
 
-                size_t max_read_sz  = this->buf_pointer->sz - this->buf_pointer->offset;
-                size_t read_sz      = std::min(this->read_buf_sz, max_read_sz);
-
-                auto stream         = this->gcs_client->ReadObject(this->gcs_object_pointer.bucket_name,
-                                                                   this->gcs_object_pointer.object_key,
-                                                                   gcs::ReadRange(this->buf_pointer->offset, read_sz));
+                size_t max_read_sz          = this->buf_pointer->sz - this->buf_pointer->offset;
+                size_t tentative_read_sz    = std::min(this->read_buf_sz, max_read_sz);
+                auto stream                 = this->gcs_client->ReadObject(this->gcs_object_pointer.bucket_name,
+                                                                           this->gcs_object_pointer.object_key,
+                                                                           gcs::ReadRange(this->buf_pointer->offset, tentative_read_sz));
 
                 if (!stream)
                 {
@@ -323,7 +316,13 @@ namespace data_loader::gcs_source
                 std::string rs((std::istreambuf_iterator<char>(stream)),
                                 std::istreambuf_iterator<char>());
 
-                this->increment_read_pointer_by(read_sz);
+                if (rs.size() != tentative_read_sz)
+                {
+                    this->is_bad_state = true;
+                    throw hard_file_read_error("Bad GCS operation, mismatched read range");
+                }
+
+                this->increment_read_pointer_by(rs.size());
 
                 return rs;
             }

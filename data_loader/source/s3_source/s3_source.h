@@ -96,6 +96,9 @@ namespace data_loader::s3_source
 
     //the assumption that we have is the data being immutable, and the implementation that we have is safely undefined otherwise
 
+    //it's incredibly complicated, or that I'd have to stick to the traditional way to reading, 
+    //I'd normally prefer check size first, but I guess that check size later is more "traditional", more C-liked program or sstream-liked problem
+
     class S3Loader: public virtual data_loader::SourceLoaderInterface
     {
         private:
@@ -194,7 +197,7 @@ namespace data_loader::s3_source
                 }
 
                 std::string buf(tx_byte_sz, ' ');
-                intmax_t read_byte_sz;
+                intmax_t read_byte_sz{};
 
                 if (this->object_outcome == nullptr)
                 {
@@ -227,11 +230,20 @@ namespace data_loader::s3_source
 
                 if (read_byte_sz < 0)
                 {
+                    this->is_bad_state = true;
                     throw other_error("file read went wrong, negative read bytes");
                 }
 
+                size_t nxt_offset   = this->buf_pointer->offset + read_byte_sz;
+
+                if (nxt_offset > this->buf_pointer->sz)
+                {
+                    this->is_bad_state = true;
+                    throw hard_file_read_error("file read went wrong, out of range access");
+                }
+
                 buf.resize(read_byte_sz);
-                this->buf_pointer->offset += read_byte_sz;
+                this->buf_pointer->offset   = nxt_offset;
 
                 if (buf.size() == 0u)
                 {
