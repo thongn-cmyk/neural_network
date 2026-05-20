@@ -29,7 +29,7 @@ namespace data_loader::s3_source
     struct S3LoaderConfig
     {
         data_loader::stream_reader::ExternalDelimitedStreamReaderConfig delim_config;
-        data_loader::s3_source::ExternalS3ClientConfiguration s3_client_config;
+        data_loader::s3_source::ExternalSecuredS3ClientConfiguration s3_client_config;
         std::string bucket_name;
         std::string object_key;
         std::optional<uint64_t> read_ahead_buffer_sz_hint;
@@ -121,13 +121,15 @@ namespace data_loader::s3_source
             bool is_bad_state;
             size_t soft_read_error_sz;
             S3ObjectPointer s3_object_pointer;
-            data_loader::s3_source::S3ClientConfiguration client_config;
+            data_loader::s3_source::SecuredS3ClientConfiguration client_config;
             std::optional<BufferPointer> buf_pointer;
 
             static inline constexpr size_t SOFT_READ_ERROR_THRESHOLD    = size_t{1} << 3;
             static inline constexpr size_t MAX_READ_SZ                  = size_t{1} << 20;
             static inline constexpr size_t MIN_BUFFER_SZ                = size_t{1} << 10;
             static inline constexpr size_t MAX_BUFFER_SZ                = size_t{1} << 20;
+            static inline constexpr size_t MIN_TX_UNIT_SZ               = size_t{1} << 10;
+            static inline constexpr size_t MAX_TX_UNIT_SZ               = size_t{1} << 20;
 
         public:
 
@@ -135,19 +137,26 @@ namespace data_loader::s3_source
             {
                 this->delim_stream_reader   = std::make_unique<data_loader::stream_reader::DelimitedStreamReader>(config.delim_config);
                 this->object_outcome        = nullptr;
-                this->tx_unit_sz            = 1u;
+                this->tx_unit_sz            = MIN_TX_UNIT_SZ;
 
                 if (config.unit_byte_sz_hint.has_value())
                 {
-                    this->tx_unit_sz = std::max(this->tx_unit_sz, static_cast<size_t>(config.unit_byte_sz_hint.value()));
+                    this->tx_unit_sz    = std::clamp(static_cast<size_t>(config.unit_byte_sz_hint.value()),
+                                                     MIN_TX_UNIT_SZ,
+                                                     MAX_TX_UNIT_SZ);
                 }
+
+                size_t buf_sz               = MIN_BUFFER_SZ;
 
                 if (config.read_ahead_buffer_sz_hint.has_value())
                 {
-                    size_t buf_sz       = std::clamp(static_cast<size_t>(config.read_ahead_buffer_sz_hint.value()), MIN_BUFFER_SZ, MAX_BUFFER_SZ);
-                    this->buf           = std::make_unique<unsigned char[]>(buf_sz);
-                    this->buf_reference = std::make_unique<Aws::Utils::Stream::PreallocatedStreamBuf>(this->buf.get(), buf_sz);
+                    buf_sz  = std::clamp(static_cast<size_t>(config.read_ahead_buffer_sz_hint.value()),
+                                         MIN_BUFFER_SZ,
+                                         MAX_BUFFER_SZ);
                 }
+
+                this->buf                   = std::make_unique<unsigned char[]>(buf_sz);
+                this->buf_reference         = std::make_unique<Aws::Utils::Stream::PreallocatedStreamBuf>(this->buf.get(), buf_sz);
 
                 this->was_completed         = false;
                 this->is_bad_state          = false;
@@ -158,7 +167,7 @@ namespace data_loader::s3_source
                     .object_key     = config.object_key
                 };
 
-                this->client_config         = data_loader::s3_source::to_internal_s3_client_configuration(config.s3_client_config);
+                this->client_config         = data_loader::s3_source::to_internal_secured_s3_client_configuration(config.s3_client_config);
                 this->buf_pointer           = std::nullopt;
             }
 
@@ -218,7 +227,7 @@ namespace data_loader::s3_source
 
                 if (read_byte_sz < 0)
                 {
-                    throw std::runtime_error("file read went wrong, negative read bytes");
+                    throw other_error("file read went wrong, negative read bytes");
                 }
 
                 buf.resize(read_byte_sz);
@@ -368,7 +377,7 @@ namespace data_loader::s3_source
 
             auto get_s3_client() -> std::unique_ptr<Aws::S3::S3Client>
             {
-                return S3ClientBuilder{}.set(this->client_config).get();
+                return S3ClientBuilder{}.set(this->client_config).build();
             }
 
             void initialize_object_outcome()

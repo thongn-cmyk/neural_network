@@ -16,7 +16,7 @@ namespace data_loader::gcs_source
     struct GCSLoaderConfig
     {
         data_loader::stream_reader::ExternalDelimitedStreamReaderConfig delim_config;
-        data_loader::gcs_source::SerializableGCSClientConfig gcs_client_config;
+        data_loader::gcs_source::ExternalSecuredGCSlientConfig gcs_client_config;
         std::string bucket_name;
         std::string object_key;
         std::optional<uint64_t> read_ahead_buffer_sz_hint;
@@ -99,26 +99,32 @@ namespace data_loader::gcs_source
             bool was_completed;
             bool is_bad_state;
             GCSObjectPointer gcs_object_pointer;
-            data_loader::gcs_source::SerializableGCSClientConfig gcs_client_config;
+            data_loader::gcs_source::ExternalSecuredGCSlientConfig gcs_client_config;
             std::optional<BufferPointer> buf_pointer;
 
             static inline constexpr size_t MAX_READ_SZ      = size_t{1} << 20;
             static inline constexpr size_t MIN_BUFFER_SZ    = size_t{1} << 10;
             static inline constexpr size_t MAX_BUFFER_SZ    = size_t{1} << 20;
 
+            static inline constexpr size_t MIN_TX_UNIT_SZ   = size_t{1} << 10;
+            static inline constexpr size_t MAX_TX_UNIT_SZ   = size_t{1} << 20;
+
         public:
 
             GCSLoader(const GCSLoaderConfig& config)
             {
                 this->delim_stream_reader   = std::make_unique<data_loader::stream_reader::DelimitedStreamReader>(config.delim_config);
-                // this->gcs_client            = data_loader::gcs_source::get_client_from_serializable_config(config.gcs_client_config);
                 this->gcs_client            = nullptr;
-                this->tx_unit_sz            = 1u;
+                this->tx_unit_sz            = MIN_TX_UNIT_SZ;
 
                 if (config.unit_byte_sz_hint.has_value())
                 {
-                    this->tx_unit_sz    = std::max(this->tx_unit_sz, static_cast<size_t>(config.unit_byte_sz_hint.value()));
+                    this->tx_unit_sz    = std::clamp(static_cast<size_t>(config.unit_byte_sz_hint.value()),
+                                                     MIN_TX_UNIT_SZ,
+                                                     MAX_TX_UNIT_SZ);
                 }
+
+                this->read_buf_sz           = MIN_BUFFER_SZ;
 
                 if (config.read_ahead_buffer_sz_hint.has_value())
                 {
@@ -264,7 +270,7 @@ namespace data_loader::gcs_source
 
             auto get_gcs_client() -> std::unique_ptr<gcs::Client>
             {
-                return data_loader::gcs_source::get_client_from_serializable_config(this->gcs_client_config);
+                return GCSClientBuilder{}.set(this->gcs_client_config).build();
             }
 
             auto get_download_content_length(gcs::Client& client,

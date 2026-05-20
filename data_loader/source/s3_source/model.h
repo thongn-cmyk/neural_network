@@ -5,7 +5,7 @@
 #include <stdlib.h>
 // #include <aws/s3/S3Client.h>
 // #include <aws/core/client/ClientConfiguration.h>
-#include <variants>
+#include <variant>
 #include <string>
 #include <cstring>
 #include <optional>
@@ -14,37 +14,53 @@
 
 namespace data_loader::s3_source
 {
-    struct ClientConfiguration_2
+    static inline constexpr uint8_t PAYLOAD_SIGNING_POLICY_REQUEST_DEPENDENT    = 0u;
+    static inline constexpr uint8_t PAYLOAD_SIGNING_POLICY_ALWAYS               = 1u;
+    static inline constexpr uint8_t PAYLOAD_SIGNING_POLICY_NEVER                = 2u;
+
+    static inline constexpr uint8_t US_EAST_1_REGIONAL_ENDPOINT_OPTION_NOT_SET  = 0u;
+    static inline constexpr uint8_t US_EAST_1_REGIONAL_ENDPOINT_OPTION_LEGACY   = 1u;
+    static inline constexpr uint8_t US_EAST_1_REGIONAL_ENDPOINT_OPTION_REGIONAL = 2u;
+
+    struct S3ClientConfiguration_2
     {
         // Basic network / endpoint options
-        std::string region;
-        std::string endpoint_override; // endpoint override (hostname[:port])
-        std::string scheme; // "http" or "https"
-        bool follow_redirects;
+        std::optional<std::string> region;
+        std::optional<std::string> endpoint_override; // endpoint override (hostname[:port])
+        std::optional<std::string> scheme; // "http" or "https"
 
         // Proxy settings
-        std::string proxy_host; //= "";
-        uint16_t proxy_port;  //= 0;
-        std::string proxy_user_name; // = "";
-        std::string proxy_password; // = "";
+        std::optional<std::string> proxy_host; //= "";
+        std::optional<uint16_t> proxy_port;  //= 0;
+        std::optional<std::string> proxy_user_name; // = "";
+        std::optional<std::string> proxy_password; // = "";
 
         // TLS / CA
-        bool verify_ssl; // = true;
-        std::string ca_file; // = "";   // path to CA file
-        std::string ca_path; // = "";   // path to CA directory
+        std::optional<bool> verify_ssl; // = true;
+        std::optional<std::string> ca_file; // = "";   // path to CA file
+        std::optional<std::string> ca_path; // = "";   // path to CA directory
 
         // Timeouts and networking
 
-        size_t max_connections; // = 50;
-        std::chrono::milliseconds request_timeout; // = std::chrono::milliseconds{0}; // 0 => infinite
-        std::chrono::milliseconds connect_timeout; // = std::chrono::milliseconds{3000};
+        std::optional<uint32_t> max_connections; // = 50;
+        std::optional<std::chrono::milliseconds> request_timeout; // = std::chrono::milliseconds{0}; // 0 => infinite
+        std::optional<std::chrono::milliseconds> connect_timeout; // = std::chrono::milliseconds{3000};
 
         // Retry / performance
-        size_t max_retries; // = 3;
-        bool enable_clock_skew_adjustment; // = true;
+        std::optional<bool> enable_clock_skew_adjustment; // = true;
 
         // User agent / application identity
-        std::string user_agent; // = "";
+        std::optional<std::string> user_agent; // = "";
+
+        std::optional<bool> use_virtual_addressing; // = true
+        std::optional<uint8_t> payload_signing_policy; // = PayloadSigningPolicy::RequestDependent
+        std::optional<uint8_t> regional_endpoint_option; // = US_EAST_1_REGIONAL_ENDPOINT_OPTION::NOT_SET
+
+        std::optional<bool> disable_multi_region_access_points; // = false
+        std::optional<bool> use_arn_region; // = false
+        std::optional<bool> disable_s3_express_auth; // = false
+        std::optional<bool> enable_host_prefix_injection; // = false
+        std::optional<bool> use_fips; // = false
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector) const
@@ -52,7 +68,6 @@ namespace data_loader::s3_source
             reflector(region,
                       endpoint_override,
                       scheme,
-                      follow_redirects,
                       proxy_host,
                       proxy_port,
                       proxy_user_name,
@@ -63,9 +78,16 @@ namespace data_loader::s3_source
                       max_connections,
                       request_timeout,
                       connect_timeout,
-                      max_retries,
                       enable_clock_skew_adjustment,
-                      user_agent);
+                      user_agent,
+                      use_virtual_addressing,
+                      payload_signing_policy,
+                      regional_endpoint_option,
+                      disable_multi_region_access_points,
+                      use_arn_region,
+                      disable_s3_express_auth,
+                      enable_host_prefix_injection,
+                      use_fips);
         }
 
         template <class Reflector>
@@ -74,7 +96,6 @@ namespace data_loader::s3_source
             reflector(region,
                       endpoint_override,
                       scheme,
-                      follow_redirects,
                       proxy_host,
                       proxy_port,
                       proxy_user_name,
@@ -85,9 +106,16 @@ namespace data_loader::s3_source
                       max_connections,
                       request_timeout,
                       connect_timeout,
-                      max_retries,
                       enable_clock_skew_adjustment,
-                      user_agent);
+                      user_agent,
+                      use_virtual_addressing,
+                      payload_signing_policy,
+                      regional_endpoint_option,
+                      disable_multi_region_access_points,
+                      use_arn_region,
+                      disable_s3_express_auth,
+                      enable_host_prefix_injection,
+                      use_fips);
         }
     };
 
@@ -147,9 +175,9 @@ namespace data_loader::s3_source
         }
     };
 
-    struct S3ClientConfiguration
+    struct SecuredS3ClientConfiguration
     {
-        std::optional<ClientConfiguration_2> client_config;
+        std::optional<S3ClientConfiguration_2> client_config;
         GenericCredential credential;
 
         template <class Reflector>
@@ -165,7 +193,7 @@ namespace data_loader::s3_source
         }
     };
 
-    struct ExternalS3ClientConfiguration
+    struct ExternalSecuredS3ClientConfiguration
     {
         std::string config_bytestream;
 

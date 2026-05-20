@@ -94,12 +94,17 @@ namespace data_loader::file_source
             static inline constexpr size_t MIN_BUFFER_SZ    = size_t{1} << 10;
             static inline constexpr size_t MAX_BUFFER_SZ    = size_t{1} << 20;
 
+            static inline constexpr size_t MIN_TX_UNIT_SZ   = size_t{1} << 10;
+            static inline constexpr size_t MAX_TX_UNIT_SZ   = size_t{1} << 20;
+
             FileLoader(const FileLoaderConfig& config): delim_streamer(std::make_unique<data_loader::stream_reader::DelimitedStreamReader>(config.delim_config)),
                                                         f_stream(config.local_file_path, std::ios::binary),
                                                         buf(nullptr),
-                                                        tx_unit_sz(1u),
+                                                        tx_unit_sz(MIN_TX_UNIT_SZ),
                                                         was_completed(false),
-                                                        is_bad_state(false)
+                                                        is_bad_state(false),
+                                                        expected_sz(),
+                                                        total_read_bytes()
             {
                 if (!this->f_stream.is_open())
                 {
@@ -108,7 +113,9 @@ namespace data_loader::file_source
 
                 if (config.unit_byte_sz_hint.has_value())
                 {
-                    this->tx_unit_sz = std::max(this->tx_unit_sz, static_cast<size_t>(config.unit_byte_sz_hint.value()));
+                    this->tx_unit_sz = std::clamp(static_cast<size_t>(config.unit_byte_sz_hint.value()),
+                                                  MIN_TX_UNIT_SZ,
+                                                  MAX_TX_UNIT_SZ);
                 }
 
                 if (config.read_ahead_buffer_sz_hint.has_value())
