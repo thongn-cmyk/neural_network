@@ -9,6 +9,8 @@
 #include <cstring>
 #include <stdint.h>
 #include <stdlib.h>
+#include "client_builder.h"
+#include "client_config_builder.h"
 
 namespace data_loader::azure_source
 {
@@ -348,7 +350,7 @@ namespace data_loader::azure_source
 
             auto get_service_client() -> std::unique_ptr<BlobServiceClient>
             {
-                return data_loader::azure_source::get_service_client_from_serializable_config(this->service_client_config);
+                return AzureServiceClientBuilder{}.set(this->service_client_config).build();
             }
 
             auto get_blob_client() -> std::unique_ptr<BlobClient>

@@ -21,6 +21,7 @@
 #include <utility>
 #include "client_builder.h"
 #include "client_config_builder.h"
+#include <serializer/compact_serializer.h>
 
 namespace data_loader::s3_source
 {

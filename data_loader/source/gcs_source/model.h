@@ -6,50 +6,288 @@
 #include <string>
 #include <cstring>
 #include <optional>
+#include <variant>
+#include <stl_extension/stdx.h>
+#include <chrono>
+#include <vector>
 
 namespace data_loader::gcs_source
-{   
-    struct GCSClientConfig
+{
+    static inline constexpr uint8_t CREDENTIAL_TYPE_K_DEFAULT                       = 0u;
+    static inline constexpr uint8_t CREDENTIAL_TYPE_K_SERVICE_ACCOUNT_FILE          = 1u;
+    static inline constexpr uint8_t CREDENTIAL_TYPE_K_SERVICE_ACCOUNT_JSON          = 2u;
+    static inline constexpr uint8_t CREDENTIAL_TYPE_K_ACCESS_TOKEN                  = 3u;
+    static inline constexpr uint8_t CREDENTIAL_TYPE_K_IMPERSONATE_SERVICE_ACCOUNT   = 4u;
+    static inline constexpr uint8_t CREDENTIAL_TYPE_K_EXTERNAL_ACCOUNT              = 5u;
+    static inline constexpr uint8_t CREDENTIAL_TYPE_K_ANONYMOUS                     = 6u;
+
+    static inline constexpr uint8_t ENDPOINT_SCHEME_K_HTTP                          = 0u;
+    static inline constexpr uint8_t ENDPOINT_SCHEME_K_HTTPS                         = 1u;
+
+    static inline constexpr uint8_t ENCRYPTION_TYPE_K_NONE                          = 0u;
+    static inline constexpr uint8_t ENCRYPTION_TYPE_K_GOOGLE_MANAGED                = 1u;
+    static inline constexpr uint8_t ENCRYPTION_TYPE_K_CUSTOMER_MANAGED_KMS          = 2u;
+    static inline constexpr uint8_t ENCRYPTION_TYPE_K_CUSTOMER_SUPPLIED             = 3u;
+
+    struct EndpointConfig
     {
-        std::optional<std::string> application_name;
-        std::optional<std::string> environment;
-        std::optional<std::string> deployment_region;
-
+        std::optional<uint8_t> endpoint_scheme;
         std::optional<std::string> endpoint;
-        std::optional<std::string> universe_domain;
+        std::optional<bool> use_virtual_hosted_style;
+        std::optional<bool> enable_dns_caching;
 
-        std::optional<bool> use_https;
-        std::optional<bool> use_grpc;
-        std::optional<bool> enable_direct_path;
-        std::optional<bool> enable_dual_stack;
-        std::optional<bool> enable_ipv6;
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector) const
+        {
+            reflector(endpoint_scheme,
+                      endpoint,
+                      use_virtual_hosted_style,
+                      enable_dns_caching);
+        }
 
-        std::optional<std::chrono::milliseconds> connect_timeout;
-        std::optional<std::chrono::milliseconds> read_timeout;
-        std::optional<std::chrono::milliseconds> write_timeout;
-        std::optional<std::chrono::milliseconds> request_timeout;
-        std::optional<std::chrono::milliseconds> upload_chunk_timeout;
-        std::optional<std::chrono::milliseconds> download_chunk_timeout;
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector)
+        {
+            reflector(endpoint_scheme,
+                      endpoint,
+                      use_virtual_hosted_style,
+                      enable_dns_caching);
+        }
+    };
 
-        std::optional<uint32_t> grpc_channel_count;
-        std::optional<uint32_t> grpc_max_receive_message_size_mb;
-        std::optional<uint32_t> grpc_max_send_message_size_mb;
-        std::optional<uint32_t> max_http_connections;
-        std::optional<bool> enable_connection_pooling;
-        std::optional<bool> enable_keepalive;
-        std::optional<uint32_t> keepalive_interval_seconds;
+    struct ServiceAccountFileCredential
+    {
+        std::string json_path;
 
-        std::optional<bool> enable_crc32c;
-        std::optional<bool> enable_md5;
-        std::optional<bool> verify_download_checksums;
-        std::optional<bool> verify_upload_checksums;
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector) const
+        {
+            reflector(json_path);
+        }
 
-        
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector)
+        {
+            reflector(json_path);
+        }
+    };
+
+    struct ServiceAccountJsonCredential
+    {
+        std::string json_content;
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector) const
+        {
+            reflector(json_content);
+        }
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector)
+        {
+            reflector(json_content);
+        }
+    };
+
+    struct AccessTokenCredential
+    {
+        std::string access_token;
+        std::chrono::seconds token_lifetime;
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector) const
+        {
+            reflector(access_token,
+                      token_lifetime);
+        }
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector)
+        {
+            reflector(access_token,
+                      token_lifetime);
+        }
+    };
+
+    struct ExternalAccountCredential
+    {
+        std::string credential_config_file;
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector) const
+        {
+            reflector(credential_config_file);
+        }
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector)
+        {
+            reflector(credential_config_file);
+        }
+    };
+
+    struct GenericCredential
+    {
+        std::variant<stdx::reflectible_monostate,
+                     ServiceAccountFileCredential,
+                     ServiceAccountJsonCredential,
+                     AccessTokenCredential,
+                     ExternalAccountCredential> credential;
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector) const
+        {
+            reflector(credential);
+        }
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector)
+        {
+            reflector(credential);
+        }
+    };
+
+    struct EncryptionConfig
+    {
+        uint8_t encryption_type;
+        std::string kms_key_name;
+        std::string customer_supplied_key;
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector) const
+        {
+            reflector(encryption_type,
+                      kms_key_name,
+                      customer_supplied_key);
+        }
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector)
+        {
+            reflector(encryption_type,
+                      kms_key_name,
+                      customer_supplied_key);
+        }
+    };
+
+    struct UploadConfig
+    {
+        std::optional<uint64_t> upload_buffer_sz;
+        std::optional<bool> enable_checksum_validation;
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector) const
+        {
+            reflector(upload_buffer_sz,
+                      enable_checksum_validation);
+        }
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector)
+        {
+            reflector(upload_buffer_sz,
+                      enable_checksum_validation);
+        }
+    };
+
+    struct DownloadConfig
+    {
+        std::optional<bool> enable_checksum_validation;
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector) const
+        {
+            reflector(enable_checksum_validation);
+        }
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector)
+        {
+            reflector(enable_checksum_validation);
+        }
+    };
+
+    struct TLSConfig
+    {
+        std::optional<std::string> ca_file_path;
+        std::optional<bool> has_mutual_tls;
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector) const
+        {
+            reflector(ca_file_path, has_mutual_tls);
+        }
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector)
+        {
+            reflector(ca_file_path, has_mutual_tls);
+        }
     };
 
     struct SecuredGCSClientConfig
     {
+        //client_resource_pointer
 
+        std::optional<std::string> project_id;
+        std::optional<std::string> application_name;
+        std::optional<std::string> environment;
+
+        EndpointConfig endpoint_config;
+        TLSConfig tls_config;
+
+        //client feature toggles
+
+        std::optional<bool> enable_crc_32c;
+        std::optional<bool> enable_md5_validation;
+        std::optional<bool> enable_connection_pooling;
+
+        //client features
+
+        GenericCredential credential;
+        std::optional<EncryptionConfig> encryption_config;
+        UploadConfig upload_config;
+        DownloadConfig download_config;
+    
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector) const
+        {
+            reflector(project_id,
+                      application_name,
+                      environment,
+
+                      endpoint_config,
+                      tls_config,
+
+                      enable_crc_32c,
+                      enable_md5_validation,
+                      enable_connection_pooling,
+
+                      credential,
+                      encryption_config,
+                      upload_config,
+                      download_config);
+        }
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector)
+        {
+            reflector(project_id,
+                      application_name,
+                      environment,
+
+                      endpoint_config,
+                      tls_config,
+
+                      enable_crc_32c,
+                      enable_md5_validation,
+                      enable_connection_pooling,
+
+                      credential,
+                      encryption_config,
+                      upload_config,
+                      download_config);
+        }
     };
 
     struct ExternalSecuredGCSClientConfig

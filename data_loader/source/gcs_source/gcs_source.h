@@ -1,17 +1,33 @@
 #ifndef __DATA_LOADER_SOURCE_GCS_SOURCE_GCS_SOURCE_H__
 #define __DATA_LOADER_SOURCE_GCS_SOURCE_GCS_SOURCE_H__
 
+#include <stdint.h>
+#include <stdlib.h>
 #include <google/cloud/storage/client.h>
 #include <array>
 #include <iostream>
 #include <string>
 #include <cstring>
-#include <stdint.h>
-#include <stdlib.h>
+#include "model.h"
+#include <memory>
+
+#include <data_loader/source/source_loader_interface.h>
+#include <data_loader/stream_reader/delimited_stream_reader_interface.h>
+#include <data_loader/source/source_exception.h>
+#include <data_loader/stream_reader/delimited_stream_reader.h>
+
+#include <algorithm>
+#include <functional>
+#include <utility>
+#include "client_builder.h"
+#include "client_config_builder.h"
+#include <serializer/compact_serializer.h>
 
 namespace data_loader::gcs_source
 {
     namespace gcs   = ::google::cloud::storage;
+
+    using namespace data_loader::source_exception;
 
     struct GCSLoaderConfig
     {
@@ -168,7 +184,6 @@ namespace data_loader::gcs_source
                 }
 
                 std::string buf{};
-                intmax_t read_bytes;
 
                 if (this->gcs_client == nullptr)
                 {
@@ -195,7 +210,7 @@ namespace data_loader::gcs_source
 
                 try
                 {
-                    buf = this->download_one_chunk();
+                    buf = this->download_one_chunk(tx_byte_sz);
                 }
                 catch (...)
                 {
@@ -213,9 +228,9 @@ namespace data_loader::gcs_source
                     throw;
                 }
             }
-        
+
         private:
-            
+
             void handle_gcs_exception(const google::cloud::Status& s)
             {
                 using namespace data_loader::source_exception;
@@ -271,7 +286,7 @@ namespace data_loader::gcs_source
                                              const GCSObjectPointer& obj_pointer) -> size_t
             {
                 auto metadata = client.GetObjectMetadata(obj_pointer.bucket_name, obj_pointer.object_key);
-                
+
                 if (!metadata)
                 {
                     handle_gcs_exception(metadata.status());
@@ -290,7 +305,7 @@ namespace data_loader::gcs_source
                 this->buf_pointer->offset += sz;
             }
 
-            auto download_one_chunk() -> std::string
+            auto download_one_chunk(size_t requested_sz) -> std::string
             {
                 if (!this->buf_pointer.has_value())
                 {
@@ -303,7 +318,7 @@ namespace data_loader::gcs_source
                 }
 
                 size_t max_read_sz          = this->buf_pointer->sz - this->buf_pointer->offset;
-                size_t tentative_read_sz    = std::min(this->read_buf_sz, max_read_sz);
+                size_t tentative_read_sz    = std::min(std::max(this->read_buf_sz, requested_sz), max_read_sz);
                 auto stream                 = this->gcs_client->ReadObject(this->gcs_object_pointer.bucket_name,
                                                                            this->gcs_object_pointer.object_key,
                                                                            gcs::ReadRange(this->buf_pointer->offset, tentative_read_sz));
