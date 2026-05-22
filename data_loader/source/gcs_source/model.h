@@ -24,11 +24,6 @@ namespace data_loader::gcs_source
     static inline constexpr uint8_t ENDPOINT_SCHEME_K_HTTP                          = 0u;
     static inline constexpr uint8_t ENDPOINT_SCHEME_K_HTTPS                         = 1u;
 
-    static inline constexpr uint8_t ENCRYPTION_TYPE_K_NONE                          = 0u;
-    static inline constexpr uint8_t ENCRYPTION_TYPE_K_GOOGLE_MANAGED                = 1u;
-    static inline constexpr uint8_t ENCRYPTION_TYPE_K_CUSTOMER_MANAGED_KMS          = 2u;
-    static inline constexpr uint8_t ENCRYPTION_TYPE_K_CUSTOMER_SUPPLIED             = 3u;
-
     struct EndpointConfig
     {
         std::optional<uint8_t> endpoint_scheme;
@@ -147,29 +142,6 @@ namespace data_loader::gcs_source
         }
     };
 
-    struct EncryptionConfig
-    {
-        uint8_t encryption_type;
-        std::string kms_key_name;
-        std::string customer_supplied_key;
-
-        template <class Reflector>
-        void dg_reflect(const Reflector& reflector) const
-        {
-            reflector(encryption_type,
-                      kms_key_name,
-                      customer_supplied_key);
-        }
-
-        template <class Reflector>
-        void dg_reflect(const Reflector& reflector)
-        {
-            reflector(encryption_type,
-                      kms_key_name,
-                      customer_supplied_key);
-        }
-    };
-
     struct UploadConfig
     {
         std::optional<uint64_t> upload_buffer_sz;
@@ -245,7 +217,6 @@ namespace data_loader::gcs_source
         //client features
 
         GenericCredential credential;
-        std::optional<EncryptionConfig> encryption_config;
         UploadConfig upload_config;
         DownloadConfig download_config;
     
@@ -264,7 +235,6 @@ namespace data_loader::gcs_source
                       enable_connection_pooling,
 
                       credential,
-                      encryption_config,
                       upload_config,
                       download_config);
         }
@@ -284,7 +254,6 @@ namespace data_loader::gcs_source
                       enable_connection_pooling,
 
                       credential,
-                      encryption_config,
                       upload_config,
                       download_config);
         }

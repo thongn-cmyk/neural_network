@@ -89,17 +89,6 @@ namespace data_loader::s3_source
         return dg::network_compact_serializer::dgstd_deserialize<S3LoaderConfig>(config.config_bytestream);
     }
 
-    //the merits, morals behind data loader is that we have a region <a, b>
-    //we want to read each segment once, for segments = <a, b>
-
-    //and we'd have to retry indefinitely to read each segment once, or we'd have to prune by throwing different errors or max retry reached by retryer
-    //that's it
-
-    //the assumption that we have is the data being immutable, and the implementation that we have is safely undefined otherwise
-
-    //it's incredibly complicated, or that I'd have to stick to the traditional way to reading, 
-    //I'd normally prefer check size first, but I guess that check size later is more "traditional", more C-liked program or sstream-liked problem
-
     class S3Loader: public virtual data_loader::SourceLoaderInterface
     {
         private:
@@ -129,11 +118,13 @@ namespace data_loader::s3_source
             std::optional<BufferPointer> buf_pointer;
 
             static inline constexpr size_t SOFT_READ_ERROR_THRESHOLD    = size_t{1} << 3;
-            static inline constexpr size_t MAX_READ_SZ                  = size_t{1} << 20;
+            static inline constexpr size_t MAX_READ_SZ                  = size_t{1} << 24;
+
             static inline constexpr size_t MIN_BUFFER_SZ                = size_t{1} << 10;
-            static inline constexpr size_t MAX_BUFFER_SZ                = size_t{1} << 20;
+            static inline constexpr size_t MAX_BUFFER_SZ                = size_t{1} << 24;
+
             static inline constexpr size_t MIN_TX_UNIT_SZ               = size_t{1} << 10;
-            static inline constexpr size_t MAX_TX_UNIT_SZ               = size_t{1} << 20;
+            static inline constexpr size_t MAX_TX_UNIT_SZ               = size_t{1} << 24;
 
         public:
 
@@ -197,9 +188,6 @@ namespace data_loader::s3_source
                     return std::vector<std::string>();
                 }
 
-                std::string buf(tx_byte_sz, ' ');
-                intmax_t read_byte_sz{};
-
                 if (this->object_outcome == nullptr)
                 {
                     this->initialize_object_outcome();
@@ -216,12 +204,24 @@ namespace data_loader::s3_source
                     throw other_error("S3 Bucket read went wrong, failed to initialize read pointer");
                 }
 
+                if (this->buf_pointer->offset == this->buf_pointer->sz)
+                {
+                    this->was_completed = true;
+                    return std::nullopt;
+                }
+
+                size_t rem_sz               = this->buf_pointer->sz - this->buf_pointer->offset;
+                size_t tentative_read_sz    = std::min(tx_byte_sz, rem_sz);
+
+                std::string buf(tentative_read_sz, ' ');
+                intmax_t read_byte_sz{};
+
                 try
                 {
                     this->seek_outcome_stream(*this->object_outcome, this->buf_pointer->offset);
                     this->read_outcome_stream(*this->object_outcome, buf.data(), buf.size());
 
-                    read_byte_sz = this->gcount_outcome_stream(*this->object_outcome);
+                    read_byte_sz    = this->gcount_outcome_stream(*this->object_outcome);
                 }
                 catch (...)
                 {
@@ -235,28 +235,20 @@ namespace data_loader::s3_source
                     throw other_error("file read went wrong, negative read bytes");
                 }
 
-                size_t nxt_offset   = this->buf_pointer->offset + read_byte_sz;
-
-                if (nxt_offset > this->buf_pointer->sz)
+                if (read_byte_sz > rem_sz)
                 {
                     this->is_bad_state = true;
-                    throw hard_file_read_error("file read went wrong, out of range access");
+                    throw other_error("file read went wrong, overflow read bytes");
+                }
+
+                if (read_byte_sz == 0)
+                {
+                    this->revive_object_outcome_and_throw_size_inconsistency();
+                    this->punch_one_soft_read_error();
                 }
 
                 buf.resize(read_byte_sz);
-                this->buf_pointer->offset   = nxt_offset;
-
-                if (buf.size() == 0u)
-                {
-                    if (this->buf_pointer->offset != this->buf_pointer->sz)
-                    {
-                        this->revive_object_outcome_and_throw_size_inconsistency();
-                        this->punch_one_soft_read_error();
-                    }
-
-                    this->was_completed = true;
-                    return std::nullopt;
-                }
+                this->buf_pointer->offset   += read_byte_sz;
 
                 try
                 {

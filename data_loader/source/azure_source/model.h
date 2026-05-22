@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string>
 #include <variant>
+#include <stl_extension/stdx.h>
 
 namespace data_loader::azure_source
 {
@@ -66,50 +67,12 @@ namespace data_loader::azure_source
         }
     };
 
-    struct ManagedIdentityAuthConfig
-    {
-        std::string managed_identity_client_id;
-
-        template <class Reflector>
-        void dg_reflect(const Reflector& reflector) const
-        {
-            reflector(managed_identity_client_id);
-        }
-
-        template <class Reflector>
-        void dg_reflect(const Reflector& reflector)
-        {
-            reflector(managed_identity_client_id);
-        }
-    };
-
-    struct ServicePrincipalSecretAuthConfig
-    {
-        std::string tenant_id;
-        std::string client_id;
-        std::string client_secret;
-
-        template <class Reflector>
-        void dg_reflect(const Reflector& reflector) const
-        {
-            reflector(tenant_id, client_id, client_secret);
-        }
-
-        template <class Reflector>
-        void dg_reflect(const Reflector& reflector)
-        {
-            reflector(tenant_id, client_id, client_secret);
-        }
-    };
-
     struct GenericAuthConfig
     {
         std::variant<stdx::reflectible_monostate,
                      ConnectionStringAuthConfig,
                      SharedKeyAuthConfig,
-                     SASTokenAuthConfig,
-                     ManagedIdentityAuthConfig,
-                     ServicePrincipalSecretAuthConfig> auth_config;
+                     SASTokenAuthConfig> auth_config;
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector) const

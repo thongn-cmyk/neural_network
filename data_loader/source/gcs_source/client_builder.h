@@ -13,6 +13,11 @@
 #include <memory>
 #include <stl_extension/stdx.h>
 #include <cstdlib>
+#include <google/cloud/credentials.h>
+#include <google/cloud/options.h>
+#include <google/cloud/storage/client.h>
+#include <google/cloud/storage/options.h>
+#include <fstream>
 
 namespace data_loader::gcs_source
 {
@@ -41,14 +46,13 @@ namespace data_loader::gcs_source
 
         private:
 
-            auto get_options() -> gcs::Options
+            auto get_options() -> gc::Options
             {
-                gcs::Options rs{};
+                gc::Options rs{};
 
                 this->set_endpoint_options(rs);
                 this->set_tls_options(rs);
                 this->set_credential_options(rs);
-                this->set_encryption_options(rs);
                 this->set_upload_options(rs);
                 this->set_download_options(rs);
                 this->set_client_primitives_options(rs);
@@ -92,7 +96,7 @@ namespace data_loader::gcs_source
                 }
             }
 
-            void set_endpoint_options(gcs::Options& options)
+            void set_endpoint_options(gc::Options& options)
             {
                 if (!this->config.has_value())
                 {
@@ -112,7 +116,7 @@ namespace data_loader::gcs_source
                 }
             }
 
-            void set_tls_options(gcs::Options& options)
+            void set_tls_options(gc::Options& options)
             {
                 if (!this->config.has_value())
                 {
@@ -134,48 +138,59 @@ namespace data_loader::gcs_source
                 }
             }
 
-            void set_credential_options_helper(gcs::Options& options,
+            void set_credential_options_helper(gc::Options& options,
                                                const stdx::reflectible_monostate& cred)
             {
                 (void) options;
                 (void) cred;
             }
 
-            void set_credential_options_helper(gcs::Options& options,
+            void set_credential_options_helper(gc::Options& options,
                                                const ServiceAccountFileCredential& cred)
             {
-                auto gg_cred    = gc::CreateServiceAccountCredentialsFromJsonFilePath(cred.json_path);
+                auto gg_cred    = gc::MakeServiceAccountCredentialsFromFile(cred.json_path);
 
                 options.template set<google::cloud::UnifiedCredentialsOption>(gg_cred);
             }
 
-            void set_credential_options_helper(gcs::Options& options,
+            void set_credential_options_helper(gc::Options& options,
                                                const ServiceAccountJsonCredential& cred)
             {
-                auto gg_cred    = gc::CreateServiceAccountCredentials(cred.json_content);
+                auto gg_cred    = gc::MakeServiceAccountCredentials(cred.json_content);
 
                 options.template set<google::cloud::UnifiedCredentialsOption>(gg_cred);
             }
 
-            void set_credential_options_helper(gcs::Options& options,
+            void set_credential_options_helper(gc::Options& options,
                                                const AccessTokenCredential& cred)
             {
                 auto expiry     = std::chrono::system_clock::now() + cred.token_lifetime;
-                auto gg_cred    = gc::CreateAccessTokenCredentials(cred.access_token, expiry);
+                auto gg_cred    = gc::MakeAccessTokenCredentials(cred.access_token, expiry);
 
                 options.template set<google::cloud::UnifiedCredentialsOption>(gg_cred);
             }
 
 
-            void set_credential_options_helper(gcs::Options& options,
+            void set_credential_options_helper(gc::Options& options,
                                                const ExternalAccountCredential& cred)
             {
-                auto gg_cred    = gc::CreateExternalAccountCredentialsFromJsonFilePath(cred.credential_config_file);
+                std::ifstream ifs(cred.credential_config_file);
+
+                if (!ifs.is_open())
+                {
+                    throw std::runtime_error("Could not open credential configuration file: " + cred.credential_config_file);
+                }
+
+                std::stringstream buffer{};
+                buffer << ifs.rdbuf();
+                std::string json_content = buffer.str();
+
+                auto gg_cred    = gc::MakeExternalAccountCredentials(json_content);
 
                 options.template set<google::cloud::UnifiedCredentialsOption>(gg_cred);
             }
 
-            void set_credential_options(gcs::Options& options)
+            void set_credential_options(gc::Options& options)
             {
                 if (!this->config.has_value())
                 {
@@ -190,48 +205,8 @@ namespace data_loader::gcs_source
                 std::visit(visitor, this->config->credential.credential);
             }
 
-            void set_encryption_options(gcs::Options& options)
-            {
-                if (!this->config.has_value())
-                {
-                    return;
-                }
 
-                if (!this->config->encryption_config.has_value())
-                {
-                    return;
-                }
-
-                switch (this->config->encryption_config->encryption_type)
-                {
-                    case ENCRYPTION_TYPE_K_NONE:
-                    case ENCRYPTION_TYPE_K_GOOGLE_MANAGED:
-                    {
-                        break;
-                    }
-                    case ENCRYPTION_TYPE_K_CUSTOMER_MANAGED_KMS:
-                    {
-                        options.template set<gcs::DestinationKmsKeyOption>(this->config->encryption_config->kms_key_name);
-                        break;
-                    }
-                    case ENCRYPTION_TYPE_K_CUSTOMER_SUPPLIED:
-                    {
-                        auto encryption_key = gcs::EncryptionKey::FromBase64Key
-                        (
-                            this->config->encryption_config->customer_supplied_key;
-                        );
-
-                        options.template set<gcs::EncryptionKey>(encryption_key);
-                        break;
-                    }
-                    default:
-                    {
-                        throw std::invalid_argument("bad encryption option, enumeration value out of range");
-                    }
-                }
-            }
-
-            void set_upload_options(gcs::Options& options)
+            void set_upload_options(gc::Options& options)
             {
                 if (!this->config.has_value())
                 {
@@ -255,12 +230,13 @@ namespace data_loader::gcs_source
 
                     if (has_chksum)
                     {
-                        options.template set<gcs::DisableCrc32cValidationOption>(false);
+                        (void) options;
+                        // options.template set<gcs::DisableCrc32cValidationOption>(false);
                     }
                 }
             }
 
-            void set_download_options(gcs::Options& options)
+            void set_download_options(gc::Options& options)
             {
                 if (!this->config.has_value())
                 {
@@ -273,12 +249,13 @@ namespace data_loader::gcs_source
 
                     if (has_chksum)
                     {
-                        options.template set<gcs::DisableCrc32cValidationOption>(false);
+                        (void) options;
+                        // options.template set<gcs::DisableCrc32cValidationOption>(false);
                     }
                 }
             }
 
-            void set_client_primitives_options(gcs::Options& options)
+            void set_client_primitives_options(gc::Options& options)
             {
                 if (!this->config.has_value())
                 {
@@ -311,7 +288,8 @@ namespace data_loader::gcs_source
                 {
                     if (this->config->enable_crc_32c.value())
                     {
-                        options.template set<gcs::DisableCrc32cValidationOption>(false);
+                        (void) options;
+                        // options.template set<gcs::DisableCrc32cValidationOption>(false);
                     }                
                 }
 
@@ -319,7 +297,8 @@ namespace data_loader::gcs_source
                 {
                     if (this->config->enable_md5_validation.value())
                     {
-                        options.template set<gcs::EnableMD5ValidationOption>(true);
+                        (void) options;
+                        // options.template set<gcs::EnableMD5ValidationOption>(true);
                     }
                 }
 

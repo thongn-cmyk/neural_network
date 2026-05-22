@@ -9,8 +9,19 @@
 #include <cstring>
 #include <stdint.h>
 #include <stdlib.h>
+#include "model.h"
+#include <memory>
+#include <data_loader/source/source_loader_interface.h>
+#include <data_loader/stream_reader/delimited_stream_reader_interface.h>
+#include <data_loader/source/source_exception.h>
+#include <data_loader/stream_reader/delimited_stream_reader.h>
+#include <algorithm>
+#include <functional>
+#include <utility>
 #include "client_builder.h"
 #include "client_config_builder.h"
+#include <serializer/compact_serializer.h>
+#include <bit>
 
 namespace data_loader::azure_source
 {
@@ -100,22 +111,22 @@ namespace data_loader::azure_source
         
             std::unique_ptr<data_loader::stream_reader::DelimitedStreamReaderInterface> delim_stream_reader;
             std::unique_ptr<BlobClient> blob_client;
-            std::unique_ptr<unsigned char[]> preallocated_buf;
-            size_t preallocated_buf_sz;
+            size_t ops_buf_sz;
 
             size_t tx_unit_sz;
             bool was_completed;
             bool is_bad_state;
             AzureObjectPointer azure_object_pointer;
-            data_loader::azure_source::ExternalSecuredAzureClientConfig service_client_config;
+            data_loader::azure_source::SecuredAzureClientConfig service_client_config;
             std::optional<BufferPointer> buf_pointer;
 
-            static inline constexpr size_t MAX_READ_SZ      = size_t{1} << 20;
+            static inline constexpr size_t MAX_READ_SZ      = size_t{1} << 24;
+
             static inline constexpr size_t MIN_BUFFER_SZ    = size_t{1} << 10;
-            static inline constexpr size_t MAX_BUFFER_SZ    = size_t{1} << 20;
+            static inline constexpr size_t MAX_BUFFER_SZ    = size_t{1} << 24;
 
             static inline constexpr size_t MIN_TX_UNIT_SZ   = size_t{1} << 10;
-            static inline constexpr size_t MAX_TX_UNIT_SZ   = size_t{1} << 20;
+            static inline constexpr size_t MAX_TX_UNIT_SZ   = size_t{1} << 24;
 
         public:
 
@@ -141,8 +152,7 @@ namespace data_loader::azure_source
                                              MAX_BUFFER_SZ);
                 }
 
-                this->preallocated_buf      = std::make_unique<unsigned char[]>(buf_sz);
-                this->preallocated_buf_sz   = buf_sz;
+                this->ops_buf_sz            = buf_sz;
 
                 this->was_completed         = false;
                 this->is_bad_state          = false;
@@ -152,7 +162,7 @@ namespace data_loader::azure_source
                     .blob_name      = config.blob_name
                 };
 
-                this->service_client_config = config.service_client_config;
+                this->service_client_config = to_internal_secured_azure_client_config(config.service_client_config);
                 this->buf_pointer           = std::nullopt;
             }
 
@@ -205,7 +215,7 @@ namespace data_loader::azure_source
 
                 try
                 {
-                    buf = this->download_one_chunk();
+                    buf = this->download_one_chunk(tx_byte_sz);
                 }
                 catch (...)
                 {
@@ -288,9 +298,9 @@ namespace data_loader::azure_source
                         //--------------------------------------------------
                         // 416 Requested Range Not Satisfiable
                         //--------------------------------------------------
-                        case HttpStatusCode::RequestedRangeNotSatisfiable:
+                        case HttpStatusCode::RangeNotSatisfiable:
                         {
-                            throw source_invalid_argument("Bad Azure BlobStorage operation, RequestedRangeNotSatisfiable");
+                            throw source_invalid_argument("Bad Azure BlobStorage operation, RangeNotSatisfiable");
                         }
 
                         //--------------------------------------------------
@@ -365,6 +375,7 @@ namespace data_loader::azure_source
                 catch (...)
                 {
                     this->handle_azure_exception(std::current_exception());
+                    return {};
                 }
             }
 
@@ -377,10 +388,11 @@ namespace data_loader::azure_source
                 catch (...)
                 {
                     this->handle_azure_exception(std::current_exception());
+                    return {};
                 }
             }
 
-            auto get_download_options() -> Azure::Storage::Blobs::DownloadBlobToOptions
+            auto get_download_options(size_t suggested_sz) -> Azure::Storage::Blobs::DownloadBlobToOptions
             {
                 if (!this->buf_pointer.has_value())
                 {
@@ -393,7 +405,7 @@ namespace data_loader::azure_source
                 }
 
                 size_t max_read_sz  = this->buf_pointer->sz - this->buf_pointer->offset;
-                size_t read_sz      = std::min(this->preallocated_buf_sz, max_read_sz);
+                size_t read_sz      = std::min(std::max(this->ops_buf_sz, suggested_sz), max_read_sz);
 
                 if (read_sz == 0u)
                 {
@@ -402,7 +414,7 @@ namespace data_loader::azure_source
 
                 return Azure::Storage::Blobs::DownloadBlobToOptions
                 {
-                    .Range
+                    .Range = Azure::Core::Http::HttpRange
                     {
                         .Offset = static_cast<int64_t>(this->buf_pointer->offset),
                         .Length = static_cast<int64_t>(read_sz)
@@ -410,7 +422,7 @@ namespace data_loader::azure_source
                 };
             }
 
-            auto get_expected_download_size() -> size_t
+            auto get_expected_download_size(size_t suggested_sz) -> size_t
             {
                 if (!this->buf_pointer.has_value())
                 {
@@ -423,7 +435,7 @@ namespace data_loader::azure_source
                 }
 
                 size_t max_read_sz  = this->buf_pointer->sz - this->buf_pointer->offset;
-                size_t read_sz      = std::min(this->preallocated_buf_sz, max_read_sz);
+                size_t read_sz      = std::min(std::max(this->ops_buf_sz, suggested_sz), max_read_sz);
 
                 return read_sz;
             }
@@ -438,37 +450,48 @@ namespace data_loader::azure_source
                 this->buf_pointer->offset += sz;
             }
 
-            auto download_one_chunk() -> std::string
+            auto download_one_chunk(size_t suggested_sz) -> std::string
             {
                 size_t read_bytes{};
-                size_t expected_read_bytes{};
-                std::string buf{};
+                size_t tentative_read_bytes{};
+
+                using unsigned_char = unsigned char;
+                std::unique_ptr<unsigned_char[]> buf;
 
                 try
                 {
-                    buf.resize(this->get_expected_download_size());
+                    size_t buf_sz           = this->get_expected_download_size(suggested_sz);
+                    buf                     = std::make_unique<unsigned_char[]>(buf_sz);
 
-                    auto rs             = this->blob_client->DownloadTo(buf.data(),
-                                                                        this->get_expected_download_size(),
-                                                                        this->get_download_options());
+                    auto rs                 = this->blob_client->DownloadTo(buf.get(),
+                                                                            buf_sz,
+                                                                            this->get_download_options(suggested_sz));
 
-                    read_bytes          = rs.Value.Details.Range.Value().Length;
-                    expected_read_bytes = this->get_expected_download_size();
+                    read_bytes              = rs.Value.ContentRange.Length.Value();
+                    tentative_read_bytes    = buf_sz;
                 }
                 catch (...)
                 {
                     this->handle_azure_exception(std::current_exception());
                 }
 
-                if (read_bytes != expected_read_bytes)
+                if (read_bytes != tentative_read_bytes)
                 {
                     this->is_bad_state = true;
                     throw hard_file_read_error("Bad Azure operation, mismatched read range");
                 }
 
+                std::string rs{};
+                rs.reserve(read_bytes);
+
+                for (size_t i = 0u; i < read_bytes; ++i)
+                {
+                    rs.push_back(std::bit_cast<char>(buf[i]));
+                }
+
                 this->increment_read_pointer_by(read_bytes);
 
-                return buf;
+                return rs;
             }
     };
 }

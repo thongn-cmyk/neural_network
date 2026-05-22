@@ -118,12 +118,12 @@ namespace data_loader::s3_source
 
                 if (c.proxy_host.has_value())
                 {
-                    cc.proxyHost    = Aws::String(c.proxy_host->c_str());
+                    cc.proxyHost        = Aws::String(c.proxy_host->c_str());
                 }
 
                 if (c.proxy_port.has_value())
                 {
-                    cc.proxyPort    = static_cast<unsigned short>(c.proxy_port.value());
+                    cc.proxyPort        = static_cast<unsigned short>(c.proxy_port.value());
                 }
 
                 if (c.proxy_user_name.has_value())

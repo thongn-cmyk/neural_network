@@ -10,29 +10,29 @@
 #include <cstring>
 #include "model.h"
 #include <memory>
-
 #include <data_loader/source/source_loader_interface.h>
 #include <data_loader/stream_reader/delimited_stream_reader_interface.h>
 #include <data_loader/source/source_exception.h>
 #include <data_loader/stream_reader/delimited_stream_reader.h>
-
 #include <algorithm>
 #include <functional>
 #include <utility>
 #include "client_builder.h"
 #include "client_config_builder.h"
 #include <serializer/compact_serializer.h>
+#include <google/cloud/status.h>
 
 namespace data_loader::gcs_source
 {
     namespace gcs   = ::google::cloud::storage;
+    namespace gc    = ::google::cloud;
 
     using namespace data_loader::source_exception;
 
     struct GCSLoaderConfig
     {
         data_loader::stream_reader::ExternalDelimitedStreamReaderConfig delim_config;
-        data_loader::gcs_source::ExternalSecuredGCSlientConfig gcs_client_config;
+        data_loader::gcs_source::ExternalSecuredGCSClientConfig gcs_client_config;
         std::string bucket_name;
         std::string object_key;
         std::optional<uint64_t> read_ahead_buffer_sz_hint;
@@ -91,6 +91,25 @@ namespace data_loader::gcs_source
         return dg::network_compact_serializer::dgstd_deserialize<GCSLoaderConfig>(config.config_bytestream);
     }
 
+    //I think we are fine for the data loader for now
+    //let's look at the problem the way I already described it but we'd need proof of defined
+
+    //we assume an immutable range [a, b), this is our entry, the precond of the function
+    //the aggregated returned results is [a, b), with each subsegment read only once
+    //we'd need to retry indefinitely to achieve that end
+
+    //so in the normal case, assume that everything is perfect, we only prove that the normal flow works fine
+    //so that we read one segment, another segment, another segment etc.
+    //then we'd need to prove that each failed operation is "atomic" with respect to the object, as if the call did not exist
+
+    //then we have our proof of completeness, such is retry indefinitely would maybe get the range [a, b)
+
+    //then we'd want to radix the std::exception (generic exception) as different exceptions to prune the retry cases
+    //and we'd want to handle the client failure to prepare for the next call
+
+    //I guess that the difficulty in writing these is the "unclear" in the precond and the "how-to" implement it in the way that we cannot define
+    //so if we define our problem as an immutable range [a, b), and return an arbitrary range [a, b), then it would clear a lot of issues
+
     class GCSLoader: public virtual data_loader::SourceLoaderInterface
     {
         private:
@@ -115,15 +134,16 @@ namespace data_loader::gcs_source
             bool was_completed;
             bool is_bad_state;
             GCSObjectPointer gcs_object_pointer;
-            data_loader::gcs_source::SecuredGCSlientConfig gcs_client_config;
+            data_loader::gcs_source::SecuredGCSClientConfig gcs_client_config;
             std::optional<BufferPointer> buf_pointer;
 
-            static inline constexpr size_t MAX_READ_SZ      = size_t{1} << 20;
+            static inline constexpr size_t MAX_READ_SZ      = size_t{1} << 24;
+
             static inline constexpr size_t MIN_BUFFER_SZ    = size_t{1} << 10;
-            static inline constexpr size_t MAX_BUFFER_SZ    = size_t{1} << 20;
+            static inline constexpr size_t MAX_BUFFER_SZ    = size_t{1} << 24;
 
             static inline constexpr size_t MIN_TX_UNIT_SZ   = size_t{1} << 10;
-            static inline constexpr size_t MAX_TX_UNIT_SZ   = size_t{1} << 20;
+            static inline constexpr size_t MAX_TX_UNIT_SZ   = size_t{1} << 24;
 
         public:
 
@@ -191,7 +211,7 @@ namespace data_loader::gcs_source
                     this->buf_pointer   = 
                     {
                         .offset = size_t{0u},
-                        .sz     = this->get_download_content_length(*tmp_client, this->gcs_object_object)
+                        .sz     = this->get_download_content_length(*tmp_client, this->gcs_object_pointer)
                     };
 
                     this->gcs_client    = std::move(tmp_client);
@@ -237,36 +257,36 @@ namespace data_loader::gcs_source
 
                 switch (s.code())
                 {
-                    case StatusCode::kOk:
+                    case gc::StatusCode::kOk:
                     {
                         break;
                     }
-                    case StatusCode::kInvalidArgument:
+                    case gc::StatusCode::kInvalidArgument:
                     {
                         throw source_invalid_argument("Bad GCS operation, InvalidArgument");
                     }
-                    case StatusCode::kUnauthenticated:
+                    case gc::StatusCode::kUnauthenticated:
                     {
                         throw authentication_error("Bad GCS operation, Unauthenticated");
                     }
-                    case StatusCode::kPermissionDenied:
+                    case gc::StatusCode::kPermissionDenied:
                     {
                         throw authentication_error("Bad GCS operation, PermissionDenied");
                     }
-                    case StatusCode::kNotFound:
+                    case gc::StatusCode::kNotFound:
                     {
                         throw bad_resource_pointer_error("Bad GCS operation, NotFound");
                     }
-                    case StatusCode::kFailedPrecondition:
-                    case StatusCode::kOutOfRange:
+                    case gc::StatusCode::kFailedPrecondition:
+                    case gc::StatusCode::kOutOfRange:
                     {
                         throw source_invalid_argument("Bad GCS operation, Range/Precondition");
                     }
-                    case StatusCode::kResourceExhausted:
-                    case StatusCode::kUnavailable:
-                    case StatusCode::kDeadlineExceeded:
-                    case StatusCode::kInternal:
-                    case StatusCode::kAborted:
+                    case gc::StatusCode::kResourceExhausted:
+                    case gc::StatusCode::kUnavailable:
+                    case gc::StatusCode::kDeadlineExceeded:
+                    case gc::StatusCode::kInternal:
+                    case gc::StatusCode::kAborted:
                     {
                         throw connection_error("Bad GCS operation, transient or server error");
                     }

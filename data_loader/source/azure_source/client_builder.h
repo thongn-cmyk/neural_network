@@ -12,6 +12,11 @@
 #include <functional>
 #include <memory>
 #include <stl_extension/stdx.h>
+#include <azure/storage/common/storage_credential.hpp>
+#include <azure/storage/blobs/blob_service_client.hpp>
+#include <azure/storage/blobs.hpp>
+#include <azure/core/credentials/credentials.hpp>
+#include <azure/core/http/curl_transport.hpp>
 
 namespace data_loader::azure_source
 {
@@ -38,7 +43,7 @@ namespace data_loader::azure_source
             {
                 if (!this->config.has_value())
                 {
-                    throw std::invalid_argument("bad Azure config, null")
+                    throw std::invalid_argument("bad Azure config, null");
                 }
 
                 if (std::holds_alternative<ConnectionStringAuthConfig>(this->config->auth_config.auth_config))
@@ -60,30 +65,16 @@ namespace data_loader::azure_source
                                                                     this->get_sdk_options());
                 }
 
-                if (std::holds_alternative<ManagedIdentityAuthConfig>(this->config->auth_config.auth_config))
-                {
-                    return std::make_unique<asb::BlobServiceClient>(this->get_service_ep_url(),
-                                                                    this->get_managed_identity_token_credential(),
-                                                                    this->get_sdk_options());
-                }
-
-                if (std::holds_altenative<ServicePrincipalSecretAuthConfig>(this->auth_config.auth_config))
-                {
-                    return std::make_unique<asb::BlobServiceClient>(this->get_service_ep_url(),
-                                                                    this->get_service_principal_token_credential(),
-                                                                    this->get_sdk_options());
-                }
-
                 throw std::invalid_argument("bad Azure config, invalid authentication option");
             }
 
         private:
 
-            auto get_connection_string()
+            auto get_connection_string() -> std::string
             {
                 if (!this->config.has_value())
                 {
-                    throw std::invalid_argument("bad Azure config, null")
+                    throw std::invalid_argument("bad Azure config, null");
                 }
 
                 if (!std::holds_alternative<ConnectionStringAuthConfig>(this->config->auth_config.auth_config))
@@ -139,47 +130,7 @@ namespace data_loader::azure_source
 
             auto get_sas_service_ep_url() -> std::string
             {
-                return this->get_service_ep_url() + this->get_azure_sas_credential();
-            }
-
-            auto get_managed_identity_token_credential() -> std::shared_ptr<acc::TokenCredential>
-            {
-                if (!this->config.has_value())
-                {
-                    throw std::invalid_argument("bad Azure config, null");
-                }
-
-                if (!std::holds_alternative<ManagedIdentityAuthConfig>(this->config->auth_config.auth_config))
-                {
-                    throw std::invalid_argument("bad Azure authentication type, ManagedIdentity expected");
-                }
-
-                Azure::Identity::ManagedIdentityCredentialOptions options{};
-                options.ClientId    = std::get<ManagedIdentityAuthConfig>(this->config->auth_config.auth_config).managed_identity_client_id;
-
-                return std::make_shared<Azure::Identity::ManagedIdentityCredential>(options);
-            }
-
-            auto get_service_principal_token_credential() -> std::shared_ptr<acc::TokenCredential>
-            {
-                if (!this->config.has_value())
-                {
-                    throw std::invalid_argument("bad Azure config, null");
-                }
-
-                if (!std::holds_alternative<ServicePrincipalSecretAuthConfig>(this->config->auth_config.auth_config))
-                {
-                    throw std::invalid_argument("bad Azure authentication type, ServicePrincipleSecret expected");
-                }
-
-                const auto& cred = std::get<ServicePrincipalSecretAuthConfig>(this->config->auth_config.auth_config);
-
-                return std::make_shared<Azure::Identity::ClientSecretCredential>
-                (
-                    cred.tenant_id,
-                    cred.client_id,
-                    cred.client_secret
-                );
+                return this->get_service_ep_url() + "?" + this->get_azure_sas_credential();
             }
 
             auto get_sdk_options() -> asb::BlobClientOptions
@@ -194,17 +145,17 @@ namespace data_loader::azure_source
 
                 if (this->config->transport_config.http_proxy.has_value())
                 {
-                    curl_transport_options.Proxy  = this->config->transport_config.http_proxy.value();
+                    curl_transport_options.Proxy    = this->config->transport_config.http_proxy.value();
                 }
 
                 if (this->config->transport_config.ca_file_path.has_value())
                 {
-                    curl_transport_options.SslOptions.CaInfo    = this->config->transport_config.ca_file_path.value();
+                    curl_transport_options.CAInfo   = this->config->transport_config.ca_file_path.value();
                 }
 
                 if (this->config->telemetry_config.application_id.has_value())
                 {
-                    rs.Telemetry.ApplicationId = this->config->telemetry_config.application_id.value();
+                    rs.Telemetry.ApplicationId      = this->config->telemetry_config.application_id.value();
                 }
 
                 rs.Transport.Transport = std::make_shared<Azure::Core::Http::CurlTransport>(curl_transport_options);
