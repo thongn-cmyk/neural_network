@@ -826,6 +826,56 @@ namespace temporal_coefficient_projector_2
             };
     };
 
+    class ChainedProjectorGenerator: public virtual TemporalCoefficientProjectorGeneratorInterface
+    {
+        private:
+
+            std::unique_ptr<TemporalCoefficientProjectorGeneratorInterface> lhs;
+            std::unique_ptr<TemporalCoefficientProjectorGeneratorInterface> rhs;
+        
+        public:
+
+            ChainedProjectorGenerator(std::unique_ptr<TemporalCoefficientProjectorGeneratorInterface> lhs,
+                                      std::unique_ptr<TemporalCoefficientProjectorGeneratorInterface> rhs) noexcept: lhs(std::move(lhs)),
+                                                                                                                     rhs(std::move(rhs)){}
+
+            auto get(size_t coefficient_sz) -> std::unique_ptr<TemporalCoefficientProjectorContainerInterface>
+            {
+                return std::make_unique<InternalFactoryTensor>(this->lhs->get(coefficient_sz),
+                                                               this->rhs->get(coefficient_sz));
+            }
+        
+        private:
+            
+            class InternalFactoryTensor: public virtual TemporalCoefficientProjectorContainerInterface
+            {
+                private:
+
+                    std::unique_ptr<TemporalCoefficientProjectorContainerInterface> lhs;
+                    std::unique_ptr<TemporalCoefficientProjectorContainerInterface> rhs;
+                
+                public:
+
+                    InternalFactoryTensor(std::unique_ptr<TemporalCoefficientProjectorContainerInterface> lhs,
+                                          std::unique_ptr<TemporalCoefficientProjectorContainerInterface> rhs) noexcept: lhs(std::move(lhs)),
+                                                                                                                         rhs(std::move(rhs)){}
+
+                    auto get() -> std::shared_ptr<temporal_coefficient_projector::TemporalCoefficientProjectorInterface>
+                    {
+                        using namespace temporal_coefficient_projector;
+
+                        return std::make_unique<ChainedTemporalCoefficientProjector>(stdx::to_variadic_vector_initializer(std::make_unique<SharedPointerProjector>(this->lhs->get()),
+                                                                                                                          std::make_unique<SharedPointerProjector>(this->rhs->get())));
+                    }
+
+                    void feedback(double rating)
+                    {
+                        this->lhs->feedback(rating);
+                        this->rhs->feedback(rating);
+                    }
+            };
+    };
+
     template <class PromotedFloatType = std_float_t>
     class DecisiveFocalFactory: public virtual DecisiveFactoryInterface
     {
@@ -1388,7 +1438,7 @@ namespace temporal_coefficient_projector_2
                     cosine_recommender_vec.push_back(cosine_recommender_machine_x::MachineFactory::get_best_recommender_machine(TAYLOR_COEFFICIENT_SZ));
                 }
 
-                return get_autolense_generator(std::make_unique<TaylorSeriesProjectorGenerator<PromotedFloatType>>(std::move(cosine_recommender_vec)));
+                return std::make_unique<TaylorSeriesProjectorGenerator<PromotedFloatType>>(std::move(cosine_recommender_vec));
             }
 
             template <class PromotedFloatType = std_float_t>
@@ -1398,24 +1448,15 @@ namespace temporal_coefficient_projector_2
                 const size_t EXPECTED_DIMENSION_SZ  = 64u;
                 const size_t TOTAL_SPACE_SZ         = TAYLOR_COEFFICIENT_SZ * EXPECTED_DIMENSION_SZ;
 
-                return get_autolense_generator(std::make_unique<MonoSpaceTaylorSeriesProjectorGenerator<PromotedFloatType>>(cosine_recommender_machine_x::MachineFactory::get_best_recommender_machine(TOTAL_SPACE_SZ),
-                                                                                                                            TAYLOR_COEFFICIENT_SZ));
+                return std::make_unique<MonoSpaceTaylorSeriesProjectorGenerator<PromotedFloatType>>(cosine_recommender_machine_x::MachineFactory::get_best_recommender_machine(TOTAL_SPACE_SZ),
+                                                                                                    TAYLOR_COEFFICIENT_SZ);
             }
 
             template <class PromotedFloatType = std_float_t>
             static auto get_multispace_shape_2_generator() -> std::unique_ptr<TemporalCoefficientProjectorGeneratorInterface>
             {
-                const size_t TAYLOR_COEFFICIENT_SZ  = 8u;
-                const size_t RECOMMENDER_SZ         = 1;
-
-                std::vector<std::unique_ptr<cosine_recommender_machine_x::CosineRecommenderMachineInterface>> cosine_recommender_vec{};
-
-                for (size_t i = 0u; i < RECOMMENDER_SZ; ++i)
-                {
-                    cosine_recommender_vec.push_back(cosine_recommender_machine_x::MachineFactory::get_best_recommender_machine(TAYLOR_COEFFICIENT_SZ));
-                }
-
-                return get_autolense_generator(std::make_unique<TaylorRadianSeriesProjectorGenerator<PromotedFloatType>>(std::move(cosine_recommender_vec)));
+                return std::make_unique<ChainedProjectorGenerator>(get_multispace_shape_generator(),
+                                                                   get_multispace_shape_generator());
             }
 
         public:
@@ -1438,11 +1479,11 @@ namespace temporal_coefficient_projector_2
             template <class PromotedFloatType = std_float_t>
             static auto get_autoshape_generator() -> std::unique_ptr<TemporalCoefficientProjectorGeneratorInterface>
             {
-                return std::make_unique<ChanceGenerator>(std::make_unique<ChanceGenerator>(get_multispace_shape_generator<PromotedFloatType>(),
-                                                                                            get_monospace_shape_generator<PromotedFloatType>(),
-                                                                                            conventional_randomizer::ChanceMachine(100, 33)),
+                return std::make_unique<ChanceGenerator>(std::make_unique<ChanceGenerator>(get_autolense_generator(get_multispace_shape_generator<PromotedFloatType>()),
+                                                                                           get_autolense_generator(get_monospace_shape_generator<PromotedFloatType>()),
+                                                                                           conventional_randomizer::ChanceMachine(100, 33)),
 
-                                                         get_multispace_shape_2_generator<PromotedFloatType>(),
+                                                         get_autolense_generator(get_multispace_shape_2_generator<PromotedFloatType>()),
                                                          conventional_randomizer::ChanceMachine(100, 33));
             }
 

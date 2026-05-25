@@ -10,9 +10,11 @@
 #include <algorithm>
 #include <serializer/compact_serializer.h>
 #include <taylor_matrix/host_matrix/the_host_matrix.h>
+#include <taylor_matrix/cuda_matrix/the_cuda_matrix.h>
 #include "tensor_model.h"
 #include <variant>
 #include <stl_extension/stdx.h>
+#include <memory>
 
 namespace generic_matrix_factory
 {
@@ -292,7 +294,7 @@ namespace generic_matrix_factory
 
             BaseConfiguration base_configuration;
 
-            static auto get_matrix_factory_from_base_configuration(BaseConfiguration configuration) -> taylor_matrix::cuda_matrix::TheCudaMatrixFactory
+            static auto get_matrix_factory_from_base_configuration(BaseConfiguration configuration) -> taylor_matrix::cuda_matrix::the_cuda_matrix::TheCudaMatrixFactory
             {
                 return taylor_matrix::cuda_matrix::the_cuda_matrix::TheCudaMatrixFactory{}.set_entropy(configuration.entropy_option)
                                                                                           .set_compute(configuration.compute_option)
@@ -351,7 +353,7 @@ namespace generic_matrix_factory
                 return TheCudaMatrixResource
                 {
                     .entropy_option     = internal_matrix->get_configuration().entropy_option,
-                    .compute_option     = internal_amtrix->get_configuration().compute_option,
+                    .compute_option     = internal_matrix->get_configuration().compute_option,
                     .vector_sz          = internal_matrix->get_configuration().vector_sz,
                     .logit_vec          = internal_matrix->get_coefficient_vector()
                 };
@@ -378,7 +380,7 @@ namespace generic_matrix_factory
             {
                 private:
 
-                    TheCudaMatrixLoader::BaseConfiguration base_config,
+                    TheCudaMatrixLoader::BaseConfiguration base_config;
                     std::shared_ptr<the_matrix::MatrixInterface> base_matrix;
                 
                 public:
@@ -397,7 +399,7 @@ namespace generic_matrix_factory
                         return this->base_matrix->get_coefficient_vector();
                     }
 
-                    auto set_coefficient_vector(const std::vector<tensor_model::tensor_std_float_t>& coeff_vec)
+                    void set_coefficient_vector(const std::vector<tensor_model::tensor_std_float_t>& coeff_vec)
                     {
                         this->base_matrix->set_coefficient_vector(coeff_vec);
                     }

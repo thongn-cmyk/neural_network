@@ -1,4 +1,5 @@
 #define STRONG_MEMORY_ORDERING_FLAG true
+#define DEBUG_MODE_FLAG true
 
 #include <iostream>
 #include <money/stock_solution.h>
@@ -10,7 +11,10 @@
 #include <matrix_steering_subsystem/conventional_randomizer.h>
 #include <unordered_map>
 #include <unordered_set>
-#include <matrix/the_host_matrix.h>
+#include <cuda_management/host_service.h>
+
+#include <taylor_matrix/cuda_matrix/tensor_matrix_forward.h>
+#include <taylor_matrix/cuda_matrix/tensor_matrix_forward_to_deviation.h>
 
 using namespace stock_solution;
 
@@ -98,17 +102,17 @@ auto randomize_discretization_step() -> size_t
     return randomizer() % FOCAL_STEP_RANGE + 1u;
 }
 
-auto randomize_timepoint() -> std::chrono::time_point<std::chrono::system_clock>
+auto randomize_timepoint() -> std::chrono::time_point<std::chrono::utc_clock>
 {
     using operating_float_t         = long double;
 
     static auto focal_randomizer    = conventional_randomizer::ApplicationRandomizerObject{};
-    uint64_t now_tick               = std::chrono::system_clock::now().time_since_epoch().count();
+    uint64_t now_tick               = std::chrono::utc_clock::now().time_since_epoch().count();
     operating_float_t perc          = focal_randomizer.ld_randomize_percentage_focal() * focal_randomizer.ld_randomize_percentage_focal();
     uint64_t tick                   = std::clamp(static_cast<uint64_t>(now_tick * perc), uint64_t{0u}, now_tick);
     uint64_t new_tick               = now_tick - tick;
     
-    return std::chrono::time_point<std::chrono::system_clock>(typename decltype(std::chrono::system_clock::now())::duration(new_tick));
+    return std::chrono::time_point<std::chrono::utc_clock>(typename decltype(std::chrono::utc_clock::now())::duration(new_tick));
 }
 
 auto randomize_string() -> std::string
@@ -369,7 +373,7 @@ auto get_unit_duration(uint8_t focal_unit) -> std::chrono::nanoseconds
     }
 }
 
-auto get_previous_timepoint(std::chrono::time_point<std::chrono::system_clock, std::chrono::nanoseconds> timepoint,
+auto get_previous_timepoint(std::chrono::time_point<std::chrono::utc_clock, std::chrono::nanoseconds> timepoint,
                             size_t focal_idx,
                             size_t discrete_idx,
                             uint8_t focal_unit,
@@ -432,7 +436,7 @@ void test_one_featurization()
              .set_focal_discretization_size(discretization_sz)
              .set_data(ticker_data)
              .set_feature_name_list(feature_name_list)
-             ;
+             .compute();
 
     std::vector<std::string> ticker_name_list = randomize_ticker_name_list(ticker_data);
 

@@ -382,7 +382,7 @@ namespace dg::network_compact_serializer::exception_space{
 
 namespace dg::network_compact_serializer::types_space{
 
-    using utc_clock_t   = std::chrono::high_resolution_clock;
+    using utc_clock_t   = std::chrono::utc_clock;
 
     static constexpr auto nil_lambda = []<class ...Args>(Args&&...){}; 
 

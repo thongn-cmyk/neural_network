@@ -119,6 +119,39 @@ namespace common_exception
                 return this->base;
             }
     };
+
+    class UnifiedCancellationToken: public virtual common_exception::CancellationTokenInterface
+    {
+        private:
+
+            std::vector<std::shared_ptr<common_exception::CancellationTokenInterface>> cancellation_token_vec;
+        
+        public:
+
+            UnifiedCancellationToken(std::vector<std::shared_ptr<common_exception::CancellationTokenInterface>> cancellation_token_vec): cancellation_token_vec(std::move(cancellation_token_vec))
+            {
+                for (const auto& e: this->cancellation_token_vec)
+                {
+                    if (e == nullptr)
+                    {
+                        throw std::invalid_argument("bad cancellation token, null");
+                    }
+                }
+            }
+
+            auto is_canceled() noexcept -> bool
+            {
+                for (const auto& e: this->cancellation_token_vec)
+                {
+                    if (e->is_canceled())
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+    };
 }
 
 #endif

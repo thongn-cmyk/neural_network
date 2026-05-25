@@ -4,7 +4,6 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <matrix/tensor_model.h>
-#include <matrix/device_tensor/model.h>
 #include <serializer/dg_buf.h>
 #include <vector>
 #include <unordered_map>
@@ -12,6 +11,10 @@
 #include "local_exception.h"
 #include "local_host_exception.h"
 #include "tensor_matrix_forward_header.h"
+
+#ifdef __CUDACC__
+
+#include <matrix/device_tensor/model.h>
 #include <cuda_management/scope_allocator.h>
 #include <cuda_management/device_memory.h>
 #include <cuda_management/host_service_header.h>
@@ -19,6 +22,9 @@
 #include "utility.h"
 #include "tensor_matrix_operation.h"
 #include <cuda_management/kernel_dispatch.h>
+
+#endif
+
 
 namespace taylor_matrix::cuda_matrix::tensor_matrix_forward
 {

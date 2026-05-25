@@ -8,31 +8,86 @@
 #include <vector>
 #include <string>
 #include <chrono>
-#include "stdx.h"
+#include <stl_extension/stdx.h>
 #include <unordered_map>
 #include <unordered_set>
 #include <map>
-#include "the_matrix_interface.h"
-// #include "tensor_matrix_operation.h"
+#include <matrix/generic_matrix_factory.h>
+#include <matrix/the_matrix_interface.h>
 #include <matrix/tensor_factory.h>
-#include "matrix_optimizer_interface.h"
-
 #include <numeric>
 #include <functional>
-#include "matrix_optimizer.h"
-#include "the_host_matrix.h"
+#include <concurrency_task/task_interface.h>
+#include <concurrency_detachable_task/detachable_task_handle_interface.h>
+#include <concurrency_detachable_task/detachable_task_launcher.h>
+#include <common_exception/cancellation_token.h>
 
 namespace stock_solution
 {
-    //we'd try to work on this for the next week
-    //it's complicated
+    //we'd try today tomorrow to have a demoable version of this solution
+    //
+
+    template <class T>
+    using Promise   = concurrency_detachable_task::DetachableTaskHandleInterface<T>;
+
+    template <class T>
+    using Task      = concurrency_task::TaskInterface<T>;
+
+    class MatrixOptimizationSessionInterface
+    {
+        public:
+
+            virtual ~MatrixOptimizationSessionInterface() noexcept = default;
+
+            virtual auto add_training_data(const std::shared_ptr<tensor_model::Matrix>& inp,
+                                           const std::shared_ptr<tensor_model::Matrix>& out,
+                                           const std::shared_ptr<common_exception::CancellationTokenInterface>& cancellation_token) -> std::shared_ptr<Promise<stdx::fancy_void>> = 0;
+
+            virtual auto optimize(const generic_matrix_factory::ExternalGenericMatrixResource& resource,
+                                  const std::shared_ptr<common_exception::CancellationTokenInterface>& cancellation_token) -> std::shared_ptr<Promise<generic_matrix_factory::ExternalGenericMatrixResource>> = 0;
+    };
+
+    class MatrixOptimizationSessionGeneratorInterface
+    {
+        public:
+
+            virtual ~MatrixOptimizationSessionGeneratorInterface() noexcept = default;
+
+            virtual auto get_session() -> std::unique_ptr<MatrixOptimizationSessionInterface> = 0;
+    };
+
+    struct MatrixResult
+    {
+        generic_matrix_factory::ExternalGenericMatrixResource matrix;
+        std::vector<size_t> matrix_shape;
+    };
+
+    class MatrixBrokerInterface
+    {
+        public:
+
+            virtual ~MatrixBrokerInterface() noexcept = default;
+
+            virtual auto broke_matrix(size_t flat_matrix_sz,
+                                      const std::shared_ptr<common_exception::CancellationTokenInterface>& cancellation_token) -> std::shared_ptr<Promise<MatrixResult>> = 0;
+    };
+
+    class MatrixProjectorInterface
+    {
+        public:
+
+            virtual ~MatrixProjectorInterface() noexcept = default;
+
+            virtual void set(const generic_matrix_factory::ExternalGenericMatrixResource& resource) = 0;
+            virtual auto project(const std::shared_ptr<tensor_model::Matrix>& in_matrix) -> std::shared_ptr<tensor_model::Matrix> = 0;
+    };
 
     struct TickerData
     {
         std::string ticker_name;
         std::string feature_name;
         double feature_value;
-        std::chrono::time_point<std::chrono::system_clock> timestamp;
+        std::chrono::time_point<std::chrono::utc_clock> timestamp;
     };
 
     class SequenceCompressor
@@ -684,7 +739,7 @@ namespace stock_solution
             }
 
             auto get_feature_vector_at_timepoint(const std::string& ticker_name,
-                                                 std::chrono::time_point<std::chrono::system_clock> timepoint) -> std::vector<double>
+                                                 std::chrono::time_point<std::chrono::utc_clock> timepoint) -> std::vector<double>
             {
                 std::unordered_map<std::string, std::vector<std::vector<std::optional<double>>>> raw_feature_map = this->get_raw_feature_vector_at_timepoint(ticker_name, timepoint);
 
@@ -706,7 +761,7 @@ namespace stock_solution
             }
 
             auto get_raw_feature_vector_at_timepoint_x(const std::string& ticker_name,
-                                                       std::chrono::time_point<std::chrono::system_clock> timepoint) -> std::unordered_map<std::string, std::vector<std::vector<std::optional<double>>>>
+                                                       std::chrono::time_point<std::chrono::utc_clock> timepoint) -> std::unordered_map<std::string, std::vector<std::vector<std::optional<double>>>>
             {
                 return this->get_raw_feature_vector_at_timepoint(ticker_name, timepoint);
             }
@@ -798,7 +853,7 @@ namespace stock_solution
                 }
             }
 
-            auto get_timeslice_vector_since(std::chrono::time_point<std::chrono::system_clock> timepoint) -> std::vector<std::vector<std::pair<epoch_t, epoch_t>>>
+            auto get_timeslice_vector_since(std::chrono::time_point<std::chrono::utc_clock> timepoint) -> std::vector<std::vector<std::pair<epoch_t, epoch_t>>>
             {
                 if (timepoint < decltype(timepoint)(typename decltype(timepoint)::duration(0)))
                 {
@@ -1104,7 +1159,7 @@ namespace stock_solution
             }
 
             auto get_raw_feature_vector_at_timepoint(const std::string& ticker_name,
-                                                     std::chrono::time_point<std::chrono::system_clock> timepoint) -> std::unordered_map<std::string, std::vector<std::vector<std::optional<double>>>>
+                                                     std::chrono::time_point<std::chrono::utc_clock> timepoint) -> std::unordered_map<std::string, std::vector<std::vector<std::optional<double>>>>
             {
                 std::vector<std::vector<std::pair<epoch_t, epoch_t>>> timeslice_2d_vec              = this->get_timeslice_vector_since(timepoint);
                 std::unordered_map<std::string, std::vector<std::vector<std::optional<double>>>> rs = {};
@@ -1452,17 +1507,13 @@ namespace stock_solution
         uint8_t extractor_analytic_option;
         uint64_t extractor_focal_discretization_sz;
 
-        uint8_t matrix_maker_entropy_option;
-        uint8_t matrix_maker_compute_option;
-        uint64_t matrix_maker_vector_sz;
-
         std::vector<uint64_t> matrix_encoder_shape;
         uint64_t matrix_encoder_flat_sz;
 
-        std::vector<tensor_model::tensor_std_float_t> matrix_logit_vec;
+        generic_matrix_factory::ExternalGenericMatrixResource matrix_resource;
 
-        std::chrono::time_point<std::chrono::system_clock> training_first;
-        std::chrono::time_point<std::chrono::system_clock> training_last;
+        std::chrono::time_point<std::chrono::utc_clock> training_first;
+        std::chrono::time_point<std::chrono::utc_clock> training_last;
         std::chrono::nanoseconds training_lapse;
 
         template <class Reflector>
@@ -1472,10 +1523,8 @@ namespace stock_solution
                       extractor_focal_unit, extractor_focal_exponential_base,
                       extractor_focal_step, extractor_featurization_option,
                       extractor_analytic_option, extractor_focal_discretization_sz,
-                      matrix_maker_entropy_option, matrix_maker_compute_option,
-                      matrix_maker_vector_sz,
                       matrix_encoder_shape, matrix_encoder_flat_sz,
-                      matrix_logit_vec,
+                      matrix_resource,
                       training_first, training_last,
                       training_lapse);
         }
@@ -1487,166 +1536,170 @@ namespace stock_solution
                       extractor_focal_unit, extractor_focal_exponential_base,
                       extractor_focal_step, extractor_featurization_option,
                       extractor_analytic_option, extractor_focal_discretization_sz,
-                      matrix_maker_entropy_option, matrix_maker_compute_option,
-                      matrix_maker_vector_sz,
                       matrix_encoder_shape, matrix_encoder_flat_sz,
-                      matrix_logit_vec,
+                      matrix_resource,
                       training_first, training_last,
                       training_lapse);
         }
     };
 
-    class SolutionMaker
+    struct TrainingDataPoint
+    {
+        std::vector<double> in_point_vec;
+        std::vector<double> out_point_vec;
+    };
+
+    class SolutionBuilder
     {
         public:
 
-            static inline constexpr uint8_t LOW_COMPUTE                 = 0u;
-            static inline constexpr uint8_t MID_COMPUTE                 = 1u;
-            static inline constexpr uint8_t HIGH_COMPUTE                = 2u;
+            static inline const std::chrono::nanoseconds DEFAULT_WINDOW             = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::years(1));
+            static inline const std::chrono::nanoseconds DEFAULT_LAPSE              = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::days(1));
 
-            static inline constexpr uint8_t LOW_STORAGE                 = 0u;
-            static inline constexpr uint8_t MID_STORAGE                 = 1u;
-            static inline constexpr uint8_t HIGH_STORAGE                = 2u;
+            static inline constexpr uint8_t FOCAL_OPTION_SECOND_0                   = 0u;
+            static inline constexpr uint8_t FOCAL_OPTION_SECOND_1                   = 1u;
+            static inline constexpr uint8_t FOCAL_OPTION_MINUTE                     = 2u;
 
-            static inline constexpr uint8_t LOW_TRAIN                   = 0u;
-            static inline constexpr uint8_t MID_TRAIN                   = 1u;
-            static inline constexpr uint8_t HIGH_TRAIN                  = 2u;
-
-            static inline const std::chrono::nanoseconds DEFAULT_WINDOW = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::years(1));
-            static inline const std::chrono::nanoseconds DEFAULT_LAPSE  = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::days(1));
+            static inline constexpr size_t DEFAULT_TRAINING_TOKEN_INGESTION_WINDOW  = size_t{1} << 8;
 
         private:
 
-            struct TrainingDataPoint
-            {
-                std::vector<double> in_point_vec;
-                std::vector<double> out_point_vec;
-            };
+            uint8_t focal_option;
 
-            struct TrainingData
-            {
-                std::vector<TrainingDataPoint> point_vec;
-            };
+            std::unique_ptr<MatrixBrokerInterface> matrix_broker;
+            std::unique_ptr<MatrixOptimizationSessionGeneratorInterface> optimization_session_generator;
 
-            uint8_t compute_option;
-            uint8_t storage_option;
-            uint8_t train_option;
+            std::shared_ptr<common_exception::CancellationTokenInterface> cancellation_token;
 
             std::vector<TickerData> ticker_data_vec;
             std::vector<std::string> ticker_vec;
             std::vector<std::string> feature_name_vec;
 
-            std::chrono::time_point<std::chrono::system_clock> first;
-            std::chrono::time_point<std::chrono::system_clock> last;
+            std::chrono::time_point<std::chrono::utc_clock> first;
+            std::chrono::time_point<std::chrono::utc_clock> last;
             std::chrono::nanoseconds lapse;
+
+            size_t training_token_ingestion_window;
+
+            bool was_train_invoked;
+
+            static auto get_now() -> std::chrono::time_point<std::chrono::utc_clock>
+            {
+                return std::chrono::utc_clock::now();
+            }
+
+            static auto get_past(std::chrono::nanoseconds duration) -> std::chrono::time_point<std::chrono::utc_clock>
+            {
+                auto new_timepoint      = get_now() - duration;
+                using default_dur_rep_t = typename std::chrono::time_point<std::chrono::utc_clock>::duration;
+
+                return std::chrono::time_point_cast<default_dur_rep_t>(new_timepoint);
+            }
 
         public:
 
-            SolutionMaker(): compute_option(LOW_COMPUTE),
-                             storage_option(LOW_STORAGE),
-                             ticker_data_vec(),
-                             ticker_vec(),
-                             feature_name_vec(),
-                             first(get_past(DEFAULT_WINDOW)),
-                             last(get_now()),
-                             lapse(DEFAULT_LAPSE){}
+            SolutionBuilder(): focal_option(FOCAL_OPTION_MINUTE),
+                               matrix_broker(),
+                               optimization_session_generator(),
 
-            auto set_training(uint8_t option) -> SolutionMaker&
+                               cancellation_token(),
+
+                               ticker_data_vec(),
+                               ticker_vec(),
+                               feature_name_vec(),
+
+                               first(get_past(DEFAULT_WINDOW)),
+                               last(get_now()),
+                               lapse(DEFAULT_LAPSE),
+
+                               training_token_ingestion_window(DEFAULT_TRAINING_TOKEN_INGESTION_WINDOW),
+
+                               was_train_invoked(false){}
+
+            auto set_focal_option(uint8_t focal_option_arg) -> SolutionBuilder&
             {
-                switch (option)
+                switch (focal_option_arg)
                 {
-                    case LOW_TRAIN:
-                    case MID_TRAIN:
-                    case HIGH_TRAIN:
+                    case FOCAL_OPTION_SECOND_0:
+                    case FOCAL_OPTION_SECOND_1:
+                    case FOCAL_OPTION_MINUTE:
                     {
-                        this->train_option = option;
+                        this->focal_option = focal_option_arg;
                         break;
                     }
                     default:
                     {
-                        throw std::invalid_argument("bad option, enumeration out of range");
+                        throw std::invalid_argument("bad focal option, focal enumeration out of range");
                     }
                 }
 
                 return *this;
             }
 
-            auto set_compute(uint8_t option) -> SolutionMaker&
+            auto set_matrix_broker(std::unique_ptr<MatrixBrokerInterface>&& matrix_broker_arg) -> SolutionBuilder&
             {
-                switch (option)
-                {
-                    case LOW_COMPUTE:
-                    case MID_COMPUTE:
-                    case HIGH_COMPUTE:
-                    {
-                        this->compute_option = option;
-                        break;
-                    }
-                    default:
-                    {
-                        throw std::invalid_argument("bad option, enumeration out of range");
-                    }
-                }
+                this->matrix_broker = std::move(matrix_broker_arg);
 
                 return *this;
             }
 
-            auto set_storage(uint8_t option) -> SolutionMaker&
+            auto set_matrix_optimizer(std::unique_ptr<MatrixOptimizationSessionGeneratorInterface>&& optimization_session_generator_arg) -> SolutionBuilder&
             {
-                switch (option)
-                {
-                    case LOW_STORAGE:
-                    case MID_STORAGE:
-                    case HIGH_STORAGE:
-                    {
-                        this->storage_option = option;
-                        break;
-                    }
-                    default:
-                    {
-                        throw std::invalid_argument("bad option, enumeration out of range");
-                    }
-                }
+                this->optimization_session_generator = std::move(optimization_session_generator_arg);
 
                 return *this;
             }
 
-            auto set_data(const std::vector<TickerData>& data) -> SolutionMaker&
+            auto set_cancellation_token(const std::shared_ptr<common_exception::CancellationTokenInterface>& cancellation_token_arg) -> SolutionBuilder&
+            {
+                this->cancellation_token    = cancellation_token_arg;
+
+                return *this;
+            }
+
+            auto set_data(const std::vector<TickerData>& data) -> SolutionBuilder&
             {
                 this->ticker_data_vec = data;
 
                 return *this;
             }
 
-            auto set_training_first_timepoint(std::chrono::time_point<std::chrono::system_clock> timepoint) -> SolutionMaker&
+            auto set_training_first_timepoint(std::chrono::time_point<std::chrono::utc_clock> timepoint) -> SolutionBuilder&
             {
                 this->first = timepoint;
 
                 return *this;
             }
 
-            auto set_training_last_timepoint(std::chrono::time_point<std::chrono::system_clock> timepoint) -> SolutionMaker&
+            auto set_training_last_timepoint(std::chrono::time_point<std::chrono::utc_clock> timepoint) -> SolutionBuilder&
             {
                 this->last = timepoint;
 
                 return *this;
             }
 
-            auto set_feature_name_list(const std::vector<std::string>& feature_vec) -> SolutionMaker&
+            auto set_feature_name_list(const std::vector<std::string>& feature_vec) -> SolutionBuilder&
             {
                 this->feature_name_vec = feature_vec;
 
                 return *this;
             }
 
-            auto set_tickers(const std::vector<std::string>& ticker_vec) -> SolutionMaker&
+            auto set_tickers(const std::vector<std::string>& ticker_vec) -> SolutionBuilder&
             {
                 this->ticker_vec = ticker_vec;
 
                 return *this;
             }
 
-            auto set_training_intput_output_lapse(std::chrono::nanoseconds dur) -> SolutionMaker&
+            auto set_training_token_ingestion_window(size_t training_token_ingestion_window_arg) -> SolutionBuilder&
+            {
+                this->training_token_ingestion_window = training_token_ingestion_window_arg;
+
+                return *this;
+            }
+
+            auto set_training_intput_output_lapse(std::chrono::nanoseconds dur) -> SolutionBuilder&
             {
                 if (dur <= std::chrono::nanoseconds(0))
                 {
@@ -1658,428 +1711,438 @@ namespace stock_solution
                 return *this;
             }
 
-            auto train() -> SolutionData
+            auto build() -> std::shared_ptr<Promise<SolutionData>>
             {
-                std::unique_ptr<the_matrix::MatrixInterface> matrix                                                                 = this->get_transform_matrix();
-                std::unique_ptr<matrix_optimizer::MatrixOptimizerInterface> optimizer                                               = this->get_optimizer();
-                std::vector<std::pair<std::shared_ptr<tensor_model::Matrix>, std::shared_ptr<tensor_model::Matrix>>> training_data  = this->to_matrix_training_data(this->get_training_data());
-
-                optimizer->optimize(*matrix, training_data);
-
-                return SolutionData
+                if (this->matrix_broker == nullptr)
                 {
-                    .extractor_ticker_vec               = this->ticker_vec,
-                    .extractor_feature_name_list        = this->feature_name_vec,
+                    throw std::invalid_argument("bad matrix broker, null");
+                }
 
-                    .extractor_focal_unit               = this->get_focal_unit(),
-                    .extractor_focal_exponential_base   = this->get_focal_exponential_base(),
-                    .extractor_focal_step               = stdx::throw_integer_cast<uint64_t>(this->get_focal_step()),
-                    .extractor_featurization_option     = this->get_featurization_option(),
-                    .extractor_analytic_option          = this->get_analytic_option(),
-                    .extractor_focal_discretization_sz  = stdx::throw_integer_cast<uint64_t>(this->get_focal_discretization_size()),
+                if (this->optimization_session_generator == nullptr)
+                {
+                    throw std::invalid_argument("bad optimization session generator, null");
+                }
 
-                    .matrix_maker_entropy_option        = this->get_matrix_maker_entropy_option(),
-                    .matrix_maker_compute_option        = this->get_matrix_maker_compute_option(),
-                    .matrix_maker_vector_sz             = stdx::throw_integer_cast<uint64_t>(this->get_matrix_maker_vector_size()),
+                if (std::exchange(this->was_train_invoked, true))
+                {
+                    throw std::invalid_argument("bad Solution train, second invoke");
+                }
 
-                    .matrix_encoder_shape               = stdx::to_castable_vector_initializer(this->get_encoder_shape()),
-                    .matrix_encoder_flat_sz             = stdx::throw_integer_cast<uint64_t>(this->get_encoder_flat_size()),
+                if (this->cancellation_token == nullptr)
+                {
+                    this->cancellation_token = std::make_shared<common_exception::CancellationToken>();
+                }
 
-                    .matrix_logit_vec                   = matrix->get_coefficient_vector(),
+                return concurrency_detachable_task::DetachableTaskLauncher{}.launch(std::unique_ptr<Task<SolutionData>>(std::make_unique<InternalTask>(this->focal_option,
 
-                    .training_first                     = this->first,
-                    .training_last                      = this->last,
-                    .training_lapse                     = this->lapse
-                };
+                                                                                                                                                       std::move(this->matrix_broker),
+                                                                                                                                                       std::move(this->optimization_session_generator),
+
+                                                                                                                                                       std::move(this->ticker_data_vec),
+                                                                                                                                                       std::move(this->ticker_vec),
+                                                                                                                                                       std::move(this->feature_name_vec),
+
+                                                                                                                                                       this->first,
+                                                                                                                                                       this->last,
+                                                                                                                                                       this->lapse,
+                                                                                                                                                        
+                                                                                                                                                       this->training_token_ingestion_window,
+
+                                                                                                                                                       std::move(this->cancellation_token))));
             }
 
         private:
 
-            auto get_size_from_shape(const std::vector<size_t>& shape) -> size_t
+            class InternalTask: public virtual Task<SolutionData>
             {
-                if (shape.empty())
-                {
-                    return 0u;
-                }
+                private:
 
-                return std::accumulate(shape.begin(), shape.end(), size_t{1}, std::multiplies<size_t>{});
-            }
+                    uint8_t focal_option;
 
-            auto get_matrix_maker_entropy_option() -> uint8_t
-            {
-                return the_host_matrix::TheHostMatrixFactory::LOW_ENTROPY;
-            }
+                    std::unique_ptr<MatrixBrokerInterface> matrix_broker;
+                    std::unique_ptr<MatrixOptimizationSessionGeneratorInterface> optimization_session_generator;
 
-            auto get_matrix_maker_compute_option() -> uint8_t
-            {
-                switch (this->compute_option)
-                {
-                    case LOW_COMPUTE:
+                    std::vector<TickerData> ticker_data_vec;
+                    std::vector<std::string> ticker_vec;
+                    std::vector<std::string> feature_name_vec;
+
+                    std::chrono::time_point<std::chrono::utc_clock> first;
+                    std::chrono::time_point<std::chrono::utc_clock> last;
+                    std::chrono::nanoseconds lapse;
+
+                    std::shared_ptr<common_exception::CancellationTokenInterface> external_cancellation_token;
+                    std::shared_ptr<common_exception::CancellationTokenInterface> running_cancellation_token;
+
+                    std::unique_ptr<TemporalFeatureExtractor> cached_extractor;
+                    std::optional<MatrixResult> cached_matrix_result;
+
+                    size_t training_token_ingestion_window;
+
+                public:
+
+                    InternalTask(uint8_t focal_option,
+
+                                 std::unique_ptr<MatrixBrokerInterface> matrix_broker,
+                                 std::unique_ptr<MatrixOptimizationSessionGeneratorInterface> optimization_session_generator,
+                                 
+                                 std::vector<TickerData> ticker_data_vec,
+                                 std::vector<std::string> ticker_vec,
+                                 std::vector<std::string> feature_name_vec,
+                                
+                                 std::chrono::time_point<std::chrono::utc_clock> first,
+                                 std::chrono::time_point<std::chrono::utc_clock> last,
+                                 std::chrono::nanoseconds lapse,
+                                 
+                                 size_t training_token_ingestion_window,
+
+                                 std::shared_ptr<common_exception::CancellationTokenInterface> external_cancellation_token) noexcept: focal_option(focal_option),
+
+                                                                                                                                      matrix_broker(std::move(matrix_broker)),
+                                                                                                                                      optimization_session_generator(std::move(optimization_session_generator)),
+
+                                                                                                                                      ticker_data_vec(std::move(ticker_data_vec)),
+                                                                                                                                      ticker_vec(std::move(ticker_vec)),
+                                                                                                                                      feature_name_vec(std::move(feature_name_vec)),
+
+                                                                                                                                      first(first),
+                                                                                                                                      last(last),
+                                                                                                                                      lapse(lapse),
+
+                                                                                                                                      external_cancellation_token(std::move(external_cancellation_token)),
+                                                                                                                                      running_cancellation_token(),
+
+                                                                                                                                      cached_extractor(),
+                                                                                                                                      cached_matrix_result(),
+                                                                                                                                      
+                                                                                                                                      training_token_ingestion_window(training_token_ingestion_window){}
+
+                    auto run(common_exception::CancellationTokenInterface& cancellation_token) -> SolutionData
                     {
-                        return the_host_matrix::TheHostMatrixFactory::LOW_COMPUTE;
-                    }
-                    case MID_COMPUTE:
-                    {
-                        return the_host_matrix::TheHostMatrixFactory::MID_COMPUTE;
-                    }
-                    case HIGH_COMPUTE:
-                    {
-                        return the_host_matrix::TheHostMatrixFactory::HIGH_COMPUTE;
-                    }
-                    default:
-                    {
-                        std::abort();
-                    }
-                }
-            }
+                        common_exception::ObjectLifeCancellationTokenStackHolder cancellation_token_stack_holder(cancellation_token);
 
-            auto get_matrix_maker_vector_size() -> size_t
-            {
-                return this->get_size_from_shape(this->get_encoder_shape());
-            }
+                        this->running_cancellation_token                                            = std::make_shared<common_exception::UnifiedCancellationToken>(stdx::to_variadic_vector_initializer(cancellation_token_stack_holder.get(),
+                                                                                                                                                                                                        this->external_cancellation_token));
 
-            auto get_encoder_shape() -> std::vector<size_t>
-            {
-                return the_host_matrix::TheHostMatrixFactory{}.set_entropy(this->get_matrix_maker_entropy_option())
-                                                              .set_compute(this->get_matrix_maker_compute_option())
-                                                              .set_vector_size(this->get_encoder_flat_size())
-                                                              
-                                                              .get_matrix_shape();
-            }
+                        generic_matrix_factory::ExternalGenericMatrixResource matrix                = this->get_transform_matrix();
+                        std::unique_ptr<MatrixOptimizationSessionInterface> training_session        = this->optimization_session_generator->get_session();
 
-            auto get_encoder_flat_size() -> size_t
-            {
-                std::vector<double> feature_matrix = get_feature_extractor().get_feature_vector_at_timepoint({}, {});
+                        this->add_training_data(*training_session);
 
-                return feature_matrix.size();
-            }
-
-            static auto get_now() -> std::chrono::time_point<std::chrono::system_clock>
-            {
-                return std::chrono::system_clock::now();
-            }
-
-            static auto get_past(std::chrono::nanoseconds duration) -> std::chrono::time_point<std::chrono::system_clock>
-            {
-                auto new_timepoint      = get_now() - duration;
-                using default_dur_rep_t = typename std::chrono::time_point<std::chrono::system_clock>::duration;
-
-                return std::chrono::time_point_cast<default_dur_rep_t>(new_timepoint);
-            }
-
-            auto get_transform_matrix() -> std::unique_ptr<the_matrix::MatrixInterface>
-            {
-                return the_host_matrix::TheHostMatrixFactory{}.set_compute(this->get_matrix_maker_compute_option())
-                                                              .set_entropy(this->get_matrix_maker_entropy_option())
-                                                              .set_vector_size(this->get_matrix_maker_vector_size())
-                                                              
-                                                              .get();
-            }
-
-            auto get_optimizer_optimization_epoch_size() -> size_t
-            {
-                const size_t LOW_COMPUTE_EPOCH_SZ   = size_t{1} << 16;
-                const size_t MID_COMPUTE_EPOCH_SZ   = size_t{1} << 20;
-                const size_t HIGH_COMPUTE_EPOCH_SZ  = size_t{1} << 24;
-
-                switch (this->compute_option)
-                {
-                    case LOW_COMPUTE:
-                    {
-                        return LOW_COMPUTE_EPOCH_SZ;
-                    }
-                    case MID_COMPUTE:
-                    {
-                        return MID_COMPUTE_EPOCH_SZ;
-                    }
-                    case HIGH_COMPUTE:
-                    {
-                        return HIGH_COMPUTE_EPOCH_SZ;
-                    }
-                    default:
-                    {
-                        std::abort();
-                    }
-                }
-            }
-
-            auto get_optimizer_optimization_step_size() -> size_t
-            {
-                const size_t LOW_COMPUTE_OPTIMIZATION_STEP_SZ   = size_t{1} << 4;
-                const size_t MID_COMPUTE_OPTIMIZATION_STEP_SZ   = size_t{1} << 4;
-                const size_t HIGH_COMPUTE_OPTIMIZATION_STEP_SZ  = size_t{1} << 4;
-
-                switch (this->compute_option)
-                {
-                    case LOW_COMPUTE:
-                    {
-                        return LOW_COMPUTE_OPTIMIZATION_STEP_SZ;
-                    }
-                    case MID_COMPUTE:
-                    {
-                        return MID_COMPUTE_OPTIMIZATION_STEP_SZ;
-                    }
-                    case HIGH_COMPUTE:
-                    {
-                        return HIGH_COMPUTE_OPTIMIZATION_STEP_SZ;
-                    }
-                    default:
-                    {
-                        std::abort();
-                    }
-                }
-            }
-
-            auto get_optimizer_space_iteration_size() -> size_t
-            {
-                const size_t LOW_COMPUTE_SPACE_ITERATION_SZ     = size_t{1} << 4;
-                const size_t MID_COMPUTE_SPACE_ITERATION_SZ     = size_t{1} << 4;
-                const size_t HIGH_COMPUTE_SPACE_ITERATION_SZ    = size_t{1} << 4;
-
-                switch (this->compute_option)
-                {
-                    case LOW_COMPUTE:
-                    {
-                        return LOW_COMPUTE_SPACE_ITERATION_SZ;
-                    }
-                    case MID_COMPUTE:
-                    {
-                        return MID_COMPUTE_SPACE_ITERATION_SZ;
-                    }
-                    case HIGH_COMPUTE:
-                    {
-                        return HIGH_COMPUTE_SPACE_ITERATION_SZ;
-                    }
-                    default:
-                    {
-                        std::abort();
-                    }
-                }
-            }
-
-            auto get_optimizer() -> std::unique_ptr<matrix_optimizer::MatrixOptimizerInterface>
-            {
-                matrix_optimizer::BruteForceMatrixOptimizer matrix_optimizer{};
-
-                matrix_optimizer.set_optimization_epoch_size(this->get_optimizer_optimization_epoch_size())
-                                .set_optimization_step_size(this->get_optimizer_optimization_step_size())
-                                .set_space_iteration_size(this->get_optimizer_space_iteration_size());
-
-                return std::make_unique<matrix_optimizer::BruteForceMatrixOptimizer>(std::move(matrix_optimizer));
-            }
-
-            auto get_feature_extractor() -> TemporalFeatureExtractor
-            {
-                TemporalFeatureExtractor extractor{};
-
-                extractor.set_focal_unit(this->get_focal_unit())
-                         .set_focal_exponential_base(this->get_focal_exponential_base())
-                         .set_focal_step(this->get_focal_step())
-                         .set_featurization_option(this->get_featurization_option())
-                         .set_focal_discretization_size(this->get_focal_discretization_size())
-                         .set_analytic_option(this->get_analytic_option())
-                         .set_data(this->ticker_data_vec)
-                         .set_feature_name_list(this->feature_name_vec)
-                         ;
-                
-                return extractor;
-            }
-
-            auto get_training_data() -> TrainingData
-            {
-                if (this->last < this->first)
-                {
-                    throw std::invalid_argument("bad time slice, negative time slice");
-                }
-
-
-                TemporalFeatureExtractor extractor  = this->get_feature_extractor();
-                size_t epoch_first                  = std::chrono::duration_cast<std::chrono::nanoseconds>(this->first.time_since_epoch()).count();
-                size_t epoch_last                   = std::chrono::duration_cast<std::chrono::nanoseconds>(this->last.time_since_epoch()).count();
-                size_t time_interval_uint           = std::chrono::duration_cast<std::chrono::nanoseconds>(this->last - this->first).count();
-                size_t lapse_uint                   = this->lapse.count();
-
-                if (lapse_uint == 0u)
-                {
-                    throw std::runtime_error("unexpected error, time lapse 0");
-                }
-
-                size_t slice_sz             = time_interval_uint / lapse_uint + static_cast<size_t>(time_interval_uint % lapse_uint != 0u);
-                TrainingData result         = {};
-
-                for (size_t i = 0u; i < slice_sz; ++i)
-                {
-                    size_t local_epoch_first        = epoch_first + i * lapse_uint;
-                    size_t local_epoch_last         = std::min(static_cast<size_t>(local_epoch_first + lapse_uint), epoch_last);
-
-                    std::chrono::time_point<std::chrono::system_clock, std::chrono::nanoseconds> time_point_first{std::chrono::nanoseconds(local_epoch_first)}; //what is going on??
-                    std::chrono::time_point<std::chrono::system_clock, std::chrono::nanoseconds> time_point_last{std::chrono::nanoseconds(local_epoch_last)};
-
-                    using default_dur_rep_t         = typename std::chrono::time_point<std::chrono::system_clock>::duration;
-
-                    std::vector<double> in_feature  = this->extract_feature_at(extractor, std::chrono::time_point_cast<default_dur_rep_t>(time_point_first));
-                    std::vector<double> out_feature = this->extract_feature_at(extractor, std::chrono::time_point_cast<default_dur_rep_t>(time_point_last));
-
-                    result.point_vec.push_back
-                    (
-                        TrainingDataPoint
+                        return SolutionData
                         {
-                            .in_point_vec   = std::move(in_feature),
-                            .out_point_vec  = std::move(out_feature)
+                            .extractor_ticker_vec               = this->ticker_vec,
+                            .extractor_feature_name_list        = this->feature_name_vec,
+
+                            .extractor_focal_unit               = this->get_focal_unit(),
+                            .extractor_focal_exponential_base   = this->get_focal_exponential_base(),
+                            .extractor_focal_step               = stdx::throw_integer_cast<uint64_t>(this->get_focal_step()),
+                            .extractor_featurization_option     = this->get_featurization_option(),
+                            .extractor_analytic_option          = this->get_analytic_option(),
+                            .extractor_focal_discretization_sz  = stdx::throw_integer_cast<uint64_t>(this->get_focal_discretization_size()),
+
+                            .matrix_encoder_shape               = stdx::to_castable_vector_initializer(this->get_encoder_shape()),
+                            .matrix_encoder_flat_sz             = stdx::throw_integer_cast<uint64_t>(this->get_encoder_required_flat_size()),
+
+                            .matrix_resource                    = training_session->optimize(matrix, this->running_cancellation_token)->wait(),
+
+                            .training_first                     = this->first,
+                            .training_last                      = this->last,
+                            .training_lapse                     = this->lapse
+                        };
+                    }
+
+                private:
+
+                    auto get_size_from_shape(const std::vector<size_t>& shape) -> size_t
+                    {
+                        if (shape.empty())
+                        {
+                            return 0u;
                         }
-                    );
-                }
 
-                return result;
-            }
+                        return std::accumulate(shape.begin(), shape.end(), size_t{1}, std::multiplies<size_t>{});
+                    }
 
-            auto to_matrix_training_data(const TrainingData& data) -> std::vector<std::pair<std::shared_ptr<tensor_model::Matrix>, std::shared_ptr<tensor_model::Matrix>>>
-            {
-                OneOneMatrixEncoder encoder(this->get_encoder_shape(), this->get_encoder_flat_size());
-                std::vector<std::pair<std::shared_ptr<tensor_model::Matrix>, std::shared_ptr<tensor_model::Matrix>>> result{};
+                    auto broke_matrix() -> MatrixResult
+                    {
+                        if (this->matrix_broker == nullptr)
+                        {
+                            throw std::invalid_argument("bad matrix broker, null");
+                        }
 
-                for (const auto& data_point: data.point_vec)
-                {
-                    result.push_back({encoder.encode(data_point.in_point_vec),
-                                      encoder.encode(data_point.out_point_vec)});
-                }
+                        if (!this->cached_matrix_result.has_value())
+                        {
+                            this->cached_matrix_result = this->matrix_broker->broke_matrix(this->get_encoder_required_flat_size(),
+                                                                                           this->running_cancellation_token)->wait();
+                        }
 
-                return result;
-            }
+                        return this->cached_matrix_result.value();
+                    }
 
-            auto get_focal_unit() -> uint8_t
-            {
-                switch (this->compute_option)
-                {
-                    case LOW_COMPUTE:
+                    auto get_encoder_shape() -> std::vector<size_t>
                     {
-                        return TemporalFeatureExtractor::FOCAL_UNIT_MINUTE;
+                        return this->broke_matrix().matrix_shape;
                     }
-                    case MID_COMPUTE:
-                    {
-                        return TemporalFeatureExtractor::FOCAL_UNIT_SECOND;
-                    }
-                    case HIGH_COMPUTE:
-                    {
-                        return TemporalFeatureExtractor::FOCAL_UNIT_SECOND;
-                    }
-                    default:
-                    {
-                        std::abort();
-                    }
-                }
-            }
 
-            auto get_focal_exponential_base() -> double
-            {
-                switch (this->compute_option)                
-                {
-                    case LOW_COMPUTE:
+                    auto get_transform_matrix() -> generic_matrix_factory::ExternalGenericMatrixResource
                     {
-                        return 10;
+                        return this->broke_matrix().matrix;
                     }
-                    case MID_COMPUTE:
-                    {
-                        return 8;
-                    }
-                    case HIGH_COMPUTE:
-                    {
-                        return 5;
-                    }
-                    default:
-                    {
-                        std::abort();
-                    }
-                }
-            }
 
-            auto get_focal_step() -> size_t
-            {
-                switch (this->compute_option)
-                {
-                    case LOW_COMPUTE:
+                    auto get_encoder_required_flat_size() -> size_t
                     {
-                        return 6;
-                    }
-                    case MID_COMPUTE:
-                    {
-                        return 9;
-                    }
-                    case HIGH_COMPUTE:
-                    {
-                        return 12;
-                    }
-                    default:
-                    {
-                        std::abort();
-                    }
-                }
-            }
+                        std::vector<double> feature_matrix = get_feature_extractor()->get_feature_vector_at_timepoint({}, {});
 
-            auto get_featurization_option() -> uint8_t
-            {
-                switch (this->compute_option)
-                {
-                    case LOW_COMPUTE:
-                    {
-                        return TemporalFeatureExtractor::FEATURIZATION_FIRST_ORDER_BINARY_SUFFIX;
+                        return feature_matrix.size();
                     }
-                    case MID_COMPUTE:
-                    {
-                        return TemporalFeatureExtractor::FEATURIZATION_SECOND_ORDER_BINARY_SUFFIX;
-                    }
-                    case HIGH_COMPUTE:
-                    {
-                        return TemporalFeatureExtractor::FEATURIZATION_SECOND_ORDER_BINARY_SUFFIX;
-                    }
-                    default:
-                    {
-                        std::abort();
-                    }
-                }
-            }
 
-            auto get_analytic_option() -> uint8_t
-            {
-                return TemporalFeatureExtractor::ANALYTIC_SQUARE_DIFFERENCE;
-            }
-
-            auto get_focal_discretization_size() -> size_t
-            {
-                switch (this->compute_option)
-                {
-                    case LOW_COMPUTE:
+                    auto get_feature_extractor() -> TemporalFeatureExtractor *
                     {
-                        return 4;
-                    }
-                    case MID_COMPUTE:
-                    {
-                        return 6;
-                    }
-                    case HIGH_COMPUTE:
-                    {
-                        return 6;
-                    }
-                    default:
-                    {
-                        std::abort();
-                    }
-                }
-            }
+                        if (this->cached_extractor == nullptr)
+                        {
+                            auto tmp = std::make_unique<TemporalFeatureExtractor>();
 
-            auto extract_feature_at(TemporalFeatureExtractor& extractor,
-                                    std::chrono::time_point<std::chrono::system_clock> timepoint) -> std::vector<double>
-            {
-                std::vector<double> result{};
+                            tmp->set_focal_unit(this->get_focal_unit())
+                                .set_focal_exponential_base(this->get_focal_exponential_base())
+                                .set_focal_step(this->get_focal_step())
+                                .set_featurization_option(this->get_featurization_option())
+                                .set_focal_discretization_size(this->get_focal_discretization_size())
+                                .set_analytic_option(this->get_analytic_option())
+                                .set_data(this->ticker_data_vec)
+                                .set_feature_name_list(this->feature_name_vec)
+                                .compute();
 
-                for (const std::string& ticker: this->ticker_vec)
-                {
-                    std::vector<double> ticker_feature = extractor.get_feature_vector_at_timepoint(ticker, timepoint);
-                    std::copy(ticker_feature.begin(), ticker_feature.end(), std::back_inserter(result));
-                }
+                            this->cached_extractor = std::move(tmp);
+                        }
 
-                return result;
-            }
+                        return this->cached_extractor.get();
+                    }
+
+                    template <class Callbackable>
+                    void get_training_data(Callbackable&& callback)
+                    {
+                        if (this->last < this->first)
+                        {
+                            throw std::invalid_argument("bad time slice, negative time slice");
+                        }
+
+                        TemporalFeatureExtractor * extractor    = this->get_feature_extractor();
+
+                        size_t epoch_first                      = std::chrono::duration_cast<std::chrono::nanoseconds>(this->first.time_since_epoch()).count();
+                        size_t epoch_last                       = std::chrono::duration_cast<std::chrono::nanoseconds>(this->last.time_since_epoch()).count();
+                        size_t time_interval_uint               = std::chrono::duration_cast<std::chrono::nanoseconds>(this->last - this->first).count();
+                        size_t lapse_uint                       = this->lapse.count();
+
+                        if (lapse_uint == 0u)
+                        {
+                            throw std::runtime_error("unexpected error, time lapse 0");
+                        }
+
+                        size_t slice_sz             = time_interval_uint / lapse_uint + static_cast<size_t>(time_interval_uint % lapse_uint != 0u);
+
+                        for (size_t i = 0u; i < slice_sz; ++i)
+                        {
+                            size_t local_epoch_first        = epoch_first + i * lapse_uint;
+                            size_t local_epoch_last         = std::min(static_cast<size_t>(local_epoch_first + lapse_uint), epoch_last);
+
+                            std::chrono::time_point<std::chrono::utc_clock, std::chrono::nanoseconds> time_point_first{std::chrono::nanoseconds(local_epoch_first)}; //what is going on??
+                            std::chrono::time_point<std::chrono::utc_clock, std::chrono::nanoseconds> time_point_last{std::chrono::nanoseconds(local_epoch_last)};
+
+                            using default_dur_rep_t         = typename std::chrono::time_point<std::chrono::utc_clock>::duration;
+
+                            std::vector<double> in_feature  = this->extract_feature_at(*extractor, std::chrono::time_point_cast<default_dur_rep_t>(time_point_first));
+                            std::vector<double> out_feature = this->extract_feature_at(*extractor, std::chrono::time_point_cast<default_dur_rep_t>(time_point_last));
+
+                            callback
+                            (
+                                TrainingDataPoint
+                                {
+                                    .in_point_vec   = std::move(in_feature),
+                                    .out_point_vec  = std::move(out_feature)
+                                }
+                            );
+                        }
+                    }
+
+                    template <class Callbackable>
+                    void get_matrix_training_data(Callbackable&& callback)
+                    {
+                        OneOneMatrixEncoder encoder(this->get_encoder_shape(), this->get_encoder_required_flat_size());
+
+                        auto callback_2 = [&](const TrainingDataPoint& data_point)
+                        {
+                            callback(encoder.encode(data_point.in_point_vec),
+                                     encoder.encode(data_point.out_point_vec));
+                        };
+
+                        get_training_data(callback_2);
+                    }
+
+                    void add_training_data(MatrixOptimizationSessionInterface& session)
+                    {
+                        std::deque<std::shared_ptr<Promise<stdx::fancy_void>>> synchronizable_vec{};
+
+                        auto callback = [&](const std::shared_ptr<tensor_model::Matrix>& inp,
+                                            const std::shared_ptr<tensor_model::Matrix>& out)
+                        {
+                            if (this->training_token_ingestion_window == 0u)
+                            {
+                                session.add_training_data(inp, out, this->running_cancellation_token)->wait();
+                            }
+                            else
+                            {
+                                if (synchronizable_vec.size() == this->training_token_ingestion_window)
+                                {
+                                    synchronizable_vec.front()->wait();
+                                    synchronizable_vec.pop_front();
+                                }
+
+                                synchronizable_vec.push_back(session.add_training_data(inp, out, this->running_cancellation_token));
+                            }
+                        };
+
+                        this->get_matrix_training_data(callback);
+
+                        for (const auto& synchronizable: synchronizable_vec)
+                        {
+                            synchronizable->wait();
+                        }
+                    }
+
+                    auto get_focal_unit() -> uint8_t
+                    {
+                        switch (this->focal_option)
+                        {
+                            case SolutionBuilder::FOCAL_OPTION_MINUTE:
+                            {
+                                return TemporalFeatureExtractor::FOCAL_UNIT_MINUTE;
+                            }
+                            case SolutionBuilder::FOCAL_OPTION_SECOND_1:
+                            {
+                                return TemporalFeatureExtractor::FOCAL_UNIT_SECOND;
+                            }
+                            case SolutionBuilder::FOCAL_OPTION_SECOND_0:
+                            {
+                                return TemporalFeatureExtractor::FOCAL_UNIT_SECOND;
+                            }
+                            default:
+                            {
+                                throw std::invalid_argument("bad focal option, enumeration out of range");
+                            }
+                        }
+                    }
+
+                    auto get_focal_exponential_base() -> double
+                    {
+                        switch (this->focal_option)                
+                        {
+                            case SolutionBuilder::FOCAL_OPTION_MINUTE:
+                            {
+                                return 10;
+                            }
+                            case SolutionBuilder::FOCAL_OPTION_SECOND_1:
+                            {
+                                return 8;
+                            }
+                            case SolutionBuilder::FOCAL_OPTION_SECOND_0:
+                            {
+                                return 5;
+                            }
+                            default:
+                            {
+                                throw std::invalid_argument("bad focal option, enumeration out of range");
+                            }
+                        }
+                    }
+
+                    auto get_focal_step() -> size_t
+                    {
+                        switch (this->focal_option)
+                        {
+                            case SolutionBuilder::FOCAL_OPTION_MINUTE:
+                            {
+                                return 6;
+                            }
+                            case SolutionBuilder::FOCAL_OPTION_SECOND_1:
+                            {
+                                return 9;
+                            }
+                            case SolutionBuilder::FOCAL_OPTION_SECOND_0:
+                            {
+                                return 12;
+                            }
+                            default:
+                            {
+                                throw std::invalid_argument("bad focal option, enumeration out of range");
+                            }
+                        }
+                    }
+
+                    auto get_featurization_option() -> uint8_t
+                    {
+                        switch (this->focal_option)
+                        {
+                            case SolutionBuilder::FOCAL_OPTION_MINUTE:
+                            {
+                                return TemporalFeatureExtractor::FEATURIZATION_FIRST_ORDER_BINARY_SUFFIX;
+                            }
+                            case SolutionBuilder::FOCAL_OPTION_SECOND_1:
+                            {
+                                return TemporalFeatureExtractor::FEATURIZATION_FIRST_ORDER_BINARY_SUFFIX;
+                            }
+                            case SolutionBuilder::FOCAL_OPTION_SECOND_0:
+                            {
+                                return TemporalFeatureExtractor::FEATURIZATION_FIRST_ORDER_BINARY_SUFFIX;
+                            }
+                            default:
+                            {
+                                throw std::invalid_argument("bad focal option, enumeration out of range");
+                            }
+                        }
+                    }
+
+                    auto get_analytic_option() -> uint8_t
+                    {
+                        return TemporalFeatureExtractor::ANALYTIC_SQUARE_DIFFERENCE;
+                    }
+
+                    auto get_focal_discretization_size() -> size_t
+                    {
+                        switch (this->focal_option)
+                        {
+                            case SolutionBuilder::FOCAL_OPTION_MINUTE:
+                            {
+                                return 4;
+                            }
+                            case SolutionBuilder::FOCAL_OPTION_SECOND_1:
+                            {
+                                return 6;
+                            }
+                            case SolutionBuilder::FOCAL_OPTION_SECOND_0:
+                            {
+                                return 6;
+                            }
+                            default:
+                            {
+                                throw std::invalid_argument("bad focal option, enumeration out of range");
+                            }
+                        }
+                    }
+
+                    auto extract_feature_at(TemporalFeatureExtractor& extractor,
+                                            std::chrono::time_point<std::chrono::utc_clock> timepoint) -> std::vector<double>
+                    {
+                        std::vector<double> result{};
+
+                        for (const std::string& ticker: this->ticker_vec)
+                        {
+                            std::vector<double> ticker_feature = extractor.get_feature_vector_at_timepoint(ticker, timepoint);
+                            std::copy(ticker_feature.begin(), ticker_feature.end(), std::back_inserter(result));
+                        }
+
+                        return result;
+                    }
+            };
     };
 
     static inline const std::string ACTIONABLE_BUYSELL_NEXT_SECOND      = "buysell_next_second";
@@ -2101,13 +2164,22 @@ namespace stock_solution
             SolutionData data;
 
             std::unique_ptr<TemporalFeatureExtractor> extractor;
-            std::unique_ptr<the_matrix::MatrixInterface> transformer;
             std::unique_ptr<OneOneMatrixEncoder> encoder;
+            std::shared_ptr<MatrixProjectorInterface> matrix_projector;
 
         public:
 
-            SolutionProduct(const SolutionData& data): data(data)
+            SolutionProduct(const SolutionData& data_arg,
+                            const std::shared_ptr<MatrixProjectorInterface> matrix_projector_arg): data(data_arg),
+                                                                                                   encoder(),
+                                                                                                   matrix_projector(matrix_projector_arg)
+
             {
+                if (matrix_projector_arg == nullptr)
+                {
+                    throw std::invalid_argument("bad matrix projector, null");
+                }
+
                 this->extractor     = std::make_unique<TemporalFeatureExtractor>();
 
                 this->extractor->set_focal_unit(data.extractor_focal_unit)
@@ -2118,32 +2190,31 @@ namespace stock_solution
                                 .set_feature_name_list(data.extractor_feature_name_list)
                                 .set_analytic_option(data.extractor_analytic_option);
 
-                this->transformer   = the_host_matrix::TheHostMatrixFactory{}.set_compute(data.matrix_maker_compute_option)
-                                                                             .set_entropy(data.matrix_maker_entropy_option)
-                                                                             .set_vector_size(data.matrix_maker_vector_sz)
-                                                                             
-                                                                             .get();
-
                 this->encoder       = std::make_unique<OneOneMatrixEncoder>(stdx::to_castable_vector_initializer(data.matrix_encoder_shape), data.matrix_encoder_flat_sz);
+
+                this->matrix_projector->set(this->data.matrix_resource);
             }
 
             auto load_data(const std::vector<TickerData>& ticker_data) -> SolutionProduct&
             {
-                this->extractor->set_data(ticker_data);
+                this->extractor->set_data(ticker_data).compute();
 
                 return *this;
             }
 
-            auto predict(std::chrono::time_point<std::chrono::system_clock> forecast_timepoint) -> std::vector<Actionable>
+            auto predict(std::chrono::time_point<std::chrono::utc_clock> forecast_timepoint) -> std::vector<Actionable>
             {
                 const std::vector<std::string>& tickers                         = this->data.extractor_ticker_vec;
 
                 std::vector<std::vector<double>> org_state_vec                  = this->featurize_tickers(tickers, forecast_timepoint);
                 std::vector<double> unified_state                               = this->unify_state(org_state_vec);
+
                 std::shared_ptr<tensor_model::Matrix> matrix_state              = this->encoder->encode(unified_state);
-                std::shared_ptr<tensor_model::Matrix> transformed_matrix_state  = this->transformer->project({matrix_state}).front();
+                std::shared_ptr<tensor_model::Matrix> transformed_matrix_state  = this->matrix_projector->project(matrix_state);
+
                 std::vector<double> transformed_state                           = this->encoder->decode(transformed_matrix_state);
                 std::vector<std::vector<double>> predicted_state_vec            = this->individualize_state_as(transformed_state, org_state_vec);
+
                 std::vector<Actionable> actionable_vec                          = {};
 
                 for (const auto& [ticker, state]: stdx::zip(tickers, predicted_state_vec))
@@ -2177,7 +2248,7 @@ namespace stock_solution
         private:
 
             auto featurize_tickers(const std::vector<std::string>& ticker_vec,
-                                   std::chrono::time_point<std::chrono::system_clock> forecast_timepoint) -> std::vector<std::vector<double>>
+                                   std::chrono::time_point<std::chrono::utc_clock> forecast_timepoint) -> std::vector<std::vector<double>>
             {
                 std::vector<std::vector<double>> result_vec{};
 

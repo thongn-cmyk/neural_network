@@ -5,6 +5,9 @@
 #include <stdlib.h>
 #include "tensor_matrix_forward_to_deviation_header.h"
 #include <stl_extension/stdx.h>
+
+#ifdef __CUDACC__
+
 #include <cuda_management/scope_allocator.h>
 #include <cuda_management/device_memory.h>
 #include <matrix/device_tensor/model.h>
@@ -13,6 +16,10 @@
 #include <deviation_projector/cuda_device/local_exception.h>
 #include <deviation_projector/cuda_device/cuda_device.h>
 #include "utility.h"
+#include <cuda_management/kernel_dispatch.h>
+
+#endif
+
 #include <general_definition/float_def.h>
 #include "local_exception.h"
 
