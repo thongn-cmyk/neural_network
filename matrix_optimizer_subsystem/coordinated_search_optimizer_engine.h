@@ -312,15 +312,111 @@ namespace matrix_optimizer_subsystem
                 std::shared_ptr<the_matrix::MatrixInterface> tmp_matrix = matrix.clone();
                 CachedMatrix cached_matrix(tmp_matrix, this->matrix_cache_map_cap);
 
-                std::unique_ptr<time_machine::TimeMachineInterface> time_machine = std::make_unique<SpecificMatrixTimeMachine>(&cached_matrix, &projector, &deviation_extractor);
-                time_machine::CachedTimeMachine cached_time_machine(std::move(time_machine), this->time_machine_cache_map_cap);
+                std::shared_ptr<bool> is_in_stack = std::make_shared<bool>(true);
+                stdx::StackGuard stack_grd
+                (
+                    [=]
+                    {
+                        *is_in_stack = false;
+                    }
+                );
 
-                std_float_t t                       = time_machine_optimizer.optimize(cached_time_machine);
+                std::unique_ptr<time_machine::TimeMachineInterface> time_machine = std::make_unique<SpecificMatrixTimeMachine>(&cached_matrix,
+                                                                                                                               &projector,
+                                                                                                                               &deviation_extractor,
+                                                                                                                               is_in_stack);
+
+                time_machine::CachedTimeMachine cached_time_machine(std::move(time_machine),
+                                                                    this->time_machine_cache_map_cap);
+
+                std::shared_ptr<bool> is_in_stack_2 = std::make_shared<bool>(true);
+                stdx::StackGuard stack_grd_2
+                {
+                    [=]
+                    {
+                        *is_in_stack_2 = false;
+                    }
+                };
+
+                DeviationCapturedTimeMachine deviation_captured_time_machine(&cached_time_machine,
+                                                                             is_in_stack_2);
+
+                std_float_t t                                           = time_machine_optimizer.optimize(deviation_captured_time_machine);
+                std::optional<std::pair<std_float_t, tm_float_t>> cand  = deviation_captured_time_machine.best();
+
+                if (cand.has_value())
+                {
+                    t = cand->first;
+                }
+
                 std::vector<std_float_t> coeff_vec  = projector.project(t);
 
                 return stdx::to_castable_vector_initializer(std::move(coeff_vec));
             }
 
+            class DeviationCapturedTimeMachine: public virtual the_matrix::TimeMachineInterface
+            {
+                private:
+
+                    time_machine::TimeMachineInterface * base;
+
+                    std::optional<std_float_t> best_x;
+                    std::optional<tm_float_t> best_y;
+
+                    std::shared_ptr<bool> is_in_stack; //we keep this as peace of mind, because if we have race condition, or multithreading, we aren't splitting the responsibility correctly, so that is never going to happen
+                
+                public:
+
+                    DeviationCapturedTimeMachine(time_machine::TimeMachineInterface * base,
+                                                 std::shared_ptr<bool> is_in_stack): base(base),
+                                                                                     best_x(),
+                                                                                     best_y(),
+                                                                                     is_in_stack(std::move(is_in_stack)){}
+
+                    auto f(std_float_t t) -> tm_float_t
+                    {
+                        if (*this->is_in_stack == false)
+                        {
+                            throw std::invalid_argument("illegal invoke, out of stack");
+                        }
+
+                        tm_float_t rs = this->base->f(t);
+
+                        if (!std::isnan(t) && !std::isnan(rs))
+                        {
+                            if (!this->best_y.has_value())
+                            {
+                                this->best_x    = t;
+                                this->best_y    = rs;
+                            }
+
+                            if (this->best_y.value() > rs)
+                            {
+                                this->best_x    = t;
+                                this->best_y    = rs;
+                            }
+                        }
+
+                        return rs;
+                    }
+
+                    auto best() -> std::optional<std::pair<std_float_t, tm_float_t>>
+                    {
+                        if (this->best_x.has_value())
+                        {
+                            if (!this->best_y.has_value())
+                            {
+                                std::abort();
+                            }
+
+                            return std::make_pair(this->best_x.value(), this->best_y.value());
+                        }
+
+                        return std::nullopt;
+                    }
+            };
+
+            //__generic_resolution__
             class CachedMatrix: public virtual the_matrix::MatrixInterface
             {
                 private:
@@ -365,17 +461,25 @@ namespace matrix_optimizer_subsystem
                     the_matrix::MatrixInterface * base_matrix;
                     temporal_coefficient_projector::TemporalCoefficientProjectorInterface * coefficient_projector;
                     matrix_evaluator::MatrixEvaluatorInterface * product_evaluator;
+                    std::shared_ptr<bool> is_in_stack;
 
                 public:
 
                     SpecificMatrixTimeMachine(the_matrix::MatrixInterface * base_matrix,
                                               temporal_coefficient_projector::TemporalCoefficientProjectorInterface * coefficient_projector,
-                                              matrix_evaluator::MatrixEvaluatorInterface * product_evaluator): base_matrix(base_matrix),
-                                                                                                               coefficient_projector(coefficient_projector),
-                                                                                                               product_evaluator(product_evaluator){}
+                                              matrix_evaluator::MatrixEvaluatorInterface * product_evaluator,
+                                              std::shared_ptr<bool> is_in_stack): base_matrix(base_matrix),
+                                                                                  coefficient_projector(coefficient_projector),
+                                                                                  product_evaluator(product_evaluator),
+                                                                                  is_in_stack(std::move(is_in_stack)){}
 
                     auto f(std_float_t t) -> tm_float_t
                     {
+                        if (*this->is_in_stack == false)
+                        {
+                            throw std::invalid_argument("illegal invoke, out of stack");
+                        }
+
                         std::vector<std_float_t> coeff_vec = this->coefficient_projector->project(t);
                         this->base_matrix->set_coefficient_vector(stdx::to_castable_vector_initializer(std::move(coeff_vec)));
 

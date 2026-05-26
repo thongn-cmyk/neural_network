@@ -298,8 +298,8 @@ namespace algorithm_extension
     }
 
     template <class RandomIt, class Comparator = LessEqualCmp, size_t OUT_DEGREE_SZ = DEFAULT_OUT_DEGREE_SZ>
-    void sort_heap(RandomIt first, RandomIt last, Comparator&& is_better_cmp = Comparator{},
-                   const std::integral_constant<size_t, OUT_DEGREE_SZ> out_degree_sz = std::integral_constant<size_t, OUT_DEGREE_SZ>{})
+    auto top_k(RandomIt first, RandomIt last, size_t top_k, Comparator&& is_better_cmp = Comparator(),
+               const std::integral_constant<size_t, OUT_DEGREE_SZ> out_degree_sz = std::integral_constant<size_t, OUT_DEGREE_SZ>{}) -> RandomIt
     {
         intmax_t sz = std::distance(first, last);
 
@@ -308,10 +308,25 @@ namespace algorithm_extension
             std::abort();
         }
 
-        for (size_t i = 0u; i < sz; ++i)
+        size_t iteration_sz = std::min(top_k, static_cast<size_t>(sz));
+        size_t rem_sz       = sz - iteration_sz;
+
+        for (size_t i = 0u; i < iteration_sz; ++i)
         {
             pop_heap(first, std::prev(last, i), is_better_cmp, out_degree_sz);
         }
+
+        return std::next(first, rem_sz);
+    }
+
+    template <class RandomIt, class Comparator = LessEqualCmp, size_t OUT_DEGREE_SZ = DEFAULT_OUT_DEGREE_SZ>
+    void sort_heap(RandomIt first, RandomIt last, Comparator&& is_better_cmp = Comparator{},
+                   const std::integral_constant<size_t, OUT_DEGREE_SZ> out_degree_sz = std::integral_constant<size_t, OUT_DEGREE_SZ>{})
+    {
+        top_k(first, last,
+              std::distance(first, last),
+              is_better_cmp,
+              out_degree_sz);
     }
 }
 

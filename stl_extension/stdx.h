@@ -231,6 +231,29 @@ namespace stdx
     }
 
     template <class Destructor>
+    class StackGuard
+    {
+        private:
+
+            Destructor destructor;
+        
+        public:
+
+            StackGuard(Destructor destructor): destructor(std::move(destructor)){}
+
+            inline __attribute__((always_inline)) ~StackGuard() noexcept
+            {
+                this->destructor();
+            }
+
+            StackGuard(const self&) = delete;
+            StackGuard(self&&) = delete;
+
+            self& operator =(const self&) = delete;
+            self& operator =(self&&) = delete;
+    };
+
+    template <class Destructor>
     inline auto resource_guard(Destructor destructor) noexcept
     {    
         static_assert(std::is_nothrow_move_constructible_v<Destructor>);

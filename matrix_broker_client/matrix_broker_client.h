@@ -17,7 +17,6 @@
 #include <stl_extension/stdx.h>
 #include <exception>
 #include <stdexcept>
-#include <deviation_projector/generic_matrix_deviation_calculator.h>
 #include <expected>
 
 namespace matrix_broker_client

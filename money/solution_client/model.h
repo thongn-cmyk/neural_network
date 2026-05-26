@@ -1,21 +1,25 @@
-#ifndef __MONEY_SOLUTION_SOLUTION_SERVER_MODEL_H__
-#define __MONEY_SOLUTION_SOLUTION_SERVER_MODEL_H__
+#ifndef __MONEY_SOLUTION_SOLUTION_CLIENT_MODEL_H__
+#define __MONEY_SOLUTION_SOLUTION_CLIENT_MODEL_H__
 
 #include <stdint.h>
 #include <stdlib.h>
-#include "local_exception.h"
-#include <expected>
-#include <optional>
-#include <string>
-#include <cstring>
 #include <memory>
 #include <connectivity_subsystem/connectivity_subsystem.h>
-#include <matrix/generic_matrix_factory.h>
+#include "local_exception.h"
+#include <string>
 #include <internal_rest/network_rest_frame.h>
+#include <vector>
+#include <optional>
+#include <chrono>
 
-namespace stock_solution_server
+namespace stock_solution_client
 {
-    using Remote = dg_sock::network_rest_frame::model::Remote;
+    template <class T>
+    using Promise       = dg_sock::network_rest_frame::client::Promise<T>;
+
+    using Remote        = dg_sock::network_rest_frame::model::Remote;
+    using Url           = dg_sock::network_rest_frame::model::Url;
+    using ClientRequest = dg_sock::network_rest_frame::model::ClientRequest;
 
     struct GetVersionRequest
     {
@@ -306,6 +310,29 @@ namespace stock_solution_server
         void dg_reflect(const Reflector& reflector)
         {
             reflector(result, err_verbal_description);
+        }
+    };
+
+    struct GetRecommendationPayload
+    {
+        MarketData market_data;
+        std::chrono::time_point<std::chrono::utc_clock> forecast_timepoint;
+        std::optional<uint32_t> top_k;
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector) const
+        {
+            reflector(market_data,
+                      forecast_timepoint,
+                      top_k);
+        }
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector)
+        {
+            reflector(market_data,
+                      forecast_timepoint,
+                      top_k);
         }
     };
 }

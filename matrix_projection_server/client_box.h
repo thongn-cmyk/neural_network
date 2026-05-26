@@ -22,7 +22,7 @@ namespace matrix_projection_server
 
         public:
 
-            ClientBox(): matrix(nullptr){}
+            ClientBox(): matrix(){}
 
             void set_matrix(const generic_matrix_factory::ExternalGenericMatrixResource& matrix_resource)
             {
@@ -31,6 +31,11 @@ namespace matrix_projection_server
 
             auto project(const matrix_serializer::GenericMatrix& generic_in_matrix) -> matrix_serializer::GenericMatrix
             {
+                if (this->matrix == nullptr)
+                {
+                    throw std::invalid_argument("bad matrix, null");
+                }
+
                 std::shared_ptr<tensor_model::Matrix> in_matrix = matrix_serializer::deserialize(generic_in_matrix);
 
                 return matrix_serializer::serialize(this->matrix->project({in_matrix})[0]);

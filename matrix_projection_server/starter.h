@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include "controller.h"
+#include <request_extension/type_based_dgstd_resolutor.h>
 
 namespace matrix_projection_server
 {

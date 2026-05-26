@@ -1,12 +1,15 @@
-#ifndef __MONEY_SOLUTION_SOLUTION_SERVER_LOCAL_EXCEPTION_H__
-#define __MONEY_SOLUTION_SOLUTION_SERVER_LOCAL_EXCEPTION_H__
+#ifndef __MONEY_SOLUTION_SOLUTION_CLIENT_LOCAL_EXCEPTION_H__
+#define __MONEY_SOLUTION_SOLUTION_CLIENT_LOCAL_EXCEPTION_H__
 
 #include <stdint.h>
 #include <stdlib.h>
-#include <exception>
+#include <expected>
+#include <string>
+#include <string_view>
 #include <stdexcept>
+#include <exception>
 
-namespace stock_solution_server
+namespace stock_solution_client
 {
     using local_exception_t = uint8_t;
 
@@ -22,12 +25,33 @@ namespace stock_solution_server
 
     struct other_invalid_argument: std::invalid_argument
     {
-        other_invalid_argument(const char * msg): std::invalid_argument(msg){}
+        std::string msg;
+
+        other_invalid_argument(std::string_view msg): std::invalid_argument(""),
+                                                      msg(msg){}
+
+        virtual auto what() const noexcept -> const char *
+        {
+            return this->msg.c_str();
+        }
     };
 
     struct other_runtime_error: std::runtime_error
     {
-        other_runtime_error(const char * msg): std::runtime_error(msg){}
+        std::string msg;
+
+        other_runtime_error(std::string_view msg): std::runtime_error(""),
+                                                   msg(msg){}
+
+        virtual auto what() const noexcept -> const char *
+        {
+            return this->msg.c_str();
+        }
+    };
+
+    struct inoperable_client_error: std::invalid_argument
+    {
+        inoperable_client_error(): std::invalid_argument("bad client operation, client is in operable state"){}
     };
 
     static inline constexpr local_exception_t SUCCESS                           = 0u;
@@ -35,6 +59,7 @@ namespace stock_solution_server
     static inline constexpr local_exception_t CLIENT_BOX_NOT_FOUND_ERROR_CODE   = 2u;
     static inline constexpr local_exception_t OTHER_INVALID_ARGUMENT_CODE       = 3u;
     static inline constexpr local_exception_t OTHER_RUNTIME_ERROR_CODE          = 4u;
+    static inline constexpr local_exception_t INOPERABLE_CLIENT_ERROR_CODE      = 5u;
 
     auto to_local_exception_error_code(std::exception_ptr ptr) -> local_exception_t
     {
@@ -57,6 +82,10 @@ namespace stock_solution_server
         catch (other_runtime_error& e)
         {
             return OTHER_RUNTIME_ERROR_CODE;
+        }
+        catch (inoperable_client_error& e)
+        {
+            return INOPERABLE_CLIENT_ERROR_CODE;
         }
         catch (std::exception& e)
         {
@@ -86,6 +115,41 @@ namespace stock_solution_server
         }
 
         return "";
+    }
+
+    void throw_error_code(local_exception_t err, std::string_view msg)
+    {
+        switch (err)
+        {
+            case SUCCESS:
+            {
+                return;
+            }
+            case DESTROYED_CLIENT_BOX_ERROR_CODE:
+            {
+                throw destroyed_client_box_error{};
+            }
+            case CLIENT_BOX_NOT_FOUND_ERROR_CODE:
+            {
+                throw client_box_not_found_error{};
+            }
+            case OTHER_INVALID_ARGUMENT_CODE:
+            {
+                throw other_invalid_argument(msg);
+            }
+            case OTHER_RUNTIME_ERROR_CODE:
+            {
+                throw other_runtime_error(msg);
+            }
+            case INOPERABLE_CLIENT_ERROR_CODE:
+            {
+                throw inoperable_client_error{};
+            }
+            default:
+            {
+                throw other_runtime_error(msg);
+            }
+        }
     }
 }
 

@@ -1,28 +1,31 @@
-#ifndef __MATRIX_PROJECTION_CLIENT_H__
-#define __MATRIX_PROJECTION_CLIENT_H__
+#ifndef __MONEY_SOLUTION_SOLUTION_CLIENT_SOLUTION_CLIENT_H__
+#define __MONEY_SOLUTION_SOLUTION_CLIENT_SOLUTION_CLIENT_H__
 
+#include "local_exception.h"
+#include "model.h"
+#include "remote_url_factory.h"
+#include <connection_handshake_client/connection_handshake_client.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <vector>
 #include <unordered_map>
-#include <expected>
-#include <connectivity_subsystem/connectivity_subsystem.h>
-#include "local_exception.h"
-#include "model.h"
-#include "remote_url_factory.h"
+#include <internal_rest/network_rest_frame.h>
+#include <serializer/compact_serializer.h>
 #include <request_extension/type_based_dgstd_resolutor.h>
-#include <request_extension/type_based_resolutor_interface.h>
+#include <string_view>
+#include <string>
 #include <stl_extension/stdx.h>
-#include <memory>
+#include <exception>
+#include <stdexcept>
 
-namespace matrix_projection_client
+namespace stock_solution_client
 {
     class APIClient_Base
     {
         private:
 
             dg_sock::network_rest_frame::client::RequestClient client;
-        
+
         public:
 
             void set_unique_request(bool is_unique_request)
@@ -79,7 +82,7 @@ namespace matrix_projection_client
 
                 CloseClientRequest raw_request
                 {
-                    .client_box_id = client_box_id
+                    .client_box_id  = client_box_id
                 };
 
                 std::string request_payload = dg::network_compact_serializer::dgstd_serialize<std::string>(raw_request);
@@ -87,7 +90,7 @@ namespace matrix_projection_client
                                                               .payload(request_payload)
                                                               .serialization_method(dg::network_compact_serializer::get_dgstd_serialization_identifier())
                                                               .get();
-
+                
                 auto base_resolutor = [](const CloseClientResponse& response)
                 {
                     throw_error_code(response.result, response.err_verbal_description);
@@ -102,55 +105,57 @@ namespace matrix_projection_client
                                    .get_promise();
             }
 
-            auto set_matrix(const Remote& remote, uint64_t client_box_id,
-                            const generic_matrix_factory::ExternalGenericMatrixResource& matrix_resource) -> std::shared_ptr<Promise<stdx::fancy_void>>
+            auto set_solution(const Remote& remote, uint64_t client_box_id,
+                              const ExternalSolutionData& solution_data) -> std::shared_ptr<Promise<stdx::fancy_void>>
             {
                 using namespace dg_sock::network_rest_frame::client;
 
-                SetMatrixRequest raw_request
+                SetSolutionRequest raw_request
                 {
-                    .client_box_id      = client_box_id,
-                    .matrix_resource    = matrix_resource
+                    .client_box_id  = client_box_id,
+                    .solution_data  = solution_data
                 };
 
                 std::string request_payload = dg::network_compact_serializer::dgstd_serialize<std::string>(raw_request);
-                ClientRequest request       = RequestFactory{}.url(RemoteUrlFactory::get_set_matrix_url(remote))
+                ClientRequest request       = RequestFactory{}.url(RemoteUrlFactory::get_set_solution_url(remote))
                                                               .payload(request_payload)
                                                               .serialization_method(dg::network_compact_serializer::get_dgstd_serialization_identifier())
                                                               .get();
 
-                auto base_resolutor = [](const SetMatrixResponse& response)
+                auto base_resolutor = [](const SetSolutionResponse& response)
                 {
                     throw_error_code(response.result, response.err_verbal_description);
 
                     return stdx::fancy_void{};
                 };
 
-                request_extension::resolutor::ClientResponseDgstdFormatter resolutor(stdx::Tag<SetMatrixResponse>{}, base_resolutor);
+                request_extension::resolutor::ClientResponseDgstdFormatter resolutor(stdx::Tag<SetSolutionResponse>{}, base_resolutor);
 
                 return this->client.request(request)
                                    .set_resolutor(resolutor)
                                    .get_promise();
             }
 
-            auto project_matrix(const Remote& remote, uint64_t client_box_id,
-                                const matrix_serializer::GenericMatrix& generic_matrix) -> std::shared_ptr<Promise<matrix_serializer::GenericMatrix>>
+            auto get_recommendation(const Remote& remote, uint64_t client_box_id,
+                                    const GetRecommendationPayload& payload) -> std::shared_ptr<Promise<Actionables>>
             {
                 using namespace dg_sock::network_rest_frame::client;
 
-                ProjectMatrixRequest raw_request
+                GetRecommendationRequest raw_request
                 {
-                    .client_box_id  = client_box_id,
-                    .generic_matrix = generic_matrix
+                    .client_box_id      = client_box_id,
+                    .market_data        = payload.market_data,
+                    .forecast_timepoint = payload.forecast_timepoint,
+                    .top_k              = payload.top_k
                 };
 
                 std::string request_payload = dg::network_compact_serializer::dgstd_serialize<std::string>(raw_request);
-                ClientRequest request       = RequestFactory{}.url(RemoteUrlFactory::get_project_matrix_url(remote))
+                ClientRequest request       = RequestFactory{}.url(RemoteUrlFactory::get_get_recommendation_url(remote))
                                                               .payload(request_payload)
                                                               .serialization_method(dg::network_compact_serializer::get_dgstd_serialization_identifier())
                                                               .get();
 
-                auto base_resolutor = [](const ProjectMatrixResponse& response)
+                auto base_resolutor = [](const GetRecommendationResponse& response)
                 {
                     if (!response.result.has_value())
                     {
@@ -160,7 +165,7 @@ namespace matrix_projection_client
                     return response.result.value();
                 };
 
-                request_extension::resolutor::ClientResponseDgstdFormatter resolutor(stdx::Tag<ProjectMatrixResponse>{}, base_resolutor);
+                request_extension::resolutor::ClientResponseDgstdFormatter resolutor(stdx::Tag<GetRecommendationResponse>{}, base_resolutor);
 
                 return this->client.request(request)
                                    .set_resolutor(resolutor)
@@ -176,7 +181,7 @@ namespace matrix_projection_client
             std::unique_ptr<connectivity_subsystem::ConnectionInterface> connection;
             bool was_explicitly_closed;
             ClientRemote client_remote;
-
+        
         public:
 
             APIClient(const Remote& remote,
@@ -184,7 +189,7 @@ namespace matrix_projection_client
             {
                 std::unique_ptr<connectivity_subsystem::MasterConnection> connection;
 
-                if (config.has_value())
+                if (!config.has_value())
                 {
                     auto tmp_config             = config.value();
                     tmp_config.slave_count      = 1u;
@@ -195,7 +200,7 @@ namespace matrix_projection_client
                     connection                  = std::make_unique<connectivity_subsystem::MasterConnection>();
                 }
 
-                uint64_t client_id          = this->base.open_client_box(remote, connection->get_slave_configuration())->wait();
+                uint64_t client_id          = this->base.open_client_box(remote, connection->get_slave_configuration());
                 this->connection            = std::move(connection);
                 this->was_explicitly_closed = false;
 
@@ -216,7 +221,7 @@ namespace matrix_projection_client
                 this->base.set_unique_request(is_unique_request);
             }
 
-            void set_retry_policy(dg_sock::network_rest_frame::client::retry_policy_t retry_policy)
+            void set_retry_policy(dg_sock::network_rest_frame::retry_policy_t retry_policy)
             {
                 if (!this->can_operate())
                 {
@@ -236,26 +241,26 @@ namespace matrix_projection_client
                 this->base.set_cancellation_token(cancellation_token);
             }
 
-            auto set_matrix(const generic_matrix_factory::ExternalGenericMatrixResource& matrix_resource) -> std::shared_ptr<Promise<stdx::fancy_void>>
+            auto set_solution(const ExternalSolutionData& solution_data) -> std::shared_ptr<Promise<stdx::fancy_void>>
             {
                 if (!this->can_operate())
                 {
                     throw inoperable_client_error{};
                 }
 
-                return this->base.set_matrix(this->client_remote.remote, this->client_remote.client_id,
-                                             matrix_resource);
+                return this->base.set_solution(this->client_remote.remote, this->client_remote.client_id,
+                                               solution_data);
             }
 
-            auto project_matrix(const matrix_serializer::GenericMatrix& generic_matrix) -> std::shared_ptr<Promise<matrix_serializer::GenericMatrix>>
+            auto get_recommendation(const GetRecommendationPayload& payload) -> std::shared_ptr<Promise<Actionables>>
             {
                 if (!this->can_operate())
                 {
                     throw inoperable_client_error{};
                 }
 
-                return this->base.project_matrix(this->client_remote.remote, this->client_remote.client_id,
-                                                 generic_matrix);
+                return this->base.get_recommendation(this->client_remote.remote, this->client_remote.client_id,
+                                                     payload);
             }
 
             void close(bool hard_close = true) noexcept
@@ -274,14 +279,14 @@ namespace matrix_projection_client
                 }
                 catch (...)
                 {
-                    logging_subsystem::noexcept_log(logging_subsystem::LogFactory{}.topic("deviation_projection_client")
+                    logging_subsystem::noexcept_log(logging_subsystem::LogFactory{}.topic("stock_solution_client")
                                                                                    .topic("APIClient")
                                                                                    .message(std::current_exception()));
                 }
 
                 this->connection->close();
             }
-        
+
         private:
 
             auto can_operate() -> bool

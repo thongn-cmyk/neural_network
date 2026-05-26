@@ -33,6 +33,7 @@ namespace stock_solution
     template <class T>
     using Task      = concurrency_task::TaskInterface<T>;
 
+    //__maybe_generic_resolution__
     class MatrixOptimizationSessionInterface
     {
         public:
@@ -47,6 +48,7 @@ namespace stock_solution
                                   const std::shared_ptr<common_exception::CancellationTokenInterface>& cancellation_token) -> std::shared_ptr<Promise<generic_matrix_factory::ExternalGenericMatrixResource>> = 0;
     };
 
+    //__maybe_generic_resolution__
     class MatrixOptimizationSessionGeneratorInterface
     {
         public:
@@ -70,16 +72,6 @@ namespace stock_solution
 
             virtual auto broke_matrix(size_t flat_matrix_sz,
                                       const std::shared_ptr<common_exception::CancellationTokenInterface>& cancellation_token) -> std::shared_ptr<Promise<MatrixResult>> = 0;
-    };
-
-    class MatrixProjectorInterface
-    {
-        public:
-
-            virtual ~MatrixProjectorInterface() noexcept = default;
-
-            virtual void set(const generic_matrix_factory::ExternalGenericMatrixResource& resource) = 0;
-            virtual auto project(const std::shared_ptr<tensor_model::Matrix>& in_matrix) -> std::shared_ptr<tensor_model::Matrix> = 0;
     };
 
     struct TickerData
@@ -694,7 +686,7 @@ namespace stock_solution
                 return *this;
             }
 
-            auto compute() -> TemporalFeatureExtractor&
+            auto compute(common_exception::CancellationTokenInterface * cancellation_token = nullptr) -> TemporalFeatureExtractor&
             {
                 this->feature_map.clear();
 
@@ -716,6 +708,11 @@ namespace stock_solution
                 {
                     for (const auto& [feature_name, feature_data]: ticker_data)
                     {
+                        if (cancellation_token != nullptr && cancellation_token->is_canceled())
+                        {
+                            common_exception::throw_exception(common_exception::OPERATION_CANCLED_ERROR);
+                        }
+
                         std::vector<double> feature_vec = {};
 
                         for (const auto& [epoch_timestamp, feature_value]: feature_data)
@@ -1514,7 +1511,7 @@ namespace stock_solution
 
         std::chrono::time_point<std::chrono::utc_clock> training_first;
         std::chrono::time_point<std::chrono::utc_clock> training_last;
-        std::chrono::nanoseconds training_lapse;
+        std::chrono::nanoseconds training_iteration_step;
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector) const
@@ -1526,7 +1523,7 @@ namespace stock_solution
                       matrix_encoder_shape, matrix_encoder_flat_sz,
                       matrix_resource,
                       training_first, training_last,
-                      training_lapse);
+                      training_iteration_step);
         }
 
         template <class Reflector>
@@ -1539,9 +1536,39 @@ namespace stock_solution
                       matrix_encoder_shape, matrix_encoder_flat_sz,
                       matrix_resource,
                       training_first, training_last,
-                      training_lapse);
+                      training_iteration_step);
         }
     };
+
+    struct ExternalSolutionData
+    {
+        std::string solution_bytestream;
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector) const
+        {
+            reflector(solution_bytestream);
+        }
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector)
+        {
+            reflector(solution_bytestream);
+        }
+    };
+
+    auto to_external_solution_data(const SolutionData& solution_data) -> ExternalSolutionData
+    {
+        return ExternalSolutionData
+        {
+            .solution_bytestream = dg::network_compact_serializer::dgstd_serialize<std::string>(solution_data)
+        };
+    }
+
+    auto to_internal_solution_data(const ExternalSolutionData& solution_data) -> SolutionData
+    {
+        return dg::network_compact_serializer::dgstd_deserialize<SolutionData>(solution_data.solution_bytestream);
+    }
 
     struct TrainingDataPoint
     {
@@ -1577,7 +1604,7 @@ namespace stock_solution
 
             std::chrono::time_point<std::chrono::utc_clock> first;
             std::chrono::time_point<std::chrono::utc_clock> last;
-            std::chrono::nanoseconds lapse;
+            std::chrono::nanoseconds iteration_step;
 
             size_t training_token_ingestion_window;
 
@@ -1599,6 +1626,7 @@ namespace stock_solution
         public:
 
             SolutionBuilder(): focal_option(FOCAL_OPTION_MINUTE),
+
                                matrix_broker(),
                                optimization_session_generator(),
 
@@ -1610,7 +1638,7 @@ namespace stock_solution
 
                                first(get_past(DEFAULT_WINDOW)),
                                last(get_now()),
-                               lapse(DEFAULT_LAPSE),
+                               iteration_step(DEFAULT_LAPSE),
 
                                training_token_ingestion_window(DEFAULT_TRAINING_TOKEN_INGESTION_WINDOW),
 
@@ -1699,14 +1727,14 @@ namespace stock_solution
                 return *this;
             }
 
-            auto set_training_intput_output_lapse(std::chrono::nanoseconds dur) -> SolutionBuilder&
+            auto set_training_iteration_step(std::chrono::nanoseconds dur) -> SolutionBuilder&
             {
                 if (dur <= std::chrono::nanoseconds(0))
                 {
                     throw std::invalid_argument("bad lapse, negative or zero");
                 }
 
-                this->lapse = dur;
+                this->iteration_step = dur;
 
                 return *this;
             }
@@ -1744,7 +1772,7 @@ namespace stock_solution
 
                                                                                                                                                        this->first,
                                                                                                                                                        this->last,
-                                                                                                                                                       this->lapse,
+                                                                                                                                                       this->iteration_step,
                                                                                                                                                         
                                                                                                                                                        this->training_token_ingestion_window,
 
@@ -1768,7 +1796,7 @@ namespace stock_solution
 
                     std::chrono::time_point<std::chrono::utc_clock> first;
                     std::chrono::time_point<std::chrono::utc_clock> last;
-                    std::chrono::nanoseconds lapse;
+                    std::chrono::nanoseconds iteration_step;
 
                     std::shared_ptr<common_exception::CancellationTokenInterface> external_cancellation_token;
                     std::shared_ptr<common_exception::CancellationTokenInterface> running_cancellation_token;
@@ -1784,14 +1812,14 @@ namespace stock_solution
 
                                  std::unique_ptr<MatrixBrokerInterface> matrix_broker,
                                  std::unique_ptr<MatrixOptimizationSessionGeneratorInterface> optimization_session_generator,
-                                 
+
                                  std::vector<TickerData> ticker_data_vec,
                                  std::vector<std::string> ticker_vec,
                                  std::vector<std::string> feature_name_vec,
                                 
                                  std::chrono::time_point<std::chrono::utc_clock> first,
                                  std::chrono::time_point<std::chrono::utc_clock> last,
-                                 std::chrono::nanoseconds lapse,
+                                 std::chrono::nanoseconds iteration_step,
                                  
                                  size_t training_token_ingestion_window,
 
@@ -1806,7 +1834,7 @@ namespace stock_solution
 
                                                                                                                                       first(first),
                                                                                                                                       last(last),
-                                                                                                                                      lapse(lapse),
+                                                                                                                                      iteration_step(iteration_step),
 
                                                                                                                                       external_cancellation_token(std::move(external_cancellation_token)),
                                                                                                                                       running_cancellation_token(),
@@ -1847,7 +1875,7 @@ namespace stock_solution
 
                             .training_first                     = this->first,
                             .training_last                      = this->last,
-                            .training_lapse                     = this->lapse
+                            .training_lapse                     = this->iteration_step
                         };
                     }
 
@@ -1910,7 +1938,7 @@ namespace stock_solution
                                 .set_analytic_option(this->get_analytic_option())
                                 .set_data(this->ticker_data_vec)
                                 .set_feature_name_list(this->feature_name_vec)
-                                .compute();
+                                .compute(this->running_cancellation_token.get());
 
                             this->cached_extractor = std::move(tmp);
                         }
@@ -1931,7 +1959,7 @@ namespace stock_solution
                         size_t epoch_first                      = std::chrono::duration_cast<std::chrono::nanoseconds>(this->first.time_since_epoch()).count();
                         size_t epoch_last                       = std::chrono::duration_cast<std::chrono::nanoseconds>(this->last.time_since_epoch()).count();
                         size_t time_interval_uint               = std::chrono::duration_cast<std::chrono::nanoseconds>(this->last - this->first).count();
-                        size_t lapse_uint                       = this->lapse.count();
+                        size_t lapse_uint                       = this->iteration_step.count();
 
                         if (lapse_uint == 0u)
                         {
@@ -2165,14 +2193,12 @@ namespace stock_solution
 
             std::unique_ptr<TemporalFeatureExtractor> extractor;
             std::unique_ptr<OneOneMatrixEncoder> encoder;
-            std::shared_ptr<MatrixProjectorInterface> matrix_projector;
+            std::unique_ptr<the_matrix::MatrixInterface> matrix_projector;
 
         public:
 
-            SolutionProduct(const SolutionData& data_arg,
-                            const std::shared_ptr<MatrixProjectorInterface> matrix_projector_arg): data(data_arg),
-                                                                                                   encoder(),
-                                                                                                   matrix_projector(matrix_projector_arg)
+            SolutionProduct(const SolutionData& data_arg): data(data_arg),
+                                                           encoder()
 
             {
                 if (matrix_projector_arg == nullptr)
@@ -2190,10 +2216,11 @@ namespace stock_solution
                                 .set_feature_name_list(data.extractor_feature_name_list)
                                 .set_analytic_option(data.extractor_analytic_option);
 
-                this->encoder       = std::make_unique<OneOneMatrixEncoder>(stdx::to_castable_vector_initializer(data.matrix_encoder_shape), data.matrix_encoder_flat_sz);
-
-                this->matrix_projector->set(this->data.matrix_resource);
+                this->encoder           = std::make_unique<OneOneMatrixEncoder>(stdx::to_castable_vector_initializer(data.matrix_encoder_shape), data.matrix_encoder_flat_sz);
+                this->matrix_projector  = generic_matrix_factory::GenericMatrixLoader{}.load_resource(generic_matrix_factory::GenericMatrixExternalizer{}.to_internal(this->data.matrix_resource));
             }
+
+            SolutionProduct(const ExternalSolutionData& solution_data): SolutionData(to_internal_solution_data(solution_data)){}
 
             auto load_data(const std::vector<TickerData>& ticker_data) -> SolutionProduct&
             {
