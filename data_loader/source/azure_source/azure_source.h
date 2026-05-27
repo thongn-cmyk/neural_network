@@ -477,8 +477,7 @@ namespace data_loader::azure_source
 
                 if (read_bytes != tentative_read_bytes)
                 {
-                    this->is_bad_state = true;
-                    throw hard_file_read_error("Bad Azure operation, mismatched read range");
+                    throw soft_file_read_error("Bad Azure operation, mismatched read range");
                 }
 
                 std::string rs{};

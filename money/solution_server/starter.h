@@ -15,11 +15,11 @@ namespace stock_solution_server
 
         std::shared_ptr<ClientBoxManager> manager   = std::make_shared<ClientBoxManager>();
 
-        dg_sock::network_rest_frame::server_instance::hook(GetVersionResolver::RESOLVABLE_PATH, std::unique_ptr<TypeBasedResolutorInterface<GetVersionRequest, GetVersionResponse>>(std::make_unique<GetVersionResolver>()));
-        dg_sock::network_rest_frame::server_instance::hook(OpenClientResolver::RESOLVABLE_PATH, std::unique_ptr<TypeBasedResolutorInterface<OpenClientRequest, OpenClientResponse>>(std::make_unique<OpenClientResolver>(manager)));
-        dg_sock::network_rest_frame::server_instance::hook(CloseClientResolver::RESOLVABLE_PATH, std::unique_ptr<TypeBasedResolutorInterface<CloseClientRequest, CloseClientResponse>>(std::make_unique<CloseClientResolver>(manager)));
-        dg_sock::network_rest_frame::server_instance::hook(SetSolutionResolver::RESOLVABLE_PATH, std::unique_ptr<TypeBasedResolutorInterface<SetSolutionRequest, SetSolutionResponse>>(std::make_unique<SetSolutionResolver>(manager)));
-        dg_sock::network_rest_frame::server_instance::hook(GetRecommendationResolver::RESOLVABLE_PATH, std::unique_ptr<TypeBasedResolutorInterface<GetRecommendationRequest, GetRecommendationResponse>>(std::make_unique<GetRecommendationResolver>(manager)));
+        dg_sock::network_rest_frame::server_instance::hook(GetVersionResolver::RESOLVABLE_PATH, wrap(std::unique_ptr<TypeBasedResolutorInterface<GetVersionRequest, GetVersionResponse>>(std::make_unique<GetVersionResolver>())));
+        dg_sock::network_rest_frame::server_instance::hook(OpenClientResolver::RESOLVABLE_PATH, wrap(std::unique_ptr<TypeBasedResolutorInterface<OpenClientRequest, OpenClientResponse>>(std::make_unique<OpenClientResolver>(manager))));
+        dg_sock::network_rest_frame::server_instance::hook(CloseClientResolver::RESOLVABLE_PATH, wrap(std::unique_ptr<TypeBasedResolutorInterface<CloseClientRequest, CloseClientResponse>>(std::make_unique<CloseClientResolver>(manager))));
+        dg_sock::network_rest_frame::server_instance::hook(SetSolutionResolver::RESOLVABLE_PATH, wrap(std::unique_ptr<TypeBasedResolutorInterface<SetSolutionRequest, SetSolutionResponse>>(std::make_unique<SetSolutionResolver>(manager))));
+        dg_sock::network_rest_frame::server_instance::hook(GetRecommendationResolver::RESOLVABLE_PATH, wrap(std::unique_ptr<TypeBasedResolutorInterface<GetRecommendationRequest, GetRecommendationResponse>>(std::make_unique<GetRecommendationResolver>(manager))));
     }
 
     void stop_server() noexcept

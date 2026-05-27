@@ -1,0 +1,393 @@
+#ifndef __MONEY_SOLUTION_SOLUTION_TRAINER_SERVER_SOLUTION_BUILDER_H__
+#define __MONEY_SOLUTION_SOLUTION_TRAINER_SERVER_SOLUTION_BUILDER_H__
+
+#include <stdint.h>
+#include <stdlib.h>
+#include "local_exception.h"
+#include <expected>
+#include <optional>
+#include <string>
+#include <data_loader/source_loader/multisource_loader.h>
+#include <money/stock_solution.h>
+#include <common_exception/cancellation_token.h>
+
+//not here
+namespace stock_solution_trainer_server
+{
+    //I think this is not in the space, I think it's better to have an abstract class to store and and immutable space to have "cache and all the nice functions"
+
+    struct ResourceBase
+    {
+        struct ComputeSink
+        {
+            Remote remote;
+            fire_bandwidth_control::generic_firer::ExternalGenericFirerConfig firer_config;
+        };
+
+        std::shared_ptr<common_exception::CancellationTokenInterface> cancellation_token;
+        std::optional<data_loader::source_loader::multisource_loader::ExternalMultisourceLoaderConfig> data_loader_config;
+        std::vector<ComputeSink> compute_sink_vec;
+        
+        std::optional<std::chrono::time_point<std::chrono::utc_clock>> from_timepoint;
+        std::optional<std::chrono::time_point<std::chrono::utc_clock>> to_timepoint;
+        std::optional<std::chrono::nanoseconds> iteration_step;
+
+        uint8_t optimization_flag;
+
+        static inline constexpr uint8_t OPTIMIZATION_FLAG_O1    = 0u;
+        static inline constexpr uint8_t OPTIMIZATION_FLAG_O2    = 1u;
+        static inline constexpr uint8_t OPTIMIZATION_FLAG_O3    = 2u;
+    };
+
+    template <class T>
+    using TaskPromise = void;
+
+    class ImmutableSolutionBuilder
+    {
+        private:
+
+            ResourceBase resource_base;
+
+            std::optional<std::vector<stock_solution::TickerData>> ticker_data;
+            std::optional<std::vector<std::string>> ticker_vec;
+            std::optional<std::vector<std::string>> feature_vec;
+
+            std::optional<std::chrono::time_point<std::chrono::utc_clock>> from_timepoint;
+            std::optional<std::chrono::time_point<std::chrono::utc_clock>> to_timepoint;
+            std::optional<std::chrono::nanoseconds> iteration_step;
+
+            static inline constexpr std::chrono::nanoseconds DEFAULT_ITERATION_STEP = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::days(1));
+
+        public:
+
+            ImmutableSolutionBuilder(ResourceBase resource_base): resource_base(std::move(resource_base)){}
+
+            auto build() -> stock_solution::ExternalSolutionData
+            {
+                return stock_solution::SolutionBuilder{}.set_focal_option(this->get_focal_option())
+                                                        .set_matrix_broker(this->get_matrix_broker())
+                                                        .set_matrix_optimizer(this->get_matrix_optimizer())
+                                                        .set_cancellation_token(this->get_cancellation_token())
+                                                        .set_data(this->get_ticker_data())
+                                                        .set_training_first_timepoint(this->get_training_first_timepoint())
+                                                        .set_training_last_timepoint(this->get_training_last_timepoint())
+                                                        .set_feature_name_list(this->get_feature_name_list())
+                                                        .set_tickers(this->get_ticker_vec())
+                                                        .set_training_token_ingestion_window(this->get_training_token_ingestion_window())
+                                                        .set_training_iteration_step(this->get_training_iteration_step())
+                                                        .build();
+            }
+
+        private:
+
+            class InternalMatrixBroker: public virtual stock_solution::MatrixBrokerInterface
+            {
+                private:
+
+                    matrix_broker_client::APIClient client;
+                    ResourceBase resource_base;
+
+                public:
+
+                    InternalMatrixBroker(ResourceBase resource_base): client(get_self_remote()),
+                                                                      resource_base(std::move(resource_base)){}
+
+                    auto broke_matrix(size_t flat_matrix_sz,
+                                      const std::shared_ptr<common_exception::CancellationTokenInterface>& cancellation_token) -> std::shared_ptr<TaskPromise<stock_solution::MatrixResult>>
+                    {
+                        this->client.set_cancellation_token(cancellation_token);
+
+                        std::shared_ptr<RestPromise<matrix_broker_client::ClientMatrixResult>> matrix_result = this->client.broke_matrix(this->get_generator_id(),
+                                                                                                                                         this->get_matrix_entropy(),
+                                                                                                                                         flat_matrix_sz);
+
+                        auto resolutor  = [](const matrix_broker_client::ClientMatrixResult& rs)
+                        {
+                            return stock_solution::MatrixResult
+                            {
+                                .matrix         = rs.matrix_resource,
+                                .matrix_shape   = stdx::to_castable_vector_initilizer(std::get<matrix_broker_client::FixedProjectionArgument>(rs.projection_argument.projection_argument).out_matrix_shape)
+                            };
+                        };
+
+                        return concurrency_utility::task_promise_cast(concurrency_utility::rest_to_task_promise(matrix_result),
+                                                                      resolutor);
+                    }
+
+                private:
+
+                    auto get_generator_id()
+                    {
+
+                    }
+
+                    auto get_matrix_entropy()
+                    {
+
+                    }
+            };
+
+            auto get_focal_option() -> uint8_t
+            {
+                switch (this->resource_base.optimization_flag)
+                {
+                    case ResourceBase::OPTIMIZATION_FLAG_O1:
+                    {
+                        return stock_solution::SolutionBuilder::FOCAL_OPTION_MINUTE;
+                    }
+                    case ResourceBase::OPTIMIZATION_FLAG_O2:
+                    {
+                        return stock_solution::SolutionBuilder::FOCAL_OPTION_SECOND_1;
+                    }
+                    case ResourceBase::OPTIMIZATION_FLAG_O3:
+                    [
+                        return stock_solution::SolutionBuilder::FOCAL_OPTION_SECOND_0;
+                    ]
+                    default:
+                    {
+                        throw std::invalid_argument("bad optimization flag, enumeration out of range");
+                    }
+                }
+            }
+
+            auto get_matrix_broker() -> std::unique_ptr<stock_solution::MatrixBrokerInterface>
+            {
+                return std::make_unique<InternalMatrixBroker>(this->resource_base);
+            }
+
+            auto get_matrix_optimizer()
+            {
+
+            }
+
+            auto get_cancellation_token() -> const std::shared_ptr<common_exception::CancellationTokenInterface>&
+            {
+                return this->resource_base.cancellation_token;
+            }
+
+            auto get_ticker_data() -> const std::vector<stock_solution::TickerData>&
+            {
+
+            }
+
+            auto get_training_first_timepoint() -> std::chrono::time_point<std::chrono::utc_clock>
+            {
+                if (!this->from_timepoint.has_value())
+                {
+                    if (this->resource_base.from_timepoint.has_value())
+                    {
+                        this->from_timepoint = this->resource_base.from_timepoint.value();
+                    }
+                    else
+                    {
+                        std::optional<std::chrono::time_point<std::chrono::utc_clock>> cand = std::nullopt;
+
+                        for (const auto& ticker: this->get_ticker_data())
+                        {
+                            if (!cand.has_value())
+                            {
+                                cand = ticker.timestamp;
+                            }
+
+                            cand = std::min(cand.value(), ticker.timestamp);
+                        }
+
+                        if (!cand.has_value())
+                        {
+                            throw std::invalid_argument("bad first timepoint, no timepoint avaialble");
+                        }
+
+                        this->from_timepoint = cand.value();
+                    }
+                }
+
+                return this->from_timepoint.value();
+            }
+
+            auto get_training_last_timepoint() -> std::chrono::time_point<std::chrono::utc_clock>
+            {
+                if (!this->to_timepoint.has_value())
+                {
+                    if (this->resource_base.to_timepoint.has_value())
+                    {
+                        this->to_timepoint = this->resource_base.to_timepoint.value();
+                    }
+                    else
+                    {
+                        std::optional<std::chrono::time_point<std::chrono::utc_clock>> cand = std::nullopt;
+
+                        for (const auto& ticker: this->get_ticker_data())
+                        {
+                            if (!cand.has_value())
+                            {
+                                cand = ticker.timestamp;
+                            }
+
+                            cand = std::max(cand.value(), ticker.timestamp)
+                        }
+
+                        if (!cand.has_value())
+                        {
+                            throw std::invalid_argument("bad last timepoint, no timepoint available");
+                        }
+
+                        this->to_timepoint = cand.value(); //[) bug
+                    }
+                }
+                
+                return this->to_timepoint.value();
+            }
+
+            auto get_feature_name_list() -> const std::vector<std::string>&
+            {
+                if (!this->feature_vec.has_value())
+                {
+                    std::unordered_set<std::string> rs_set{};
+
+                    for (const auto& ticker: this->get_ticker_data())
+                    {
+                        rs_set.insert(ticker.feature_name);
+                    }
+
+                    this->feature_vec = std::vector<std::string>(rs_set.begin(), rs_set.end());
+                }
+
+                return this->feature_vec.value();
+            }
+
+            auto get_ticker_vec() -> const std::vector<std::string>&
+            {
+                if (!this->ticker_vec.has_value())
+                {
+                    std::unordered_set<std::string> rs_set{};
+
+                    for (const auto& ticker: this->get_ticker_data())
+                    {
+                        rs_set.insert(ticker.ticker_name);
+                    }
+
+                    this->ticker_vec = std::vector<std::string>(rs_set.begin(), rs_set.end());
+                }
+
+                return this->ticker_vec.value();
+            }
+
+            auto get_training_token_ingestion_window()
+            {
+                
+            }
+
+            auto get_training_iteration_step() -> std::chrono::nanoseconds
+            {
+                if (!this->iteration_step.has_value())
+                {
+                    if (this->resource_base.iteration_step.has_value())
+                    {
+                        this->iteration_step    = this->resource_base.iteration_step.value();
+                    }
+                    else
+                    {
+                        this->iteration_step    = DEFAULT_ITERATION_STEP;
+                    }
+                }
+
+                return this->iteration_step.value();
+            }
+    };
+
+    class SolutionBuilder
+    {
+        private:
+
+            ResourceBase resource_base;
+
+        public:
+           
+            SolutionBuilder(): resource_base()
+            {
+                this->resource_base.optimization_flag   = ResourceBase::OPTIMIZATION_FLAG_O1;
+            }
+
+            auto set_cancellation_token(const std::shared_ptr<common_exception::CancellationTokenInterface>& cancellation_token_arg) -> SolutionBuilder&
+            {
+                this->resource_base.cancellation_token  = cancellation_token_arg;
+
+                return *this;
+            }
+
+            auto set_data_loader_config(const data_loader::source_loader::multisource_loader::ExternalMultisourceLoaderConfig& data_loader_config_arg) -> SolutionBuilder&
+            {
+                this->resource_base.data_loader_config  = data_loader_config_arg;
+
+                return *this;
+            }
+
+            auto add_compute_sink(const Remote& remote,
+                                  std::optional<fire_bandwidth_control::generic_firer::ExternalGenericFirerConfig> firer_config = std::nullopt) -> SolutionBuilder&
+            {
+                if (!firer_config.has_value())
+                {
+                    firer_config = this->get_default_firer_config();
+                }
+
+                this->resource_base.compute_sink_vec.push_back
+                (
+                    ComputeSink
+                    {
+                        .remote         = remote,
+                        .firer_config   = std::move(firer_config.value())
+                    }
+                );
+
+                return *this;
+            }
+
+            auto set_from(std::chrono::time_point<std::chrono::utc_clock> timepoint) -> SolutionBuilder&
+            {
+                this->resource_base.from_timepoint = timepoint;
+
+                return *this;
+            }
+
+            auto set_to(std::chrono::time_point<std::chrono::utc_clock> timepoint) -> SolutionBuilder&
+            {
+                this->resource_base.to_timepoint = timepoint;
+
+                return *this;
+            }
+
+            auto set_iteration_step(std::chrono::nanoseconds dur) -> SolutionBuilder&
+            {
+                this->resource_base.iteration_step = dur;
+
+                return *this;
+            }
+
+            auto set_optimization_flag(uint8_t optimization_flag_arg) -> SolutionBuilder&
+            {
+                switch (optimization_flag_arg)
+                {
+                    case OPTIMIZATION_FLAG_O1:
+                    case OPTIMIZATION_FLAG_O2:
+                    case OPTIMIZATION_FLAG_O3:
+                    {
+                        this->resource_base.optimization_flag = optimization_flag_arg;
+                        break;
+                    }
+                    default:
+                    {
+                        throw std::invalid_argument("bad optimization flag, enumeration out of range");
+                    }
+                }
+
+                return *this;
+            }
+
+            auto build() -> stock_solution::ExternalSolutionData
+            {
+                return ImmutableSolutionBuilder(this->resource_base).build();
+            }
+    };
+}
+
+#endif

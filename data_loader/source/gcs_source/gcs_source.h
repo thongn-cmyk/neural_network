@@ -353,8 +353,7 @@ namespace data_loader::gcs_source
 
                 if (rs.size() != tentative_read_sz)
                 {
-                    this->is_bad_state = true;
-                    throw hard_file_read_error("Bad GCS operation, mismatched read range");
+                    throw soft_file_read_error("Bad GCS operation, mismatched read range");
                 }
 
                 this->increment_read_pointer_by(rs.size());

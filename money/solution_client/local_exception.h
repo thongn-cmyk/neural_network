@@ -51,7 +51,7 @@ namespace stock_solution_client
 
     struct inoperable_client_error: std::invalid_argument
     {
-        inoperable_client_error(): std::invalid_argument("bad client operation, client is in operable state"){}
+        inoperable_client_error(): std::invalid_argument("bad client operation, client is in inoperable state"){}
     };
 
     static inline constexpr local_exception_t SUCCESS                           = 0u;

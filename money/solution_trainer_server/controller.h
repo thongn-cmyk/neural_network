@@ -1,0 +1,271 @@
+#ifndef __MONEY_SOLUTION_SOLUTION_TRAINER_SERVER_CONTROLLER_H__
+#define __MONEY_SOLUTION_SOLUTION_TRAINER_SERVER_CONTROLLER_H__
+
+#include <stdint.h>
+#include <stdlib.h>
+#include <memory>
+#include "model.h"
+#include "client_box.h"
+#include "local_exception.h"
+#include <request_extension/type_based_dgstd_resolutor.h>
+#include <request_extension/type_based_resolutor_interface.h>
+
+namespace solution_trainer_server
+{
+    static inline constexpr std::string_view SOLUTION_TRAINER_SERVER_VERSION_CONTROL    = "";
+
+    template <class T_In, class T_Out>
+    using TypeBasedResolutorInterface = request_extension::resolutor::TypeBasedResolutorInterface<T_In, T_Out>;
+
+    //the socket request is one of our proudest products because of synchronizability and never-drop transfer
+    //we have managed to keep the unack packets -> 100 / connection. And the amount of concurrent connections and concurrent requests is astonishing
+
+    //the problem with normal non-Redis web-server is that they spawn a thread before a request, but that would break the control-flow of the application under high-load
+    //so if we are building internal_comm like a massive computer or a massive process, it's better to use this comm than other comm
+
+    class GetVersionResolver: public virtual TypeBasedResolutorInterface<GetVersionRequest, GetVersionResponse>
+    {
+        public:
+
+            static inline constexpr std::string_view RESOLVABLE_PATH    = "";
+
+            auto handle(const GetVersionRequest& request) -> GetVersionResponse
+            {
+                return GetVersionResponse
+                {
+                    .response  = std::string(SOLUTION_TRAINER_SERVER_VERSION_CONTROL),
+                    .err_verbal_description = {}
+                };
+            }
+    };
+
+    class OpenClientResolver: public virtual TypeBasedResolutorInterface<OpenClientRequest, OpenClientResponse>
+    {
+        private:
+
+            std::shared_ptr<ClientBoxManager> client_box_manager;
+
+        public:
+
+            static inline constexpr std::string_view RESOLVABLE_PATH    = "";
+
+            OpenClientResolver(std::shared_ptr<ClientBoxManager> client_box_manager) noexcept: client_box_manager(std::move(client_box_manager)){}
+
+            auto handle(const OpenClientRequest& request) -> OpenClientResponse
+            {
+                try
+                {
+                    uint64_t client_box_id  = this->client_box_manager->open_client_box(request.connection_config);
+
+                    return OpenClientResponse
+                    {
+                        .result = client_box_id,
+                        .err_verbal_description = ""
+                    };
+                }
+                catch (...)
+                {
+                    return OpenClientResponse
+                    {
+                        .result = std::unexpected(solution_trainer_server::to_local_exception_error_code(std::current_exception())),
+                        .err_verbal_description = solution_trainer_server::verbose_exception(std::current_exception())
+                    };
+                }
+            }
+    };
+
+    class CloseClientResolver: public virtual TypeBasedResolutorInterface<CloseClientRequest, CloseClientResponse>
+    {
+        private:
+
+            std::shared_ptr<ClientBoxManager> client_box_manager;
+        
+        public:
+
+            static inline constexpr std::string_view RESOLVABLE_PATH    = "";
+
+            CloseClientResolver(std::shared_ptr<ClientBoxManager> client_box_manager) noexcept: client_box_manager(std::move(client_box_manager)){}
+
+            auto handle(const CloseClientRequest& request) -> CloseClientResponse
+            {
+                this->client_box_manager->close_client_box(request.client_box_id);
+
+                return CloseClientResponse
+                {
+                    .result = SUCCESS,
+                    .err_verbal_description = ""
+                };
+            }
+    };
+
+    class RunResolver: public virtual TypeBasedResolutorInterface<RunRequest, RunResponse>
+    {
+        private:
+
+            std::shared_ptr<ClientBoxManager> client_box_manager;
+        
+        public:
+
+            static inline constexpr std::string_view RESOLVABLE_PATH    = "";
+
+            RunResolver(std::shared_ptr<ClientBoxManager> client_box_manager) noexcept: client_box_manager(std::move(client_box_manager)){}
+
+            auto handle(const RunRequest& request) -> RunResponse
+            {
+                try
+                {
+                    std::shared_ptr<ConnectionBoundClientBox> client_box = this->client_box_manager->get_client_box(request.client_box_id);
+
+                    if (client_box == nulptr)
+                    {
+                        throw client_box_not_found_error{};
+                    }
+                    
+                    client_box->run(request.run_work_order);
+
+                    return RunResponse
+                    {
+                        .result = SUCCESS,
+                        .err_verbal_description = ""
+                    };
+                }
+                catch (...)
+                {
+                    return RunResponse
+                    {
+                        .result = solution_trainer_server::to_local_exception_error_code(std::current_exception()),
+                        .err_verbal_description = solution_trainer_server::verbose_exception(std::current_exception())
+                    };
+                }
+            }
+    };
+
+    class InterruptResolver: public virtual TypeBasedResolutorInterface<InterruptRequest, InterruptResponse>
+    {
+        private:
+
+            std::shared_ptr<ClientBoxManager> client_box_manager;
+        
+        public:
+
+            static inline constexpr std::string_view RESOLVABLE_PATH    = "";
+
+            InterruptResolver(std::shared_ptr<ClientBoxManager> client_box_manager) noexcept: client_box_manager(std::move(client_box_manager)){}
+
+            auto handle(const InterruptRequest& request) -> InterruptResponse
+            {
+                try
+                {
+                    std::shared_ptr<ConnectionBoundClientBox> client_box  = this->client_box_manager->get_client_box(request.client_box_id);
+
+                    if (client_box == nullptr)
+                    {
+                        throw client_box_not_found_error{};
+                    }
+
+                    client_box->interrupt();
+
+                    return InterruptResponse
+                    {
+                        .result = SUCCESS,
+                        .err_verbal_description = ""
+                    };
+                }
+                catch (...)
+                {
+                    return InterruptResponse
+                    {
+                        .result = solution_trainer_server::to_local_exception_error_code(std::current_exception()),
+                        .err_verbal_description = solution_trainer_server::verbose_exception(std::current_exception())
+                    };
+                }
+            }
+    };
+
+    class IsCompletedResolver: public virtual TypeBasedResolutorInterface<IsCompletedRequest, IsCompletedResponse>
+    {
+        private:
+
+            std::shared_ptr<ClientBoxManager> client_box_manager;
+
+        public:
+
+            static inline constexpr std::string_view RESOLVABLE_PATH    = "";
+
+            IsCompletedResolver(std::shared_ptr<ClientBoxManager> client_box_manager) noexcept: client_box_manager(std::move(client_box_manager)){}
+
+            auto handle(const IsCompletedRequest& request) -> IsCompletedResponse
+            {
+                try
+                {
+                    std::shared_ptr<ConnectionBoundClientBox> client_box = this->client_box_manager->get_client_box(request.client_box_id);
+
+                    if (client_box == nullptr)
+                    {
+                        throw client_box_not_found_error{};
+                    }
+
+                    return IsCompletedResponse
+                    {
+                        .result = client_box->is_completed(),
+                        .err_verbal_description = ""
+                    };
+                }
+                catch (...)
+                {
+                    return IsCompletedResponse
+                    {
+                        .result = std::unexpected(solution_trainer_server::to_local_exception_error_code(std::current_exception())),
+                        .err_verbal_description = solution_trainer_server::verbose_exception(std::current_exception())
+                    };
+                }
+            }
+    };
+
+    class GetResultResolver: public virtual TypeBasedResolutorInterface<GetResultRequest, GetResultResponse>
+    {
+        private:
+
+            std::shared_ptr<ClientBoxManager> client_box_manager;
+        
+        public:
+
+            static inline constexpr std::string_view RESOLVABLE_PATH    = "";
+
+            GetResultResolver(std::shared_ptr<ClientBoxManager> client_box_manager) noexcept: client_box_manager(std::move(client_box_manager)){}
+
+            auto handle(const GetResultRequest& request) -> GetResultResponse
+            {
+                try
+                {
+                    std::shared_ptr<ConnectionBoundClientBox> client_box = this->client_box_manager->get_client_box(request.client_box_id);
+
+                    if (client_box == nullptr)
+                    {
+                        throw client_box_not_found_error{};
+                    }
+
+                    if (!client_box->is_completed())
+                    {
+                        throw solution_training_in_progress_error{};
+                    }
+
+                    return GetResultResponse
+                    {
+                        .result = client_box->wait(),
+                        .err_verbal_description = ""
+                    };
+                }
+                catch (...)
+                {
+                    return GetResultResponse
+                    {
+                        .result = std::unexpected(solution_trainer_server::to_local_exception_error_code(std::current_exception())),
+                        .err_verbal_description = solution_trainer_server::verbose_exception(std::current_exception())
+                    };
+                }
+            }
+    };
+}
+
+#endif

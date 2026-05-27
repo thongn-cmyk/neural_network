@@ -1421,6 +1421,25 @@ namespace stock_solution
             }
     };
 
+    //what I've been trying to do is the 1 being unit == 1 context point with positional index
+    //and it has to "fit in" the being unit as one context point
+    //whether it is one-character, one-pixel or one-chart
+
+    //as I have already explained, 2 context points is easiler to collide and provide a meaningful summary, an intermediate representation of the context
+    //10 context points required at least 10**10  to provide a meaningful intermediate context point, even then we'd still "stutter" for following transformations
+
+    //I've been fighting entropy, literally, questioning the context window, the next word, the entropy of the transformation, AND most importantly the euclid distance of those semantic "input" and "output"
+    //it just seems to me that we are aiming for
+
+        //low entropy (input) -> (output)
+        //exponential window (input) -> (output) (entropy descend to avoid too irrelevant context point), we achieve those ends as different training tokens
+
+        //injective property by no ReLU, SeLU on the fly
+        //and because the power series itself does introduce more entropy to the projection space, we'd need to gradually unlock levels by entropy levels by using a random pointer managed by the matrix object
+
+        //by pair summary and y = y + x
+        //matrix revolutions on every possible entropy levels, by using ground_activator.h and friends
+
     class OneOneMatrixEncoder
     {
         private:

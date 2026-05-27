@@ -13,13 +13,40 @@
 #include <internal_rest/network_rest_frame.h>
 #include <fire_bandwidth_control/generic_firer.h>
 
-namespace stock_solution_trainer_server::model
+namespace stock_solution_trainer_server
 {
     using Remote = dg_sock::network_rest_frame::model::Remote;
 
-    static inline constexpr uint8_t OPTIMIZATION_FLAG_LOW       = 0u;
-    static inline constexpr uint8_t OPTIMIZATION_FLAG_MEDIUM    = 1u;
-    static inline constexpr uint8_t OPTIMIZATION_FLAG_HIGH      = 2u;
+    static inline constexpr uint8_t OPTIMIZATION_FLAG_O1    = 0u;
+    static inline constexpr uint8_t OPTIMIZATION_FLAG_O2    = 1u;
+    static inline constexpr uint8_t OPTIMIZATION_FLAG_O3    = 2u;
+
+    //migrations
+    struct TickerData
+    {
+        std::string ticker_name;
+        std::string feature_name;
+        double feature_value;
+        std::chrono::time_point<std::chrono::utc_clock> timestamp;
+    };
+
+    //migrations
+    struct ExternalSolutionData
+    {
+        std::string solution_bytestream;
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector) const
+        {
+            reflector(solution_bytestream);
+        }
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector)
+        {
+            reflector(solution_bytestream);
+        }
+    };
 
     struct GetVersionRequest
     {
@@ -141,10 +168,10 @@ namespace stock_solution_trainer_server::model
         }
     };
 
-    struct StockDataSink
+    struct ComputeSink
     {
         Remote sink_remote;
-        fire_bandwidth_control::generic_firer::ExternalGenericFirerConfig firer_config;
+        std::optional<fire_bandwidth_control::generic_firer::ExternalGenericFirerConfig> firer_config;
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector) const
@@ -159,17 +186,43 @@ namespace stock_solution_trainer_server::model
         }
     };
 
+    struct TrainingWindowInfo
+    {
+        std::chrono::time_point<std::chrono::utc_clock> from_timepoint;
+        std::chrono::time_point<std::chrono::utc_clock> to_timepoint;
+        std::chrono::nanoseconds iteration_step;
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector) const
+        {
+            reflector(from_timepoint,
+                      to_timepoint,
+                      iteration_step);
+        }
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector)
+        {
+            reflector(from_timepoint,
+                      to_timepoint,
+                      iteration_step);
+        }
+    };
+
     struct RunWorkOrder
     {
         StockDataSource data_source;
-        std::vector<StockDataSink> data_sink_vec;
+        std::vector<ComputeSink> compute_sink_vec;
+        TrainingWindowInfo training_window;
+
         uint8_t optimization_flag;
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector) const
         {
             reflector(data_source,
-                      data_sink_vec,
+                      compute_sink_vec,
+                      training_window,
                       optimization_flag);
         }
 
@@ -177,7 +230,8 @@ namespace stock_solution_trainer_server::model
         void dg_reflect(const Reflector& reflector)
         {
             reflector(data_source,
-                      data_sink_vec,
+                      compute_sink_vec,
+                      training_window,
                       optimization_flag);
         }
     };
@@ -302,24 +356,6 @@ namespace stock_solution_trainer_server::model
         void dg_reflect(const Reflector& reflector)
         {
             reflector(client_box_id);
-        }
-    };
-
-    //migrations
-    struct ExternalSolutionData
-    {
-        std::string solution_bytestream;
-
-        template <class Reflector>
-        void dg_reflect(const Reflector& reflector) const
-        {
-            reflector(solution_bytestream);
-        }
-
-        template <class Reflector>
-        void dg_reflect(const Reflector& reflector)
-        {
-            reflector(solution_bytestream);
         }
     };
 

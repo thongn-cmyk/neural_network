@@ -60,7 +60,7 @@ namespace matrix_optimizer_server
                 {
                     return OpenClientResponse
                     {
-                        .result = matrix_optimizer_server::to_local_exception_error_code(std::current_exception()),
+                        .result = std::unexpected(matrix_optimizer_server::to_local_exception_error_code(std::current_exception())),
                         .err_verbal_description = matrix_optimizer_server::verbose_exception(std::current_exception())
                     };
                 }

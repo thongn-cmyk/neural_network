@@ -20,115 +20,20 @@
 #include <deviation_projection_client/deviation_projection_client.h>
 #include <deviation_projection_ingestion_aid/deviation_projection_ingestion_aid.h>
 #include <deviation_projection_matrix_evaluator/deviation_projection_matrix_evaluator.h>
+#include <client_box/task_box/task_box.h>
 
 namespace matrix_optimizer_server
 {
-    class ClientBox
+    class ClientBox: public client_box::task_box::ClientTaskBox<RunWorkOrder, generic_matrix_factory::ExternalGenericMatrixResource>
     {
-        private:
+        protected:
 
-            std::unique_ptr<concurrency_detachable_task::DetachableTaskHandleInterface<generic_matrix_factory::ExternalGenericMatrixResource>> task;
-            bool was_explicitly_destroyed;
-
-        public:
-
-            ClientBox(): task(nullptr),
-                         was_explicitly_destroyed(false){}
-
-            ~ClientBox() noexcept
-            {
-                this->close(false);
-            }
-
-            void run(const RunWorkOrder& run_work_order)
-            {
-                if (this->was_explicitly_destroyed)
-                {
-                    throw destroyed_client_box_error{};
-                }
-
-                if (this->task != nullptr)
-                {
-                    throw second_run_error{};
-                }
-
-                this->task  = concurrency_detachable_task::DetachableTaskLauncher{}.launch(this->make_taskable(run_work_order));
-            }
-
-            auto is_completed() -> bool
-            {
-                if (this->was_explicitly_destroyed)
-                {
-                    return true;
-                }
-
-                if (this->task == nullptr)
-                {
-                    throw run_not_invoked_error{};
-                }
-
-                return this->task->is_completed();
-            }
-
-            void interrupt() noexcept
-            {
-                if (this->was_explicitly_destroyed)
-                {
-                    return;
-                }
-
-                if (this->task == nullptr)
-                {
-                    return;
-                }
-
-                this->task->interrupt();
-            }
-
-            auto wait() -> generic_matrix_factory::ExternalGenericMatrixResource
-            {
-                if (this->was_explicitly_destroyed)
-                {
-                    throw destroyed_client_box_error{};
-                }
-
-                if (this->task == nullptr)
-                {
-                    throw run_not_invoked_error{};
-                }
-
-                return this->task->wait();
-            }
-
-            void close(bool hard_close = true) noexcept
-            {
-                if (std::exchange(this->was_explicitly_destroyed, true))
-                {
-                    return;
-                }
-
-                if (this->task == nullptr)
-                {
-                    return;
-                }
-
-                if (hard_close)
-                {
-                    this->task->interrupt();
-                    this->task = nullptr;
-                }
-                else
-                {
-                    this->task->detach();
-                }
-            }
-
-        private:
-
-            auto make_taskable(const RunWorkOrder& run_work_order) -> std::unique_ptr<concurrency_task::TaskInterface<generic_matrix_factory::ExternalGenericMatrixResource>>
+            auto make_task(const RunWorkOrder& run_work_order) -> std::unique_ptr<concurrency_task::TaskInterface<generic_matrix_factory::ExternalGenericMatrixResource>>
             {
                 return std::make_unique<InternalResolutor>(run_work_order);
             }
+
+        private:
 
             class InternalResolutor: public virtual concurrency_task::TaskInterface<generic_matrix_factory::ExternalGenericMatrixResource>
             {
@@ -224,11 +129,6 @@ namespace matrix_optimizer_server
                                                                                                            base(std::make_unique<ClientBox>()),
                                                                                                            was_explicitly_destroyed(std::make_unique<std::atomic<bool>>(false)),
                                                                                                            mtx(fair_mutex::make_unique_fair_atomic_flag()){}
-
-            ~ConnectionBoundClientBox() noexcept
-            {
-                this->close(false);
-            }
 
             void run(const RunWorkOrder& work_order)
             {
