@@ -92,38 +92,6 @@ namespace matrix_optimizer_subsystem
         return dg::network_compact_serializer::dgstd_deserialize<CoordinatedSearchOptimizerEngineConfig>(config.config_bytestream);
     }
 
-    //this is the heuristic generator that I talked about, if we have the function context -> heuristic_generator then we'd find optimality if reasonable heuristics
-    //so I guess that today that we'd do, first is to work on the context enumeration, according to the theory, that more context is better than less context (in the sense that more always yields better results, but we'd have to balance between memory, warmup and the benefits from the results
-
-    //so there are three contexts: 
-        //(activation_region context) => activation_region heuristic
-        //(projection_line context) => projection_line heuristic
-        //(time_machine context) => time_machine heuristic
-
-    //remember that we are trying to optimize logit density, so all means to achieve that end is approved, not necessarily that we are too skewed here, too skewed there
-
-    //what we see here is the hierarchy of the pictures
-
-        //we guess activation_region -> we guess projection_line in the multidimensional_space -> we guess the time_machine
-        //so there must be a depends-on relationship between the latter and the former contexts
-
-        //if we just cluelessly use iterative score-based for every scope, then we have accidentially create a chain of maximized actions, this is a hard theory to grasp, so the latter actions actually are dynamically better than the immediate former actions
-        //the example is that we 100 people before you have failed, now you have to try something exotic, never done before, and give me the course of action
-
-        //what we have yet to optimize is to provide a cluster of actions, so we are talking about unit, multiple projectors into one context optimizer
-        //because each projection is one doable, we can't really give insight into the context as much as a unit of actions
-
-        //so it's complicated
-
-    //let's investigate what we could actually optimize for the context
-    //I guess that we could:
-
-    //(1): group the projection actionables to make it unit-compatible (because it just seems to make that a list of actions say more than just a particular continuous action)
-    //(2): hierarchical iterative_context generator
-    //(3): apart from score contexts, I could not find another context that is reasonable in this particular flow, so I guess that we'd stick to the score contexts, but we'd have to do our best in de-entropizing the context
-
-    //you wouldn't believe it, but 3 layers of score context is better than 2 layers of score context
-
     class CoordinatedSearchOptimizerEngine: public virtual MatrixOptimizerEngineInterface
     {
         private:
@@ -354,7 +322,7 @@ namespace matrix_optimizer_subsystem
                 return stdx::to_castable_vector_initializer(std::move(coeff_vec));
             }
 
-            class DeviationCapturedTimeMachine: public virtual the_matrix::TimeMachineInterface
+            class DeviationCapturedTimeMachine: public virtual time_machine::TimeMachineInterface
             {
                 private:
 

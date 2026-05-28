@@ -27,6 +27,9 @@
 #include <internal_rest/network_rest_frame.h>
 #include <logging_subsystem/logging_subsystem.h>
 #include <coroutine_subsystem/coroutine_x.h>
+#include <taylor_matrix/cuda_matrix/tensor_matrix_forward.h>
+#include <taylor_matrix/cuda_matrix/tensor_matrix_forward_to_deviation.h>
+#include <cuda_management/host_service.h>
 
 class IPSiever: public virtual dg_sock::network_kernel_mailbox_impl1::external_interface::IPSieverInterface{
 

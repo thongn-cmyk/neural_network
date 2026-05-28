@@ -3,18 +3,27 @@
 
 #include <stdint.h>
 #include <stdlib.h>
-#include "local_exception.h"
 #include <expected>
 #include <optional>
 #include <string>
 #include <data_loader/source_loader/multisource_loader.h>
 #include <money/stock_solution.h>
 #include <common_exception/cancellation_token.h>
+#include <concurrency_utility/concurrency_utility.h>
+#include <chrono>
+#include <memory>
+#include <concurrency_detachable_task/detachable_task_handle_interface.h>
+#include <vector>
+#include <matrix_broker_client/matrix_broker_client.h>
+#include <stl_extension/stdx.h>
+#include <serializer/compact_serializer.h>
+#include <data_loader/hex_encoder/hex_encoder.h>
+#include <fire_bandwidth_control/generic_firer.h>
+#include <internal_rest/network_rest_frame.h>
 
-//not here
-namespace stock_solution_trainer_server
+namespace stock_solution_builder
 {
-    //I think this is not in the space, I think it's better to have an abstract class to store and and immutable space to have "cache and all the nice functions"
+    using Remote = dg_sock::network_rest_frame::model::Remote;
 
     struct ResourceBase
     {
@@ -27,7 +36,7 @@ namespace stock_solution_trainer_server
         std::shared_ptr<common_exception::CancellationTokenInterface> cancellation_token;
         std::optional<data_loader::source_loader::multisource_loader::ExternalMultisourceLoaderConfig> data_loader_config;
         std::vector<ComputeSink> compute_sink_vec;
-        
+
         std::optional<std::chrono::time_point<std::chrono::utc_clock>> from_timepoint;
         std::optional<std::chrono::time_point<std::chrono::utc_clock>> to_timepoint;
         std::optional<std::chrono::nanoseconds> iteration_step;
@@ -40,7 +49,10 @@ namespace stock_solution_trainer_server
     };
 
     template <class T>
-    using TaskPromise = void;
+    using TaskPromise   = concurrency_detachable_task::DetachableTaskHandleInterface<T>;
+
+    template <class T>
+    using RestPromise   = dg_sock::network_rest_frame::client::Promise<T>;
 
     class ImmutableSolutionBuilder
     {
@@ -64,18 +76,19 @@ namespace stock_solution_trainer_server
 
             auto build() -> stock_solution::ExternalSolutionData
             {
-                return stock_solution::SolutionBuilder{}.set_focal_option(this->get_focal_option())
-                                                        .set_matrix_broker(this->get_matrix_broker())
-                                                        .set_matrix_optimizer(this->get_matrix_optimizer())
-                                                        .set_cancellation_token(this->get_cancellation_token())
-                                                        .set_data(this->get_ticker_data())
-                                                        .set_training_first_timepoint(this->get_training_first_timepoint())
-                                                        .set_training_last_timepoint(this->get_training_last_timepoint())
-                                                        .set_feature_name_list(this->get_feature_name_list())
-                                                        .set_tickers(this->get_ticker_vec())
-                                                        .set_training_token_ingestion_window(this->get_training_token_ingestion_window())
-                                                        .set_training_iteration_step(this->get_training_iteration_step())
-                                                        .build();
+                auto rs = stock_solution::SolutionBuilder{}.set_focal_option(this->get_focal_option())
+                                                           .set_matrix_broker(this->get_matrix_broker())
+                                                           .set_matrix_optimizer(this->get_matrix_optimizer())
+                                                           .set_cancellation_token(this->get_cancellation_token())
+                                                           .set_data(this->get_ticker_data())
+                                                           .set_training_first_timepoint(this->get_training_first_timepoint())
+                                                           .set_training_last_timepoint(this->get_training_last_timepoint())
+                                                           .set_feature_name_list(this->get_feature_name_list())
+                                                           .set_tickers(this->get_ticker_vec())
+                                                           .set_training_iteration_step(this->get_training_iteration_step())
+                                                           .build()->wait();
+
+                return stock_solution::to_external_solution_data(rs);
             }
 
         private:
@@ -86,6 +99,11 @@ namespace stock_solution_trainer_server
 
                     matrix_broker_client::APIClient client;
                     ResourceBase resource_base;
+
+                    static auto get_self_remote() -> Remote
+                    {
+                        return {}; // TODOs: implement
+                    }
 
                 public:
 
@@ -106,24 +124,34 @@ namespace stock_solution_trainer_server
                             return stock_solution::MatrixResult
                             {
                                 .matrix         = rs.matrix_resource,
-                                .matrix_shape   = stdx::to_castable_vector_initilizer(std::get<matrix_broker_client::FixedProjectionArgument>(rs.projection_argument.projection_argument).out_matrix_shape)
+                                .matrix_shape   = stdx::to_castable_vector_initializer(std::get<matrix_broker_client::FixedProjectionArgument>(rs.projection_argument.projection_argument).out_matrix_shape)
                             };
                         };
 
-                        return concurrency_utility::task_promise_cast(concurrency_utility::rest_to_task_promise(matrix_result),
+                        return concurrency_utility::task_promise_cast(concurrency_utility::to_shared_promise(concurrency_utility::rest_to_task_promise(matrix_result)),
                                                                       resolutor);
                     }
 
                 private:
 
-                    auto get_generator_id()
+                    auto get_generator_id() -> std::string
                     {
-
+                        return {}; // TODOs: implement
                     }
 
-                    auto get_matrix_entropy()
+                    auto get_matrix_entropy() -> uint8_t
                     {
+                        return {}; // TODOs: implement
+                    }
+            };
 
+            class InternalMatrixOptimizationSessionGenerator: public virtual stock_solution::MatrixOptimizationSessionGeneratorInterface
+            {
+                public:
+
+                    auto get_session() -> std::unique_ptr<stock_solution::MatrixOptimizationSessionInterface>
+                    {
+                        return {}; // TODOs: implement
                     }
             };
 
@@ -140,9 +168,9 @@ namespace stock_solution_trainer_server
                         return stock_solution::SolutionBuilder::FOCAL_OPTION_SECOND_1;
                     }
                     case ResourceBase::OPTIMIZATION_FLAG_O3:
-                    [
+                    {
                         return stock_solution::SolutionBuilder::FOCAL_OPTION_SECOND_0;
-                    ]
+                    }
                     default:
                     {
                         throw std::invalid_argument("bad optimization flag, enumeration out of range");
@@ -155,9 +183,9 @@ namespace stock_solution_trainer_server
                 return std::make_unique<InternalMatrixBroker>(this->resource_base);
             }
 
-            auto get_matrix_optimizer()
+            auto get_matrix_optimizer() -> std::unique_ptr<stock_solution::MatrixOptimizationSessionGeneratorInterface>
             {
-
+                return {}; // TODOs: implement
             }
 
             auto get_cancellation_token() -> const std::shared_ptr<common_exception::CancellationTokenInterface>&
@@ -165,9 +193,51 @@ namespace stock_solution_trainer_server
                 return this->resource_base.cancellation_token;
             }
 
+            auto deserialize_token_data(const std::string& token) -> stock_solution::TickerData
+            {
+                return dg::network_compact_serializer::dgstd_deserialize<stock_solution::TickerData>(data_loader::hex_encoder::hex_decode<std::string>(token));
+            }
+
+            auto download_ticker_data() -> std::vector<stock_solution::TickerData>
+            {
+                using namespace data_loader::source_loader;
+
+                if (!this->resource_base.data_loader_config.has_value())
+                {
+                    throw std::invalid_argument("bad data loader config, null");
+                }
+
+                std::unique_ptr<UserSpaceSourceLoaderInterface> source_loader                       = std::make_unique<multisource_loader::MultisourceLoader>(this->resource_base.data_loader_config.value());
+                std::shared_ptr<common_exception::CancellationTokenInterface> cancellation_token    = this->get_cancellation_token();
+
+                if (cancellation_token == nullptr)
+                {
+                    cancellation_token = std::make_shared<common_exception::CancellationToken>();
+                }
+
+                std::vector<stock_solution::TickerData> ticker_data{};
+
+                while (true)
+                {
+                    std::optional<std::string> token   = source_loader->get(*cancellation_token);
+
+                    if (!token.has_value())
+                    {
+                        return ticker_data;
+                    }
+
+                    ticker_data.push_back(this->deserialize_token_data(token.value()));
+                }
+            }
+
             auto get_ticker_data() -> const std::vector<stock_solution::TickerData>&
             {
+                if (!this->ticker_data.has_value())
+                {
+                    this->ticker_data   = this->download_ticker_data();
+                }
 
+                return this->ticker_data.value();
             }
 
             auto get_training_first_timepoint() -> std::chrono::time_point<std::chrono::utc_clock>
@@ -223,7 +293,7 @@ namespace stock_solution_trainer_server
                                 cand = ticker.timestamp;
                             }
 
-                            cand = std::max(cand.value(), ticker.timestamp)
+                            cand = std::max(cand.value(), ticker.timestamp);
                         }
 
                         if (!cand.has_value())
@@ -272,11 +342,6 @@ namespace stock_solution_trainer_server
                 return this->ticker_vec.value();
             }
 
-            auto get_training_token_ingestion_window()
-            {
-                
-            }
-
             auto get_training_iteration_step() -> std::chrono::nanoseconds
             {
                 if (!this->iteration_step.has_value())
@@ -322,6 +387,11 @@ namespace stock_solution_trainer_server
                 return *this;
             }
 
+            auto get_default_firer_config() -> fire_bandwidth_control::generic_firer::ExternalGenericFirerConfig
+            {
+                return {}; // TODOs: implement
+            }
+
             auto add_compute_sink(const Remote& remote,
                                   std::optional<fire_bandwidth_control::generic_firer::ExternalGenericFirerConfig> firer_config = std::nullopt) -> SolutionBuilder&
             {
@@ -332,7 +402,7 @@ namespace stock_solution_trainer_server
 
                 this->resource_base.compute_sink_vec.push_back
                 (
-                    ComputeSink
+                    ResourceBase::ComputeSink
                     {
                         .remote         = remote,
                         .firer_config   = std::move(firer_config.value())
@@ -367,9 +437,9 @@ namespace stock_solution_trainer_server
             {
                 switch (optimization_flag_arg)
                 {
-                    case OPTIMIZATION_FLAG_O1:
-                    case OPTIMIZATION_FLAG_O2:
-                    case OPTIMIZATION_FLAG_O3:
+                    case ResourceBase::OPTIMIZATION_FLAG_O1:
+                    case ResourceBase::OPTIMIZATION_FLAG_O2:
+                    case ResourceBase::OPTIMIZATION_FLAG_O3:
                     {
                         this->resource_base.optimization_flag = optimization_flag_arg;
                         break;

@@ -246,11 +246,11 @@ namespace matrix_optimizer_client
         public:
 
             APIClient(const Remote& remote,
-                      std::optional<connectivity_subsystem::MasterConfiguration> config = std::nulloptr): base(),
-                                                                                                          was_explicitly_closed(false)
+                      std::optional<connectivity_subsystem::MasterConfiguration> config = std::nullopt): base(),
+                                                                                                         was_explicitly_closed(false)
             {
                 std::unique_ptr<connectivity_subsystem::MasterConnection> master_conn;
-                
+
                 if (config.has_value())
                 {
                     auto tmp_config         = config.value();
@@ -271,38 +271,18 @@ namespace matrix_optimizer_client
                 };
             }
 
-            ~APIClient() noexcept
-            {
-                this->close(false);
-            }
-
             void set_unique_request(bool is_unique_request)
             {
-                if (!this->can_operate())
-                {
-                    throw inoperable_client_error{};
-                }
-
                 this->base.set_unique_request(is_unique_request);
             }
 
             void set_cancellation_token(const std::shared_ptr<common_exception::CancellationTokenInterface>& cancellation_token)
             {
-                if (!this->can_operate())
-                {
-                    throw inoperable_client_error{};
-                }
-
                 this->base.set_cancellation_token(cancellation_token);
             }
 
             void set_retry_policy(dg_sock::network_rest_frame::client::retry_policy_t retry_policy)
             {
-                if (!this->can_operate())
-                {
-                    throw inoperable_client_error{};
-                }
-
                 this->base.set_retry_policy(retry_policy);
             }
 

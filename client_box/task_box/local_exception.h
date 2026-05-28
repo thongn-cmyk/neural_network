@@ -9,6 +9,8 @@
 
 namespace client_box::task_box
 {
+    using local_exception_t = uint8_t;
+
     struct destroyed_client_box_error: std::invalid_argument
     {
         destroyed_client_box_error(): std::invalid_argument("bad client box operation, client box was destroyed"){}

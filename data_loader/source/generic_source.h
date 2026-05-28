@@ -8,7 +8,7 @@
 
 #include "file_source/file_source.h"
 #include "kafka_broker_source/kafka_broker_source.h"
-#include "s3_source/s3_source.h"
+// #include "s3_source/s3_source.h"
 #include <data_loader/exception_base.h>
 #include <serializer/compact_serializer.h>
 
@@ -20,7 +20,7 @@ namespace data_loader::generic_source
     {
         std::variant<stdx::reflectible_monostate,
                      data_loader::file_source::ExternalFileLoaderConfig,
-                     data_loader::s3_source::ExternalS3LoaderConfig,
+                    //  data_loader::s3_source::ExternalS3LoaderConfig,
                      data_loader::kafka_broker_source::ExternalKafkaBrokerConfig> source;
 
         template <class Reflector>
@@ -80,10 +80,10 @@ namespace data_loader::generic_source
                 {
                     this->base  = std::make_unique<data_loader::file_source::FileLoader>(std::get<data_loader::file_source::ExternalFileLoaderConfig>(config.source));
                 }
-                else if (std::holds_alternative<data_loader::s3_source::ExternalS3LoaderConfig>(config.source))
-                {
-                    this->base  = std::make_unique<data_loader::s3_source::S3Loader>(std::get<data_loader::s3_source::ExternalS3LoaderConfig>(config.source));
-                }
+                // else if (std::holds_alternative<data_loader::s3_source::ExternalS3LoaderConfig>(config.source))
+                // {
+                //     this->base  = std::make_unique<data_loader::s3_source::S3Loader>(std::get<data_loader::s3_source::ExternalS3LoaderConfig>(config.source));
+                // }
                 // else if (std::holds_alternative<data_loader::kafka_broker_source::Configuration>(config.source))
                 // {
                 //     this->base = std::make_unique<data_loader::kafka_broker_source::KafkaBrokerLoader>(std::get<data_loader::kafka_broker_source::Configuration>(config.source));

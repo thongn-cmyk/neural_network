@@ -163,7 +163,7 @@ namespace smart_pointer::unique_ptr_implementation
                 return *this->get();
             }
 
-            constexpr auto get_deleter() const noexcept -> const std::optional<CharMemoryDeallocator>&
+            constexpr auto get_deleter() const & noexcept -> const std::optional<CharMemoryDeallocator>&
             {
                 return this->deallocator;
             }
@@ -191,7 +191,7 @@ namespace smart_pointer::unique_ptr_implementation
 
             __attribute__((noinline, noipa)) constexpr void dellocate_memory(void * memblk) noexcept
             {
-                this->deallocator->deallocate_one(memblk);
+                this->deallocator->deallocate(memblk);
             }
 
             constexpr void clean_resource() noexcept
@@ -320,7 +320,7 @@ namespace smart_pointer::unique_ptr_implementation
                 return this->obj[idx];
             }
 
-            constexpr auto get_deleter() const noexcept -> const std::optional<CharMemoryDeallocator>&
+            constexpr auto get_deleter() const & noexcept -> const std::optional<CharMemoryDeallocator>&
             {
                 return this->deallocator;
             }

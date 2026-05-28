@@ -66,6 +66,28 @@ void test_sort()
     }
 }
 
+void test_top_k()
+{
+    std::vector<size_t> random_arr      = randomize_int_vector(randomize_int(size_t{1} << 4));
+    std::vector<size_t> random_arr_1    = random_arr;
+    size_t top_k                        = randomize_int(random_arr.size() + 1u);
+
+    std::sort(random_arr.begin(), random_arr.end(), std::less<size_t>{});
+
+    algorithm_extension::make_heap(random_arr_1.begin(), random_arr_1.end());
+    auto first                          = algorithm_extension::top_k(random_arr_1.begin(), random_arr_1.end(), top_k);
+
+    std::vector<size_t> rev_top_k_arr   = std::vector<size_t>(first, random_arr_1.end());
+    std::vector<size_t> top_k_arr       = std::vector<size_t>(rev_top_k_arr.rbegin(), rev_top_k_arr.rend());
+    std::vector<size_t> expected        = std::vector<size_t>(random_arr.begin(), std::next(random_arr.begin(), top_k));
+
+    if (top_k_arr != expected)
+    {
+        std::cout << "mayday, bad top k, mismatched sorting sequence\n";
+        std::abort();
+    }
+}
+
 void test_push_pop()
 {
     const size_t TEST_SZ    = size_t{1} << 6;
@@ -113,6 +135,7 @@ void run_test()
         test_is_heap();
         test_sort();
         test_push_pop();
+        test_top_k();
 
         if (i % COUT_SZ == 0u)
         {

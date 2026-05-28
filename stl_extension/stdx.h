@@ -236,7 +236,9 @@ namespace stdx
         private:
 
             Destructor destructor;
-        
+
+            using self = StackGuard;
+
         public:
 
             StackGuard(Destructor destructor): destructor(std::move(destructor)){}

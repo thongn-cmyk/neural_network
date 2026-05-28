@@ -80,6 +80,24 @@ namespace stock_solution
         std::string feature_name;
         double feature_value;
         std::chrono::time_point<std::chrono::utc_clock> timestamp;
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector) const
+        {
+            reflector(ticker_name,
+                      feature_name,
+                      feature_value,
+                      timestamp);
+        }
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector)
+        {
+            reflector(ticker_name,
+                      feature_name,
+                      feature_value,
+                      timestamp);
+        }
     };
 
     class SequenceCompressor
@@ -710,7 +728,7 @@ namespace stock_solution
                     {
                         if (cancellation_token != nullptr && cancellation_token->is_canceled())
                         {
-                            common_exception::throw_exception(common_exception::OPERATION_CANCLED_ERROR);
+                            common_exception::throw_exception(common_exception::OPERATION_CANCELED_ERROR);
                         }
 
                         std::vector<double> feature_vec = {};
@@ -1894,7 +1912,7 @@ namespace stock_solution
 
                             .training_first                     = this->first,
                             .training_last                      = this->last,
-                            .training_lapse                     = this->iteration_step
+                            .training_iteration_step            = this->iteration_step
                         };
                     }
 
@@ -2212,7 +2230,7 @@ namespace stock_solution
 
             std::unique_ptr<TemporalFeatureExtractor> extractor;
             std::unique_ptr<OneOneMatrixEncoder> encoder;
-            std::unique_ptr<the_matrix::MatrixInterface> matrix_projector;
+            std::unique_ptr<the_matrix::MatrixInterface> matrix_projector; //
 
         public:
 
@@ -2220,11 +2238,6 @@ namespace stock_solution
                                                            encoder()
 
             {
-                if (matrix_projector_arg == nullptr)
-                {
-                    throw std::invalid_argument("bad matrix projector, null");
-                }
-
                 this->extractor     = std::make_unique<TemporalFeatureExtractor>();
 
                 this->extractor->set_focal_unit(data.extractor_focal_unit)
@@ -2239,7 +2252,7 @@ namespace stock_solution
                 this->matrix_projector  = generic_matrix_factory::GenericMatrixLoader{}.load_resource(generic_matrix_factory::GenericMatrixExternalizer{}.to_internal(this->data.matrix_resource));
             }
 
-            SolutionProduct(const ExternalSolutionData& solution_data): SolutionData(to_internal_solution_data(solution_data)){}
+            SolutionProduct(const ExternalSolutionData& solution_data): SolutionProduct(to_internal_solution_data(solution_data)){}
 
             auto load_data(const std::vector<TickerData>& ticker_data) -> SolutionProduct&
             {
@@ -2256,7 +2269,7 @@ namespace stock_solution
                 std::vector<double> unified_state                               = this->unify_state(org_state_vec);
 
                 std::shared_ptr<tensor_model::Matrix> matrix_state              = this->encoder->encode(unified_state);
-                std::shared_ptr<tensor_model::Matrix> transformed_matrix_state  = this->matrix_projector->project(matrix_state);
+                std::shared_ptr<tensor_model::Matrix> transformed_matrix_state  = this->matrix_projector->project({matrix_state})[0];
 
                 std::vector<double> transformed_state                           = this->encoder->decode(transformed_matrix_state);
                 std::vector<std::vector<double>> predicted_state_vec            = this->individualize_state_as(transformed_state, org_state_vec);

@@ -63,7 +63,7 @@ namespace deviation_projector::taylor_cuda_wrapper
 
     auto to_internal_taylor_cuda_matrix_deviation_calculator_resource(const ExternalTaylorCudaMatrixDeviationCalculatorResource& arg) -> TaylorCudaMatrixDeviationCalculatorResource
     {
-        return dg::network_compact_serializer::dgstd_deserialize<ExternalTaylorCudaMatrixDeviationCalculatorResource>(arg.config_bytestream);
+        return dg::network_compact_serializer::dgstd_deserialize<TaylorCudaMatrixDeviationCalculatorResource>(arg.config_bytestream);
     }
 
     class TaylorCudaMatrixDeviationCalculator: public virtual deviation_projector::GenericMatrixDeviationCalculatorInterface
@@ -83,7 +83,7 @@ namespace deviation_projector::taylor_cuda_wrapper
                     throw std::invalid_argument("bad matrix resource, not cuda matrix resource");
                 }
 
-                TheCudaMatrixResource& cuda_matrix_resource = std::get<generic_matrix_factory::TheCudaMatrixResource>(internal_matrix_resource.resource);
+                generic_matrix_factory::TheCudaMatrixResource& cuda_matrix_resource = std::get<generic_matrix_factory::TheCudaMatrixResource>(internal_matrix_resource.resource);
 
                 return CudaMatrixIdentifiable
                 {
@@ -107,7 +107,6 @@ namespace deviation_projector::taylor_cuda_wrapper
                                                                                                .set_logit_vector(get_cuda_logit_vector(arg.matrix_resource))
                                                                                                .set_string_transformer_device(arg.str_transformation_rule)
                                                                                                .set_deviation_calculator_device(arg.deviation_calculator_device)
-                                                                                               
                                                                                                .get();
             }
 

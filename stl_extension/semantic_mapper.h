@@ -15,6 +15,31 @@ namespace stdx
 
         return rs;
     }
+
+    template <class T, class BufferContainer = std::string>
+    class AutoMapperContainer
+    {
+        private:
+
+            T obj;
+
+        public:
+
+            AutoMapperContainer(T obj): obj(std::move(obj)){}
+
+            template <class U>
+            operator U() const
+            {
+                return semantic_map<U>(obj, stdx::Tag<BufferContainer>{});
+            }
+    };
+
+    template <class FromType, class BufferContainer = std::string>
+    auto to_automap_object(FromType&& fr_obj,
+                           const stdx::Tag<BufferContainer>& tag = stdx::Tag<BufferContainer>{}) -> AutoMapperContainer<std::decay_t<FromType>, BufferContainer>
+    {
+        return AutoMapperContainer<std::decay_t<FromType>, BufferContainer>(std::forward<FromType>(fr_obj));
+    }
 }
 
 #endif

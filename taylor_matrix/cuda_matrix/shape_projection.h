@@ -15,8 +15,13 @@ namespace taylor_matrix::cuda_matrix::shape_projection
     using namespace taylor_matrix::cuda_matrix::utility;
     using namespace taylor_matrix::cuda_matrix::local_exception;
 
-    static inline __device__ constexpr size_t MAX_BASE_COEFFICIENT = 20;
-    static inline __device__ constexpr bool HAS_FAST_DIV           = true;
+    //keep in mind that every decision made thus far is correct decision, from fixed tensor box => search => etc.
+    //it's hard to keep things "not circular" in C++
+    //and the model is entropy-rule compliant
+
+    static inline __device__ constexpr size_t MAX_BASE_COEFFICIENT  = 20;
+    static inline __device__ constexpr double HORIZONTAL_SCALER     = 4;
+    static inline __device__ constexpr bool HAS_FAST_DIV            = true;
 
     template <class LhsFloatType, class RhsFloatType>
     __device__ static constexpr auto fast_div(LhsFloatType lhs, RhsFloatType rhs) -> decltype(lhs / rhs)
@@ -116,6 +121,7 @@ namespace taylor_matrix::cuda_matrix::shape_projection
             projected_result                += delta_result;
             x_multiplier                    *= x;
             factorial_denum                 *= i + 1;
+            factorial_denum                 *= HORIZONTAL_SCALER;
         }
 
         return projected_result;

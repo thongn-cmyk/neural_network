@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string>
 #include <cstring>
+#include <string_view>
 #include <memory>
 
 namespace stock_solution_client
@@ -21,7 +22,7 @@ namespace stock_solution_client
                 {
                     .remote_addr    = remote.addr,
                     .resource_addr  = dg_sock::string(resource_addr),
-                    .channel        = remote.channel //I just feel like channel is this guy responsibility, because if we drag this channel along, it would be incredibly difficult
+                    .channel        = remote.channel
                 };
             }
 
@@ -33,7 +34,7 @@ namespace stock_solution_client
                 {
                     .remote_addr    = remote.addr,
                     .resource_addr  = dg_sock::string(resource_addr),
-                    .channel        = remote.channel //I just feel like channel is this guy responsibility, because if we drag this channel along, it would be incredibly difficult
+                    .channel        = remote.channel
                 };
             }
 
@@ -45,7 +46,7 @@ namespace stock_solution_client
                 {
                     .remote_addr    = remote.addr,
                     .resource_addr  = dg_sock::string(resource_addr),
-                    .channel        = remote.channel //I just feel like channel is this guy responsibility, because if we drag this channel along, it would be incredibly difficult
+                    .channel        = remote.channel
                 };
             }
 
@@ -57,7 +58,7 @@ namespace stock_solution_client
                 {
                     .remote_addr    = remote.addr,
                     .resource_addr  = dg_sock::string(resource_addr),
-                    .channel        = remote.channel //I just feel like channel is this guy responsibility, because if we drag this channel along, it would be incredibly difficult
+                    .channel        = remote.channel
                 };
             }
     };

@@ -7,6 +7,7 @@
 #include <optional>
 #include <exception>
 #include <concurrency_detachable_task/detachable_task_launcher.h>
+#include <concurrency_task/task_interface.h>
 #include "local_exception.h"
 
 namespace client_box::task_box
@@ -22,7 +23,7 @@ namespace client_box::task_box
     {
         protected:
 
-            virtual auto make_task(const WorkOrderType& run_work_order) -> Task<ResultType> = 0;
+            virtual auto make_task(const WorkOrderType& run_work_order) -> std::unique_ptr<Task<ResultType>> = 0;
 
         private:
 

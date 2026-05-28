@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <utility>
 #include <bit>
+#include <chrono>
 
 template <size_t SZ, class Callback>
 void randomize_type(const std::integral_constant<size_t, SZ>, Callback&& callback)

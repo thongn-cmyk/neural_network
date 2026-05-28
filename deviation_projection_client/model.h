@@ -20,6 +20,24 @@ namespace deviation_projection_client
     using Url           = dg_sock::network_rest_frame::model::Url;
     using ClientRequest = dg_sock::network_rest_frame::model::ClientRequest;
 
+    //migrations
+    struct ExternalGenericMatrixDeviationCalculatorResource
+    {
+        std::string config_bytestream;
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector) const
+        {
+            reflector(config_bytestream);
+        }
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector)
+        {
+            reflector(config_bytestream);
+        }
+    };
+
     struct GetVersionRequest
     {
         template <class Reflector>
@@ -197,7 +215,7 @@ namespace deviation_projection_client
     struct SetMatrixResourceRequest
     {
         uint64_t client_id;
-        std::vector<deviation_projector::ExternalGenericMatrixDeviationCalculatorResource> matrix_resource_vec;
+        std::vector<ExternalGenericMatrixDeviationCalculatorResource> matrix_resource_vec;
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector) const
@@ -268,7 +286,7 @@ namespace deviation_projection_client
     struct SetAndGetDeviationRequest
     {
         uint64_t client_id;
-        std::vector<deviation_projector::ExternalGenericMatrixDeviationCalculatorResource> matrix_resource_vec;
+        std::vector<ExternalGenericMatrixDeviationCalculatorResource> matrix_resource_vec;
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector) const

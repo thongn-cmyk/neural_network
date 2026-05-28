@@ -32,6 +32,9 @@
 #include <data_loader/hex_encoder/hex_encoder.h>
 #include <main_service/main_service.h>
 #include <deviation_projection_ingestion_aid/deviation_projection_ingestion_aid.h>
+#include <taylor_matrix/cuda_matrix/tensor_matrix_forward.h>
+#include <taylor_matrix/cuda_matrix/tensor_matrix_forward_to_deviation.h>
+#include <cuda_management/host_service.h>
 
 static inline constexpr char DELIM_CHAR = ',';
 static inline constexpr char EOR_CHAR   = '\0';

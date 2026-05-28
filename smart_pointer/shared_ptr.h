@@ -81,7 +81,7 @@ namespace smart_pointer::shared_ptr_implementation
 
     struct NoActionCharMemoryDeallocator
     {
-        constexpr void deallocate_one(void * memblk) noexcept
+        constexpr void deallocate(void * memblk) noexcept
         {
             (void) memblk;
         }
@@ -112,7 +112,7 @@ namespace smart_pointer::shared_ptr_implementation
             {
                 using allocation_t      = shared_ptr_allocation<ControlBlock<NoActionCharMemoryDeallocator>, UniquePtrDestructor<Args...>>;
 
-                void * mem              = resource_manager_like.template allocate_one<allocation_t>();
+                void * mem              = resource_manager_like.template allocate<allocation_t>(1);
                 void * ctrl_blk_mem     = static_cast<void *>(mem);
                 void * destructor_mem   = static_cast<void *>(&reinterpret_cast<allocation_t *>(mem)->polymorphic_destructor);
 
@@ -229,7 +229,7 @@ namespace smart_pointer::shared_ptr_implementation
             {
                 using allocation_t      = shared_ptr_allocation_2<ControlBlock<NoActionCharMemoryDeallocator>, UniquePtrDestructor<T, NoActionCharMemoryDeallocator>, T>;
 
-                void * mem              = resource_manager_like.template allocate_one<allocation_t>();
+                void * mem              = resource_manager_like.template allocate<allocation_t>(1);
                 void * ctrl_blk_mem     = static_cast<void *>(mem);
                 void * destructor_mem   = static_cast<void *>(&reinterpret_cast<allocation_t *>(mem)->polymorphic_destructor);
                 void * obj_mem          = static_cast<void *>(&reinterpret_cast<allocation_t *>(mem)->obj);
@@ -242,7 +242,7 @@ namespace smart_pointer::shared_ptr_implementation
                 }
                 catch (...)
                 {
-                    resource_manager_like.deallocate_one(mem);
+                    resource_manager_like.deallocate(mem);
                     throw;
                 }
 
@@ -382,7 +382,7 @@ namespace smart_pointer::shared_ptr_implementation
 
             __attribute__((noinline, noipa)) constexpr void deallocate_memory(void * memblk) noexcept
             {
-                this->deallocator.deallocate_one(memblk);
+                this->deallocator.deallocate(memblk);
             }
 
             __attribute__((noinline)) constexpr void release_control_block(ControlBlock<NoActionCharMemoryDeallocator> * ctrl_blk_arg) noexcept

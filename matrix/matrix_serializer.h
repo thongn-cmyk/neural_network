@@ -13,6 +13,8 @@
 
 namespace matrix_serializer
 {
+    using tensor_std_float_t = tensor_model::tensor_std_float_t;
+
     struct GenericMatrix
     {
         std::string payload;
@@ -35,9 +37,9 @@ namespace matrix_serializer
     auto serialize(const std::shared_ptr<tensor_model::Matrix>& matrix) -> GenericMatrix
     {
         std::vector<size_t> shape{};
-        std::vector<tensor_std_float_t> logit_vec{}:
+        std::vector<tensor_std_float_t> logit_vec{};
 
-        tensor_factory::flatten(matrix, logit_vec)
+        tensor_factory::flatten(matrix, logit_vec);
         tensor_factory::get_shape(matrix, shape);
 
         auto serializable   = Serializable(stdx::to_castable_vector_initializer(std::move(shape)),

@@ -159,10 +159,7 @@ namespace deviation_projector
 
         public:
 
-            CudaMatrixAsDeviationWrapper(const CudaMatrixAsDeviationWrapperConfig& config): entropy_option(config.entropy_option),
-                                                                                            compute_option(config.compute_option),
-                                                                                            vector_sz(config.vector_sz),
-                                                                                            str_transformation_rule(config.str_transformation_rule),
+            CudaMatrixAsDeviationWrapper(const CudaMatrixAsDeviationWrapperConfig& config): str_transformation_rule(config.str_transformation_rule),
                                                                                             cuda_deviation_calculator_device(config.cuda_deviation_calculator_device){}
 
             CudaMatrixAsDeviationWrapper(const ExternalCudaMatrixAsDeviationWrapperConfig& config): CudaMatrixAsDeviationWrapper(to_internal_cuda_matrix_as_deviation_wrapper_config(config)){}
@@ -171,9 +168,9 @@ namespace deviation_projector
             {
                 auto resource           = deviation_projector::taylor_cuda_wrapper::TaylorCudaMatrixDeviationCalculatorResource
                 {
-                    .str_transformation_rule            = this->str_transformation_rule,
-                    .cuda_deviation_calculator_device   = this->cuda_deviation_calculator_device,
-                    .matrix_resource                    = arg
+                    .str_transformation_rule        = this->str_transformation_rule,
+                    .deviation_calculator_device    = this->cuda_deviation_calculator_device,
+                    .matrix_resource                = arg
                 };
 
                 auto external_resource  = deviation_projector::taylor_cuda_wrapper::to_external_taylor_cuda_matrix_deviation_calculator_resource(resource);

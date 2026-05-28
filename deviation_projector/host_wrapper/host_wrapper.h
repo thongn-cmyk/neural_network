@@ -123,7 +123,7 @@ namespace deviation_projector::host_wrapper
                         throw std::invalid_argument("bad training token, null");
                     }
 
-                    auto [lhs, rhs] = deviation_projector::training_token_factory::decode_training_token(this->string_encoder->encode(training_token->get()));
+                    auto [lhs, rhs] = deviation_projector::training_token_factory::decode_training_token(this->string_encoder->encode(std::string(training_token->get())));
 
                     projecting_vec.push_back(lhs);
                     expected_vec.push_back(rhs);

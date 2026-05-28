@@ -260,38 +260,18 @@ namespace deviation_projection_ingestion_aid_client
                 this->remote                = remote;
             }
 
-            ~APIClient() noexcept
-            {
-                this->close(false);
-            }
-
             void set_unique_request(bool is_unique_request)
             {
-                if (!this->can_operate())
-                {
-                    throw inoperable_client_error{};
-                }
-
                 this->base.set_unique_request(is_unique_request);
             }
 
             void set_retry_policy(dg_sock::network_rest_frame::client::retry_policy_t retry_policy)
             {
-                if (!this->can_operate())
-                {
-                    throw inoperable_client_error{};
-                }
-
                 this->base.set_retry_policy(retry_policy);
             }
 
             void set_cancellation_token(const std::shared_ptr<common_exception::CancellationTokenInterface>& cancellation_token)
             {
-                if (!this->can_operate())
-                {
-                    throw inoperable_client_error{};
-                }
-
                 this->base.set_cancellation_token(cancellation_token);
             }
 

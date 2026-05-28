@@ -7,7 +7,7 @@
 #include <request_extension/type_based_dgstd_resolutor.h>
 #include "client_box.h"
 
-namespace solution_trainer_server
+namespace stock_solution_trainer_server
 {
     void start_server()
     {

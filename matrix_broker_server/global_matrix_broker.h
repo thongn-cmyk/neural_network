@@ -202,7 +202,7 @@ namespace matrix_broker_server::global_matrix_broker
                         }
                     },
 
-                    .matrix_resource = Externalizer{}.to_external(GenericLoader{}.virtualize_resource(loader.unload(matrix)))
+                    .matrix_resource = Externalizer{}.to_external(GenericLoader{}.virtualize_resource(loader.unload(*matrix))) //laggy
                 };
             }
     };

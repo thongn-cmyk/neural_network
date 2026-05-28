@@ -10,24 +10,18 @@
 #include <request_extension/type_based_dgstd_resolutor.h>
 #include <request_extension/type_based_resolutor_interface.h>
 
-namespace solution_trainer_server
+namespace stock_solution_trainer_server
 {
     static inline constexpr std::string_view SOLUTION_TRAINER_SERVER_VERSION_CONTROL    = "";
 
     template <class T_In, class T_Out>
     using TypeBasedResolutorInterface = request_extension::resolutor::TypeBasedResolutorInterface<T_In, T_Out>;
 
-    //the socket request is one of our proudest products because of synchronizability and never-drop transfer
-    //we have managed to keep the unack packets -> 100 / connection. And the amount of concurrent connections and concurrent requests is astonishing
-
-    //the problem with normal non-Redis web-server is that they spawn a thread before a request, but that would break the control-flow of the application under high-load
-    //so if we are building internal_comm like a massive computer or a massive process, it's better to use this comm than other comm
-
     class GetVersionResolver: public virtual TypeBasedResolutorInterface<GetVersionRequest, GetVersionResponse>
     {
         public:
 
-            static inline constexpr std::string_view RESOLVABLE_PATH    = "";
+            static inline constexpr std::string_view RESOLVABLE_PATH    = "stock_solution_trainer_server/get_version";
 
             auto handle(const GetVersionRequest& request) -> GetVersionResponse
             {
@@ -47,7 +41,7 @@ namespace solution_trainer_server
 
         public:
 
-            static inline constexpr std::string_view RESOLVABLE_PATH    = "";
+            static inline constexpr std::string_view RESOLVABLE_PATH    = "stock_solution_trainer_server/open_client";
 
             OpenClientResolver(std::shared_ptr<ClientBoxManager> client_box_manager) noexcept: client_box_manager(std::move(client_box_manager)){}
 
@@ -67,8 +61,8 @@ namespace solution_trainer_server
                 {
                     return OpenClientResponse
                     {
-                        .result = std::unexpected(solution_trainer_server::to_local_exception_error_code(std::current_exception())),
-                        .err_verbal_description = solution_trainer_server::verbose_exception(std::current_exception())
+                        .result = std::unexpected(stock_solution_trainer_server::to_local_exception_error_code(std::current_exception())),
+                        .err_verbal_description = stock_solution_trainer_server::verbose_exception(std::current_exception())
                     };
                 }
             }
@@ -82,7 +76,7 @@ namespace solution_trainer_server
         
         public:
 
-            static inline constexpr std::string_view RESOLVABLE_PATH    = "";
+            static inline constexpr std::string_view RESOLVABLE_PATH    = "stock_solution_trainer_server/close_client";
 
             CloseClientResolver(std::shared_ptr<ClientBoxManager> client_box_manager) noexcept: client_box_manager(std::move(client_box_manager)){}
 
@@ -106,7 +100,7 @@ namespace solution_trainer_server
         
         public:
 
-            static inline constexpr std::string_view RESOLVABLE_PATH    = "";
+            static inline constexpr std::string_view RESOLVABLE_PATH    = "stock_solution_trainer_server/run";
 
             RunResolver(std::shared_ptr<ClientBoxManager> client_box_manager) noexcept: client_box_manager(std::move(client_box_manager)){}
 
@@ -133,8 +127,8 @@ namespace solution_trainer_server
                 {
                     return RunResponse
                     {
-                        .result = solution_trainer_server::to_local_exception_error_code(std::current_exception()),
-                        .err_verbal_description = solution_trainer_server::verbose_exception(std::current_exception())
+                        .result = stock_solution_trainer_server::to_local_exception_error_code(std::current_exception()),
+                        .err_verbal_description = stock_solution_trainer_server::verbose_exception(std::current_exception())
                     };
                 }
             }
@@ -148,7 +142,7 @@ namespace solution_trainer_server
         
         public:
 
-            static inline constexpr std::string_view RESOLVABLE_PATH    = "";
+            static inline constexpr std::string_view RESOLVABLE_PATH    = "stock_solution_trainer_server/interrupt";
 
             InterruptResolver(std::shared_ptr<ClientBoxManager> client_box_manager) noexcept: client_box_manager(std::move(client_box_manager)){}
 
@@ -175,8 +169,8 @@ namespace solution_trainer_server
                 {
                     return InterruptResponse
                     {
-                        .result = solution_trainer_server::to_local_exception_error_code(std::current_exception()),
-                        .err_verbal_description = solution_trainer_server::verbose_exception(std::current_exception())
+                        .result = stock_solution_trainer_server::to_local_exception_error_code(std::current_exception()),
+                        .err_verbal_description = stock_solution_trainer_server::verbose_exception(std::current_exception())
                     };
                 }
             }
@@ -190,7 +184,7 @@ namespace solution_trainer_server
 
         public:
 
-            static inline constexpr std::string_view RESOLVABLE_PATH    = "";
+            static inline constexpr std::string_view RESOLVABLE_PATH    = "stock_solution_trainer_server/is_completed";
 
             IsCompletedResolver(std::shared_ptr<ClientBoxManager> client_box_manager) noexcept: client_box_manager(std::move(client_box_manager)){}
 
@@ -215,8 +209,8 @@ namespace solution_trainer_server
                 {
                     return IsCompletedResponse
                     {
-                        .result = std::unexpected(solution_trainer_server::to_local_exception_error_code(std::current_exception())),
-                        .err_verbal_description = solution_trainer_server::verbose_exception(std::current_exception())
+                        .result = std::unexpected(stock_solution_trainer_server::to_local_exception_error_code(std::current_exception())),
+                        .err_verbal_description = stock_solution_trainer_server::verbose_exception(std::current_exception())
                     };
                 }
             }
@@ -230,7 +224,7 @@ namespace solution_trainer_server
         
         public:
 
-            static inline constexpr std::string_view RESOLVABLE_PATH    = "";
+            static inline constexpr std::string_view RESOLVABLE_PATH    = "stock_solution_trainer_server/get_result";
 
             GetResultResolver(std::shared_ptr<ClientBoxManager> client_box_manager) noexcept: client_box_manager(std::move(client_box_manager)){}
 
@@ -260,8 +254,8 @@ namespace solution_trainer_server
                 {
                     return GetResultResponse
                     {
-                        .result = std::unexpected(solution_trainer_server::to_local_exception_error_code(std::current_exception())),
-                        .err_verbal_description = solution_trainer_server::verbose_exception(std::current_exception())
+                        .result = std::unexpected(stock_solution_trainer_server::to_local_exception_error_code(std::current_exception())),
+                        .err_verbal_description = stock_solution_trainer_server::verbose_exception(std::current_exception())
                     };
                 }
             }

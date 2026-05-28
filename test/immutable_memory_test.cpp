@@ -1,4 +1,5 @@
 #define STRONG_MEMORY_ORDERING_FLAG true
+#define DEBUG_MODE_FLAG true
 
 #include <memory>
 #include <memory_management/immutable_multiplatform_memory.h>

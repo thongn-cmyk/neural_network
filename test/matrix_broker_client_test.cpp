@@ -20,6 +20,9 @@
 #include <matrix/generic_matrix_factory.h>
 #include <matrix/tensor_factory.h>
 #include <connection_handshake_server/starter.h>
+#include <taylor_matrix/cuda_matrix/tensor_matrix_forward.h>
+#include <taylor_matrix/cuda_matrix/tensor_matrix_forward_to_deviation.h>
+#include <cuda_management/host_service.h>
 
 class IPSiever: public virtual dg_sock::network_kernel_mailbox_impl1::external_interface::IPSieverInterface{
 

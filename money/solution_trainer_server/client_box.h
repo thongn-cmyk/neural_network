@@ -17,13 +17,6 @@
 
 namespace stock_solution_trainer_server
 {
-    //I would normally opt for a generic resolution for these problems
-    //but that'd be in the review phase
-    //let me reinvestigate if the tree is short + high enough for the interpretability
-
-    //I've been reviewing the theory for the 1024th time and I have found no issues in the entropy set-up of the market scheme
-    //maybe we are lacking informations
-
     template <class T>
     using Task = concurrency_task::TaskInterface<T>;
 
@@ -68,8 +61,6 @@ namespace stock_solution_trainer_server
                     }
             };
     };
-
-    //I just think that it's easier to implement this every time just to make sure that we are "in sync" with whatever the hell this is
 
     class ConnectionBoundClientBox: public virtual connection_based_manager::HealthcheckableInterface
     {

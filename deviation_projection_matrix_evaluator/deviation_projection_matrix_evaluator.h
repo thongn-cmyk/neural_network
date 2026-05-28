@@ -17,6 +17,7 @@
 #include <chrono>
 #include <connectivity_subsystem/connectivity_subsystem.h>
 #include <common_exception/common_exception.h>
+#include <stl_extension/semantic_mapper.h>
 
 namespace deviation_projection_matrix_evaluator
 {
@@ -181,7 +182,7 @@ namespace deviation_projection_matrix_evaluator
 
                         for (const auto& api_client: this->api_client_vec)
                         {
-                            promise_vec.push_back(api_client->set_and_get_deviation({deviation_resource}));
+                            promise_vec.push_back(api_client->set_and_get_deviation(stdx::to_automap_object(std::vector<deviation_projector::ExternalGenericMatrixDeviationCalculatorResource>{deviation_resource})));
                         }
 
                         std::vector<mdc_float_t> rs{};
