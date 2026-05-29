@@ -5,11 +5,14 @@
 #include <stdlib.h>
 #include <memory>
 #include "model.h"
+#include "local_exception.h"
 #include <mutex_extension/fair_mutex.h>
 #include <atomic>
 #include <connectivity_subsystem/connectivity_subsystem.h>
 #include <connection_based_manager/connection_based_manager.h>
 #include <stl_extension/semantic_mapper.h>
+#include <stl_extension/stdx.h>
+#include <money/stock_solution.h>
 
 namespace stock_solution_server
 {
@@ -18,7 +21,7 @@ namespace stock_solution_server
         private:
 
             std::unique_ptr<stock_solution::SolutionProduct> solution_product;
-        
+
         public:
 
             ClientBox(): solution_product(){}
@@ -42,14 +45,14 @@ namespace stock_solution_server
 
                 //... interruptability
 
-                std::vector<stock_solution::Actionable> actionable_vec = this->solution_product->load_data(market_data.ticker_data_vec)
+                std::vector<stock_solution::Actionable> actionable_vec = this->solution_product->load_data(stdx::to_automap_object(market_data.ticker_data_vec))
                                                                                                 .predict(forecast_timepoint);
 
                 Actionables rs{};
 
                 for (const auto& actionable: actionable_vec)
                 {
-                    rs.actionable_vec.push_back(this->actionable_semantic_map(actionable));
+                    rs.actionable_vec.push_back(this->actionable_semantic_map(actionable, forecast_timepoint));
                 }
 
                 return this->get_top_k(rs, top_k);
@@ -57,9 +60,58 @@ namespace stock_solution_server
 
         private:
 
-            auto actionable_semantic_map(const stock_solution::Actionable& actionable) -> Actionable
+            auto actionable_semantic_map(const stock_solution::Actionable& actionable,
+                                         std::chrono::time_point<std::chrono::utc_clock> forecast_timepoint) -> Actionable
             {
+                auto is_bull_action = [](const std::string& actionable)
+                {
+                    return actionable == stock_solution::ACTIONABLE_BUYSELL_NEXT_SECOND
+                        || actionable == stock_solution::ACTIONABLE_BUYSELL_NEXT_MILLISECOND;
+                };
 
+                auto is_bear_action = [](const std::string& actionable)
+                {
+                    return actionable == stock_solution::ACTIONABLE_SELLBUY_NEXT_SECOND
+                        || actionable == stock_solution::ACTIONABLE_SELLBUY_NEXT_MILLISECOND;
+                };
+
+                auto is_millisecond_system  = [](const std::string& actionable)
+                {
+                    return actionable == stock_solution::ACTIONABLE_BUYSELL_NEXT_MILLISECOND
+                        || actionable == stock_solution::ACTIONABLE_SELLBUY_NEXT_MILLISECOND;
+                };
+
+                auto is_second_system  = [](const std::string& actionable)
+                {
+                    return actionable == stock_solution::ACTIONABLE_BUYSELL_NEXT_SECOND
+                        || actionable == stock_solution::ACTIONABLE_SELLBUY_NEXT_SECOND;
+                };
+
+                auto get_guaranteed_time    = [=](const std::string& actionable,
+                                                  std::chrono::time_point<std::chrono::utc_clock> forecast_timepoint)
+                {
+                    if (is_millisecond_system(actionable))
+                    {
+                        return stdx::add_timepoint(forecast_timepoint, std::chrono::milliseconds(1));
+                    }
+                    else if (is_second_system(actionable))
+                    {
+                        return stdx::add_timepoint(forecast_timepoint, std::chrono::seconds(1));
+                    }
+                    else
+                    {
+                        throw std::invalid_argument("bad actionable, actionable not recognized");
+                    }
+                };
+
+                return Actionable
+                {
+                    .ticker_name            = actionable.ticker_name,
+                    .norm_confident_score   = actionable.confident_score,
+                    .bull_flag              = is_bull_action(actionable.actionable_type),
+                    .bear_flag              = is_bear_action(actionable.actionable_type),
+                    .guaranteed_timepoint   = get_guaranteed_time(actionable.actionable_type, forecast_timepoint)
+                };
             }
 
             auto get_top_k(const Actionables& actionables,
@@ -88,7 +140,9 @@ namespace stock_solution_server
                 Actionables rs      = actionables;
                 algorithm_extension::make_heap(rs.actionable_vec.begin(), rs.actionable_vec.end(), cmp_func);
                 auto first          = algorithm_extension::top_k(rs.actionable_vec.begin(), rs.actionable_vec.end(), top_k.value(), cmp_func);
+
                 rs.actionable_vec   = std::vector<Actionable>(first, rs.actionable_vec.end());
+                rs.actionable_vec   = std::vector<Actionable>(rs.actionable_vec.rbegin(), rs.actionable_vec.rend());
 
                 return rs;
             }
@@ -142,7 +196,7 @@ namespace stock_solution_server
             {
                 fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*this->mtx);
 
-                if (this->was_explicitly_destroyed->load(std::memory_order_relaxed))
+                if (this->was_explicitly_destroyed->exchange(true, std::memory_order_relaxed))
                 {
                     return;
                 }
@@ -168,7 +222,7 @@ namespace stock_solution_server
 
             auto open_client_box(const connectivity_subsystem::SlaveConfiguration& connection_config) -> uint64_t
             {
-                this->base->add(std::make_shared<ConnectionBoundClientBox>(connection_config));
+                return this->base->add(std::make_shared<ConnectionBoundClientBox>(connection_config));
             }
 
             auto get_client_box(uint64_t client_box_id) -> std::shared_ptr<ConnectionBoundClientBox>

@@ -21,6 +21,8 @@
 #include <concurrency_detachable_task/detachable_task_handle_interface.h>
 #include <concurrency_detachable_task/detachable_task_launcher.h>
 #include <common_exception/cancellation_token.h>
+#include <matrix_optimizer_subsystem/matrix_optimization_session_generator_interface.h>
+#include <stl_extension/semantic_mapper.h>
 
 namespace stock_solution
 {
@@ -33,30 +35,8 @@ namespace stock_solution
     template <class T>
     using Task      = concurrency_task::TaskInterface<T>;
 
-    //__maybe_generic_resolution__
-    class MatrixOptimizationSessionInterface
-    {
-        public:
-
-            virtual ~MatrixOptimizationSessionInterface() noexcept = default;
-
-            virtual auto add_training_data(const std::shared_ptr<tensor_model::Matrix>& inp,
-                                           const std::shared_ptr<tensor_model::Matrix>& out,
-                                           const std::shared_ptr<common_exception::CancellationTokenInterface>& cancellation_token) -> std::shared_ptr<Promise<stdx::fancy_void>> = 0;
-
-            virtual auto optimize(const generic_matrix_factory::ExternalGenericMatrixResource& resource,
-                                  const std::shared_ptr<common_exception::CancellationTokenInterface>& cancellation_token) -> std::shared_ptr<Promise<generic_matrix_factory::ExternalGenericMatrixResource>> = 0;
-    };
-
-    //__maybe_generic_resolution__
-    class MatrixOptimizationSessionGeneratorInterface
-    {
-        public:
-
-            virtual ~MatrixOptimizationSessionGeneratorInterface() noexcept = default;
-
-            virtual auto get_session() -> std::unique_ptr<MatrixOptimizationSessionInterface> = 0;
-    };
+    using MatrixOptimizationSessionInterface            = matrix_optimizer_subsystem::MatrixOptimizationSessionInterface;
+    using MatrixOptimizationSessionGeneratorInterface   = matrix_optimizer_subsystem::MatrixOptimizationSessionGeneratorInterface;
 
     struct MatrixResult
     {
@@ -1654,10 +1634,7 @@ namespace stock_solution
 
             static auto get_past(std::chrono::nanoseconds duration) -> std::chrono::time_point<std::chrono::utc_clock>
             {
-                auto new_timepoint      = get_now() - duration;
-                using default_dur_rep_t = typename std::chrono::time_point<std::chrono::utc_clock>::duration;
-
-                return std::chrono::time_point_cast<default_dur_rep_t>(new_timepoint);
+                return stdx::sub_timepoint(get_now(), duration);
             }
 
         public:
@@ -1951,7 +1928,7 @@ namespace stock_solution
 
                     auto get_transform_matrix() -> generic_matrix_factory::ExternalGenericMatrixResource
                     {
-                        return this->broke_matrix().matrix;
+                        return stdx::to_automap_object(this->broke_matrix().matrix);
                     }
 
                     auto get_encoder_required_flat_size() -> size_t
@@ -2358,32 +2335,32 @@ namespace stock_solution
 
             auto is_next_millisecond_system() -> bool
             {
-                return true;
+                return this->data.extractor_focal_unit  == TemporalFeatureExtractor::FOCAL_UNIT_MILLISECOND;
             }
 
             auto is_next_second_system() -> bool
             {
-                return true;
+                return this->data.extractor_focal_unit  == TemporalFeatureExtractor::FOCAL_UNIT_SECOND;
             }
 
             auto is_in_millisecond_range(const FeatureAnalyticPoint& analytic_point) -> bool
             {
-                return true;
+                return is_next_millisecond_system() && (analytic_point.focal_idx + 1 == this->data.extractor_focal_step); //TODOs: resolution
             }
 
             auto is_in_second_range(const FeatureAnalyticPoint& analytic_point) -> bool
             {
-                return true;
+                return is_next_second_system() && (analytic_point.focal_idx + 1 == this->data.extractor_focal_step); //TODOs: resolution
             }
 
             auto is_buyable_action(const FeatureAnalyticPoint& analytic_point) -> bool
             {
-                return true;
+                return (analytic_point.feature_id == "p" || analytic_point.feature_id == "price") && analytic_point.bear_or_bull;
             }
 
             auto is_sellable_action(const FeatureAnalyticPoint& analytic_point) -> bool
             {
-                return true;
+                return (analytic_point.feature_id == "p" || analytic_point.feature_id == "price") && !analytic_point.bear_or_bull;
             }
 
             auto get_actionable(const FeatureAnalyticPoint& analytic_point) -> std::optional<std::string>

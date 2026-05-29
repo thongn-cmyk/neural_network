@@ -12,6 +12,8 @@
 #include <connection_based_manager/connection_based_manager.h>
 #include <stl_extension/semantic_mapper.h>
 #include <client_box/task_box/task_box.h>
+#include <common_exception/cancellation_token.h>
+#include <money/solution_builder/solution_builder.h>
 
 //we'd dedicate a few days to fix these inventions
 
@@ -36,7 +38,7 @@ namespace stock_solution_trainer_server
                 private:
 
                     RunWorkOrder work_order;
-                
+
                 public:
 
                     InternalResolutor(const RunWorkOrder& work_order): work_order(work_order){}
@@ -45,19 +47,19 @@ namespace stock_solution_trainer_server
                     {
                         common_exception::ObjectLifeCancellationTokenStackHolder cancellation_token_holder(cancellation_token);
 
-                        auto solution_builder   = SolutionBuilder{}.set_cancellation_token(cancellation_token_holder.get())
-                                                                   .set_data_loader_config(this->work_order.data_source.data_loader_config)
-                                                                   .set_from(this->work_order.training_window.from_timepoint)
-                                                                   .set_to(this->work_order.training_window.to_timepoint)
-                                                                   .set_iteration_step(this->work_order.training_window.iteration_step)
-                                                                   .set_optimization_flag(this->work_order.optimization_flag);
+                        auto solution_builder   = stock_solution_builder::SolutionBuilder{}.set_cancellation_token(cancellation_token_holder.get())
+                                                                                           .set_data_loader_config(this->work_order.data_source.data_loader_config)
+                                                                                           .set_from(this->work_order.training_window.from_timepoint)
+                                                                                           .set_to(this->work_order.training_window.to_timepoint)
+                                                                                           .set_iteration_step(this->work_order.training_window.iteration_step)
+                                                                                           .set_optimization_flag(this->work_order.optimization_flag);
 
                         for (const auto& sink: this->work_order.compute_sink_vec)
                         {
                             solution_builder.add_compute_sink(sink.sink_remote, sink.firer_config);
                         }
-                    
-                        return solution_builder.build();
+
+                        return stdx::to_automap_object(solution_builder.build());
                     }
             };
     };
@@ -70,10 +72,10 @@ namespace stock_solution_trainer_server
             std::unique_ptr<ClientBox> base;
             std::unique_ptr<std::atomic<bool>> was_explicitly_destroyed;
             std::unique_ptr<fair_mutex::fair_atomic_flag> mtx;
-        
+
         public:
 
-            ConnectionBoundClientBox(const connectivity_subsystem::SlaveConfiguration& connection_config): connection(std::make_unique<>()),
+            ConnectionBoundClientBox(const connectivity_subsystem::SlaveConfiguration& connection_config): connection(std::make_unique<connectivity_subsystem::ThreadSafeSlaveConnection>(connection_config)),
                                                                                                            base(std::make_unique<ClientBox>()),
                                                                                                            was_explicitly_destroyed(std::make_unique<std::atomic<bool>>(false)),
                                                                                                            mtx(fair_mutex::make_unique_fair_atomic_flag()){}

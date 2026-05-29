@@ -23,6 +23,7 @@
 #include <taylor_matrix/cuda_matrix/tensor_matrix_forward.h>
 #include <taylor_matrix/cuda_matrix/tensor_matrix_forward_to_deviation.h>
 #include <cuda_management/host_service.h>
+#include <stl_extension/semantic_mapper.h>
 
 class IPSiever: public virtual dg_sock::network_kernel_mailbox_impl1::external_interface::IPSieverInterface{
 
@@ -519,7 +520,7 @@ void test_matrix_broker()
 
     for (size_t i = 0u; i < VECTOR_SZ_RANGE; ++i)
     {
-        auto rs                             = client.broke_matrix("host_matrix", matrix_broker_client::MATRIX_ENTROPY_LOW, i)->wait();
+        auto rs                             = client.broke_matrix("taylor_host_matrix", matrix_broker_client::MATRIX_ENTROPY_LOW, i)->wait();
 
         if (!std::holds_alternative<matrix_broker_client::FixedProjectionArgument>(rs.projection_argument.projection_argument))
         {
@@ -528,7 +529,7 @@ void test_matrix_broker()
         }
 
         std::vector<size_t> matrix_shape    = std::get<matrix_broker_client::FixedProjectionArgument>(rs.projection_argument.projection_argument).inp_matrix_shape;
-        auto matrix_projector               = generic_matrix_factory::GenericMatrixLoader{}.load_resource(generic_matrix_factory::GenericMatrixExternalizer{}.to_internal(rs.matrix_resource));
+        auto matrix_projector               = generic_matrix_factory::GenericMatrixLoader{}.load_resource(generic_matrix_factory::GenericMatrixExternalizer{}.to_internal(stdx::to_automap_object(rs.matrix_resource)));
 
         auto matrix                         = tensor_factory::make_matrix_from_shape_vec(matrix_shape);
         auto rs_2                           = matrix_projector->project({matrix});

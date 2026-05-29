@@ -4,38 +4,17 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <memory>
-
 #include <request_extension/type_based_resolutor_interface.h>
 #include <request_extension/type_based_dgstd_resolutor.h>
-
-#include "model.h"
 #include <mutex_extension/fair_mutex.h>
+#include "model.h"
 #include "local_exception.h"
 #include "client_box.h"
-
 #include <atomic>
+#include <string_view>
 
 namespace stock_solution_server
 {
-    //I've been fighting entropy and the theories for most of my time researching, I know my odds better if trained on milliseconds-level
-    //essentially we'd need to have more data than the market can provide to not memorize the charts but the compression instead
-
-    //so if we actually train this neural network on a massive 2020-2026 milliseconds - seconds 128KB - 1MB territory, we'd be profitable
-    //of course if we glue all the tickers inside one matrix
-
-    //I've been thinking about level-blocked of neural matrix training, so essentially we'd begin with 1 + 1 -> 1 and moving 2 4 8 coefficient bases
-    //essentially 3 different coefficient vectors with "2 first 4, 8 blocked" ->  "2 4 first, 8 blocked" -> "2 4 8 first"
-
-    //I understand that has to be part of the equations, the blocks the ReLU and the "inventional randomness of the wild"
-    //because the otherwise is a complete disaster of implementation and interfaces
-
-    //imagine like we have the unlock variables 0.1 -> 0.01 -> 0.001 -> 0.0001 according to the powers (or entropy) of the coefficients
-    //if we hit the jackpot, we'd unlock the level there forward, otherwise we'd keep playing with statistics and uniform distribution
-    //so it's not ReLU, but you can say that it's rectified linear unit
-
-    //I've done extensive research about almost every decisions written here
-    //and it just seems that this is the way
-
     static inline constexpr std::string_view STOCK_SOLUTION_SERVER_VERSION_CONTROL  = "";
 
     template <class T_In, class T_Out>

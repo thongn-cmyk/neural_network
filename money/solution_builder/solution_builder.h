@@ -19,7 +19,10 @@
 #include <serializer/compact_serializer.h>
 #include <data_loader/hex_encoder/hex_encoder.h>
 #include <fire_bandwidth_control/generic_firer.h>
+#include <fire_bandwidth_control/config_builder.h>
 #include <internal_rest/network_rest_frame.h>
+#include <global_config/rest_config.h>
+#include <stl_extension/semantic_mapper.h>
 
 namespace stock_solution_builder
 {
@@ -102,7 +105,11 @@ namespace stock_solution_builder
 
                     static auto get_self_remote() -> Remote
                     {
-                        return {}; // TODOs: implement
+                        return Remote
+                        {
+                            .addr       = dg_sock::network_rest_frame::client_instance::address(),
+                            .channel    = global_config::rest_config::GENERAL_COMPUTE_CHANNEL
+                        };
                     }
 
                 public:
@@ -123,7 +130,7 @@ namespace stock_solution_builder
                         {
                             return stock_solution::MatrixResult
                             {
-                                .matrix         = rs.matrix_resource,
+                                .matrix         = stdx::to_automap_object(rs.matrix_resource),
                                 .matrix_shape   = stdx::to_castable_vector_initializer(std::get<matrix_broker_client::FixedProjectionArgument>(rs.projection_argument.projection_argument).out_matrix_shape)
                             };
                         };
@@ -136,22 +143,70 @@ namespace stock_solution_builder
 
                     auto get_generator_id() -> std::string
                     {
-                        return {}; // TODOs: implement
+                        return "taylor_cuda_matrix";
                     }
 
                     auto get_matrix_entropy() -> uint8_t
                     {
-                        return {}; // TODOs: implement
+                        switch (this->resource_base.optimization_flag)
+                        {
+                            case ResourceBase::OPTIMIZATION_FLAG_O1:
+                            {
+                                return matrix_broker_client::MATRIX_ENTROPY_LOW;
+                            }
+                            case ResourceBase::OPTIMIZATION_FLAG_O2:
+                            {
+                                return matrix_broker_client::MATRIX_ENTROPY_MID;
+                            }
+                            case ResourceBase::OPTIMIZATION_FLAG_O3:
+                            {
+                                return matrix_broker_client::MATRIX_ENTROPY_HIGH;
+                            }
+                            default:
+                            {
+                                throw std::invalid_argument("bad optimization flag, enumeration out of range");
+                            }
+                        }
+                    }
+            };
+
+            class InternalMatrixOptimizationSession: public virtual stock_solution::MatrixOptimizationSessionInterface
+            {
+                private:
+
+                    ResourceBase resource_base;
+
+                public:
+
+                    InternalMatrixOptimizationSession(ResourceBase resource_base): resource_base(std::move(resource_base)){}
+
+                    auto add_training_data(const std::shared_ptr<tensor_model::Matrix>& inp,
+                                           const std::shared_ptr<tensor_model::Matrix>& out,
+                                           const std::shared_ptr<common_exception::CancellationTokenInterface>& cancellation_token) -> std::shared_ptr<TaskPromise<stdx::fancy_void>>
+                    {
+                        return {};
+                    }
+
+                    auto optimize(const generic_matrix_factory::ExternalGenericMatrixResource& resource,
+                                  const std::shared_ptr<common_exception::CancellationTokenInterface>& cancellation_token) -> std::shared_ptr<TaskPromise<generic_matrix_factory::ExternalGenericMatrixResource>>
+                    {
+                        return {};
                     }
             };
 
             class InternalMatrixOptimizationSessionGenerator: public virtual stock_solution::MatrixOptimizationSessionGeneratorInterface
             {
+                private:
+
+                    ResourceBase resource_base;
+
                 public:
+
+                    InternalMatrixOptimizationSessionGenerator(ResourceBase resource_base): resource_base(std::move(resource_base)){}
 
                     auto get_session() -> std::unique_ptr<stock_solution::MatrixOptimizationSessionInterface>
                     {
-                        return {}; // TODOs: implement
+                        return std::make_unique<InternalMatrixOptimizationSession>(this->resource_base);
                     }
             };
 
@@ -185,7 +240,7 @@ namespace stock_solution_builder
 
             auto get_matrix_optimizer() -> std::unique_ptr<stock_solution::MatrixOptimizationSessionGeneratorInterface>
             {
-                return {}; // TODOs: implement
+                return std::make_unique<InternalMatrixOptimizationSessionGenerator>(this->resource_base);
             }
 
             auto get_cancellation_token() -> const std::shared_ptr<common_exception::CancellationTokenInterface>&
@@ -389,7 +444,7 @@ namespace stock_solution_builder
 
             auto get_default_firer_config() -> fire_bandwidth_control::generic_firer::ExternalGenericFirerConfig
             {
-                return {}; // TODOs: implement
+                return fire_bandwidth_control::config_builder::FreeFirerBuilder{}.build();
             }
 
             auto add_compute_sink(const Remote& remote,

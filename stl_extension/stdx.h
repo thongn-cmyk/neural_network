@@ -1171,6 +1171,22 @@ namespace stdx
         }
         #endif
     }
+
+    template <class Clock, class ...Args>
+    auto add_timepoint(const std::chrono::time_point<Clock>& timepoint, const std::chrono::duration<Args...>& dur) -> std::chrono::time_point<Clock>
+    {
+        using clock_dur_t   = typename std::chrono::time_point<Clock>::duration;
+
+        return std::chrono::time_point_cast<clock_dur_t>(timepoint + dur);
+    }
+
+    template <class Clock, class ...Args>
+    auto sub_timepoint(const std::chrono::time_point<Clock>& timepoint, const std::chrono::duration<Args...>& dur) -> std::chrono::time_point<Clock>
+    {
+        using clock_dur_t   = typename std::chrono::time_point<Clock>::duration;
+
+        return std::chrono::time_point_cast<clock_dur_t>(timepoint - dur);
+    }
 }
 
 #endif

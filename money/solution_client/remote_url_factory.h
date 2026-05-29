@@ -7,6 +7,8 @@
 #include <cstring>
 #include <string_view>
 #include <memory>
+#include "model.h"
+#include <internal_rest/network_rest_frame.h> //
 
 namespace stock_solution_client
 {

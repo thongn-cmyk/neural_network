@@ -9,6 +9,8 @@
 #include "local_exception.h"
 #include <request_extension/type_based_dgstd_resolutor.h>
 #include <request_extension/type_based_resolutor_interface.h>
+#include <string_view>
+#include <string>
 
 namespace stock_solution_trainer_server
 {
@@ -110,7 +112,7 @@ namespace stock_solution_trainer_server
                 {
                     std::shared_ptr<ConnectionBoundClientBox> client_box = this->client_box_manager->get_client_box(request.client_box_id);
 
-                    if (client_box == nulptr)
+                    if (client_box == nullptr)
                     {
                         throw client_box_not_found_error{};
                     }

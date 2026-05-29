@@ -8,7 +8,6 @@
 #include <variant>
 #include <vector>
 #include <stl_extension/stdx.h>
-#include <matrix/generic_matrix_factory.h>
 #include <string>
 #include <expected>
 
@@ -62,10 +61,28 @@ namespace matrix_broker_client
         }
     };
 
+    //migrations
+    struct ExternalGenericMatrixResource
+    {
+        std::string payload;
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector) const
+        {
+            reflector(payload);
+        }
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector)
+        {
+            reflector(payload);
+        }
+    };
+
     struct ClientMatrixResult
     {
         ProjectionArgument projection_argument;
-        generic_matrix_factory::ExternalGenericMatrixResource matrix_resource;
+        ExternalGenericMatrixResource matrix_resource;
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector) const

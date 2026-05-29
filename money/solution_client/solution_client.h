@@ -90,7 +90,7 @@ namespace stock_solution_client
                                                               .payload(request_payload)
                                                               .serialization_method(dg::network_compact_serializer::get_dgstd_serialization_identifier())
                                                               .get();
-                
+
                 auto base_resolutor = [](const CloseClientResponse& response)
                 {
                     throw_error_code(response.result, response.err_verbal_description);
@@ -181,7 +181,7 @@ namespace stock_solution_client
             std::unique_ptr<connectivity_subsystem::ConnectionInterface> connection;
             bool was_explicitly_closed;
             ClientRemote client_remote;
-        
+
         public:
 
             APIClient(const Remote& remote,
@@ -200,7 +200,7 @@ namespace stock_solution_client
                     connection                  = std::make_unique<connectivity_subsystem::MasterConnection>();
                 }
 
-                uint64_t client_id          = this->base.open_client_box(remote, connection->get_slave_configuration());
+                uint64_t client_id          = this->base.open_client_box(remote, connection->get_slave_configuration())->wait();
                 this->connection            = std::move(connection);
                 this->was_explicitly_closed = false;
 
@@ -216,7 +216,7 @@ namespace stock_solution_client
                 this->base.set_unique_request(is_unique_request);
             }
 
-            void set_retry_policy(dg_sock::network_rest_frame::retry_policy_t retry_policy)
+            void set_retry_policy(dg_sock::network_rest_frame::client::retry_policy_t retry_policy)
             {
                 this->base.set_retry_policy(retry_policy);
             }

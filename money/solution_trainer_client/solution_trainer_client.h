@@ -19,7 +19,7 @@
 #include <exception>
 #include <stdexcept>
 
-namespace solution_trainer_client
+namespace stock_solution_trainer_client
 {
     class APIClient_Base
     {
@@ -117,18 +117,18 @@ namespace solution_trainer_client
                     .run_work_order = work_order
                 };
 
-                std::string request_paylaod = dg::network_compact_serializer::dgstd_serialize<std::string>(raw_request);
+                std::string request_payload = dg::network_compact_serializer::dgstd_serialize<std::string>(raw_request);
                 ClientRequest request       = RequestFactory{}.url(RemoteUrlFactory::get_run_url(remote))
                                                               .payload(request_payload)
                                                               .serialization_method(dg::network_compact_serializer::get_dgstd_serialization_identifier())
                                                               .get();
 
-                auto base_resolutor = [](const RunResponse& repsonse)
+                auto base_resolutor = [](const RunResponse& response)
                 {
                     throw_error_code(response.result, response.err_verbal_description);
 
                     return stdx::fancy_void{};
-                }
+                };
 
                 request_extension::resolutor::ClientResponseDgstdFormatter resolutor(stdx::Tag<RunResponse>{}, base_resolutor);
 
@@ -213,7 +213,7 @@ namespace solution_trainer_client
                                                               .serialization_method(dg::network_compact_serializer::get_dgstd_serialization_identifier())
                                                               .get();
 
-                auto base_resolutor = [](const GetResultResponse& repsonse)
+                auto base_resolutor = [](const GetResultResponse& response)
                 {
                     if (!response.result.has_value())
                     {
@@ -226,12 +226,10 @@ namespace solution_trainer_client
                 request_extension::resolutor::ClientResponseDgstdFormatter resolutor(stdx::Tag<GetResultResponse>{}, base_resolutor);
 
                 return this->client.request(request)
-                                    .set_resolutor(resolutor)
-                                    .get_promise();
+                                   .set_resolutor(resolutor)
+                                   .get_promise();
             }
     };
-
-    //maybe that security is part of the client, because of temporal constraints, but we are in virtual private network so...
 
     class APIClient
     {
@@ -260,7 +258,7 @@ namespace solution_trainer_client
                     connection                  = std::make_unique<connectivity_subsystem::MasterConnection>();
                 }
 
-                uint64_t client_id          = this->base.open_client_box(remote, connection->get_slave_configuration());
+                uint64_t client_id          = this->base.open_client_box(remote, connection->get_slave_configuration())->wait();
                 this->connection            = std::move(connection);
                 this->was_explicitly_closed = false;
 
@@ -276,7 +274,7 @@ namespace solution_trainer_client
                 this->base.set_unique_request(is_unique_request);
             }
 
-            void set_retry_policy(dg_sock::network_rest_frame::retry_policy_t retry_policy)
+            void set_retry_policy(dg_sock::network_rest_frame::client::retry_policy_t retry_policy)
             {
                 this->base.set_retry_policy(retry_policy);
             }

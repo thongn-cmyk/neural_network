@@ -11,6 +11,7 @@
 #include <vector>
 #include <optional>
 #include <chrono>
+#include <expected>
 
 namespace stock_solution_client
 {
@@ -333,6 +334,24 @@ namespace stock_solution_client
             reflector(market_data,
                       forecast_timepoint,
                       top_k);
+        }
+    };
+
+    struct ClientRemote
+    {
+        Remote remote;
+        uint64_t client_id;
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector) const
+        {
+            reflector(remote, client_id);
+        }
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector)
+        {
+            reflector(remote, client_id);
         }
     };
 }

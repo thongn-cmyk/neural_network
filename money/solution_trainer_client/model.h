@@ -236,7 +236,6 @@ namespace stock_solution_trainer_client
         StockDataSource data_source;
         std::vector<ComputeSink> compute_sink_vec;
         TrainingWindowInfo training_window;
-
         uint8_t optimization_flag;
 
         template <class Reflector>
@@ -396,6 +395,24 @@ namespace stock_solution_trainer_client
         void dg_reflect(const Reflector& reflector)
         {
             reflector(result, err_verbal_description);
+        }
+    };
+
+    struct ClientRemote
+    {
+        Remote remote;
+        uint64_t client_id;
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector) const
+        {
+            reflector(remote, client_id);
+        }
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector)
+        {
+            reflector(remote, client_id);
         }
     };
 }

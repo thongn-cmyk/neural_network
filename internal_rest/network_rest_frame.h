@@ -24,6 +24,7 @@
 #include <cron_subsystem/cron_subsystem.h>
 #include <common_exception/cancellation_token.h>
 #include <stacktrace>
+#include <global_config/rest_config.h>
 
 namespace dg_sock::network_rest_frame::model
 {
@@ -5735,8 +5736,8 @@ namespace dg_sock::network_rest_frame::client
 
             using self              = RequestDispatcher;
 
-            static inline const std::chrono::nanoseconds DEFAULT_REQUEST_CLIENT_TIMEOUT_DURATION    = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(20));
-            static inline const std::chrono::nanoseconds DEFAULT_REQUEST_SERVER_TIMEOUT_DURATION    = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(20));
+            static inline const std::chrono::nanoseconds DEFAULT_REQUEST_CLIENT_TIMEOUT_DURATION    = std::chrono::duration_cast<std::chrono::nanoseconds>(global_config::rest_config::DEFAULT_REQUEST_CLIENT_TIMEOUT_DURATION);
+            static inline const std::chrono::nanoseconds DEFAULT_REQUEST_SERVER_TIMEOUT_DURATION    = std::chrono::duration_cast<std::chrono::nanoseconds>(global_config::rest_config::DEFAULT_REQUEST_SERVER_TIMEOUT_DURATION);
 
         public:
 

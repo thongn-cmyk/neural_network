@@ -11,8 +11,8 @@ namespace device_tensor::model
 
     using tensor_std_float_t    = float;
 
-    __device__ static inline constexpr size_t PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ       = 2u;
-    __device__ static inline constexpr size_t PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ   = 16u;
+    __device__ static inline constexpr size_t PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ       = 1u;
+    __device__ static inline constexpr size_t PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ   = 8u;
     __device__ static inline constexpr size_t DIMENSION_SZ                              = 4u;
 
     struct ProcessUnit

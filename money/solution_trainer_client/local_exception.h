@@ -6,7 +6,7 @@
 #include <exception>
 #include <stdexcept>
 
-namespace solution_trainer_client
+namespace stock_solution_trainer_client
 {
     using local_exception_t = uint8_t;
 

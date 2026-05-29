@@ -7,13 +7,14 @@
 #include <cstring>
 #include <string_view>
 #include <memory>
+#include <internal_rest/network_rest_frame.h> //
 
-namespace solution_trainer_client
+namespace stock_solution_trainer_client
 {
     class RemoteUrlFactory
     {
         public:
-            
+
             static auto get_open_client_box_url(const Remote& remote) -> Url
             {
                 std::string_view resource_addr  = "stock_solution_trainer_server/open_client";
