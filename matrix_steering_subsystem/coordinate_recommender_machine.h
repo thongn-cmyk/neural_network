@@ -345,7 +345,7 @@ namespace coordinate_recommender_machine
             std::deque<std::vector<machine_float_t>> coordinate_deque;
             size_t deque_capacity;
     
-            static inline constexpr size_t DEFAULT_DEQUE_CAPACITY = 128u;
+            static inline constexpr size_t DEFAULT_DEQUE_CAPACITY = 16u;
         
         public:
 
@@ -420,7 +420,7 @@ namespace coordinate_recommender_machine
             BidirectionalFeedbackHeap heap;
             size_t capacity;
 
-            static inline constexpr size_t DEFAULT_HEAP_CAPACITY = 128u;
+            static inline constexpr size_t DEFAULT_HEAP_CAPACITY = 16u;
 
         public:
 

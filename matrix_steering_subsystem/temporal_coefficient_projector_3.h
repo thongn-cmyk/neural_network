@@ -20,18 +20,14 @@ namespace temporal_coefficient_projector_3
 {
     using std_float_t = float_def::std_float_t;
 
-    //to simply put it, we can't code it in another way that guarantees 100% accuracy
-    //it's hard, and time-consuming and not production-realistic to have smart and unnecessary variables that are not extensible
-    //let's just have a 50% learnable size just for the sake of context optimization
-
-    //it's just complicated is all, we are only 20% through the context engineerings
-    //but I guess that we are heading in the right way of what it is supposed to mean, and be extensible
+    //we'd try to optimize storages by leveraging leaf nodes, unit nodes, and improve memory usage of interval trees
+    //this is important
 
     class DynamicFocalTemporalCoefficientProjectorGenerator: public virtual TemporalCoefficientProjectorGeneratorInterface
     {
         private:
 
-            std::unique_ptr<virtual_interval_coefficient_optimizer_tree::BatchCoefficientOptimizerTreeInterface> focal_organizer;
+            std::unique_ptr<virtual_interval_coefficient_optimizer_tree::TranslationOptimizerTreeInterface> focal_organizer;
             std::unique_ptr<temporal_coefficient_projector_2::TemporalCoefficientProjectorGeneratorInterface> base;
             std::unique_ptr<range_optimizer::RangePredictorInterface> range_predictor;
 
@@ -46,7 +42,7 @@ namespace temporal_coefficient_projector_3
 
         public:
 
-            DynamicFocalTemporalCoefficientProjectorGenerator(std::unique_ptr<virtual_interval_coefficient_optimizer_tree::BatchCoefficientOptimizerTreeInterface> focal_organizer,
+            DynamicFocalTemporalCoefficientProjectorGenerator(std::unique_ptr<virtual_interval_coefficient_optimizer_tree::TranslationOptimizerTreeInterface> focal_organizer,
                                                               std::unique_ptr<temporal_coefficient_projector_2::TemporalCoefficientProjectorGeneratorInterface> base,
                                                               std::unique_ptr<range_optimizer::RangePredictorInterface> range_predictor,
 
@@ -85,16 +81,14 @@ namespace temporal_coefficient_projector_3
                     }
                 }();
 
-                std::unique_ptr<virtual_interval_coefficient_optimizer_tree::BatchCoefficientSpaceTensorInterface> feedbackable;
+                std::unique_ptr<virtual_interval_coefficient_optimizer_tree::TranslationSpaceTensorInterface> feedbackable = this->focal_organizer->get_translation_tensor(translation_segment_vec);
                 std::vector<std::pair<size_t, size_t>> retranslation_segment_vec{};
 
-                for (const std::pair<size_t, size_t>& translation_segment: translation_segment_vec)
+                for (const std::vector<std::pair<size_t, size_t>>& current_segment_vec: feedbackable->get_translation_space())
                 {
-                    std::vector<std::pair<size_t, size_t>> current_segment_vec = this->focal_organizer->translate(translation_segment);
                     std::copy(current_segment_vec.begin(), current_segment_vec.end(), std::back_inserter(retranslation_segment_vec));
                 }
 
-                feedbackable                = this->focal_organizer->get_coefficient_span(translation_segment_vec);
                 auto translated_projector   = this->get_translation_projector(projector->get(), retranslation_segment_vec, this->projection_sz);
                 this->refocal_counter       += 1;
 
@@ -115,13 +109,13 @@ namespace temporal_coefficient_projector_3
                 private:
 
                     std::shared_ptr<temporal_coefficient_projector::TemporalCoefficientProjectorInterface> projector;
-                    std::unique_ptr<virtual_interval_coefficient_optimizer_tree::BatchCoefficientSpaceTensorInterface> feedbackable;
+                    std::unique_ptr<virtual_interval_coefficient_optimizer_tree::TranslationSpaceTensorInterface> feedbackable;
                     std::shared_ptr<temporal_coefficient_projector_2::TemporalCoefficientProjectorContainerInterface> tensor_2;
                
                 public:
 
                     InternalProjectorContainer(std::shared_ptr<temporal_coefficient_projector::TemporalCoefficientProjectorInterface> projector,
-                                               std::unique_ptr<virtual_interval_coefficient_optimizer_tree::BatchCoefficientSpaceTensorInterface> feedbackable,
+                                               std::unique_ptr<virtual_interval_coefficient_optimizer_tree::TranslationSpaceTensorInterface> feedbackable,
                                                std::shared_ptr<temporal_coefficient_projector_2::TemporalCoefficientProjectorContainerInterface> tensor_2) noexcept: projector(std::move(projector)),
                                                                                                                                                                      feedbackable(std::move(feedbackable)),
                                                                                                                                                                      tensor_2(std::move(tensor_2)){}
@@ -357,10 +351,10 @@ namespace temporal_coefficient_projector_3
             static auto get_normal_generator(size_t coefficient_sz,
                                              size_t leaf_sz = 8u) -> std::unique_ptr<TemporalCoefficientProjectorGeneratorInterface>
             {
-                const size_t REFOCAL_THRESHOLD  = size_t{1} << 13;
+                const size_t REFOCAL_THRESHOLD  = size_t{1} << 8;
                 const size_t LEAF_SZ            = leaf_sz;
 
-                return std::make_unique<DynamicFocalTemporalCoefficientProjectorGenerator>(virtual_interval_coefficient_optimizer_tree::TreeFactory::get_mid_duty_dynamic_focal_tree(coefficient_sz, LEAF_SZ),
+                return std::make_unique<DynamicFocalTemporalCoefficientProjectorGenerator>(virtual_interval_coefficient_optimizer_tree::TreeFactory::get_translation_focal_tree(coefficient_sz, LEAF_SZ),
                                                                                            temporal_coefficient_projector_2::GeneratorFactory::get_best_generator<PromotedFloatType>(),
                                                                                            std::make_unique<range_optimizer::ExponentialRangePredictor>(coefficient_sz),
 
@@ -376,7 +370,7 @@ namespace temporal_coefficient_projector_3
             static auto get_best_generator(size_t coefficient_sz,
                                            size_t leaf_sz = 8u) -> std::unique_ptr<TemporalCoefficientProjectorGeneratorInterface>
             {
-                const size_t GREEDY_FACTOR      = size_t{1} << 3;
+                const size_t GREEDY_FACTOR      = size_t{1} << 0;
 
                 std::vector<std::unique_ptr<TemporalCoefficientProjectorGeneratorInterface>> base_vec{};
 

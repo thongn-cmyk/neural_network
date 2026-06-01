@@ -20,6 +20,7 @@
 #include <general_definition/float_def.h>
 #include <stl_extension/stdx.h>
 #include <matrix_steering_subsystem/score_context_optimizer.h>
+#include <iostream>
 
 namespace matrix_optimizer_subsystem
 {
@@ -92,6 +93,16 @@ namespace matrix_optimizer_subsystem
         return dg::network_compact_serializer::dgstd_deserialize<CoordinatedSearchOptimizerEngineConfig>(config.config_bytestream);
     }
 
+    //we'd try to work on this component
+    //this component is actually one of the hardest components that I've invested a significant amount of time on
+
+    //first is the random nature of the optimizer makes it multi-thread compatible, we can actually use multiple optimizers in parallel with no synchronization hints, then we'd get best result
+    //second is the focal building of the projection space by using graph optimization
+    //third is multi-level tensor + score optimization
+
+    //the theory of "context" engineering and "score" feedbacks, how we turned machine learning into context engineering by using "feedback()" function
+    //one could say that if we could engineer context to perfection, such is that we incorporate every single detail into the "masterpiece", we'd get perfect next action, and you are absolutely right
+
     class CoordinatedSearchOptimizerEngine: public virtual MatrixOptimizerEngineInterface
     {
         private:
@@ -115,6 +126,9 @@ namespace matrix_optimizer_subsystem
             static inline constexpr size_t DEFAULT_OPTIMIZATION_LOOP_SZ                     = size_t{1} << 4;
             static inline constexpr size_t DEFAULT_COEFFICIENT_PROJECTOR_FLOAT_BYTE_WIDTH   = size_t{1} << 3;
             static inline constexpr size_t DEFAULT_TIME_MACHINE_OPTIMIZER_FLOAT_BYTE_WIDTH  = size_t{1} << 3;
+
+            static inline constexpr size_t DEFAULT_TIME_MACHINE_GENERATOR_CAPACITY          = size_t{1} << 8;
+            static inline constexpr size_t DEFAULT_PROJECTOR_GENERATOR_CAPACITY             = size_t{1} << 4;
 
         public:
 
@@ -162,10 +176,9 @@ namespace matrix_optimizer_subsystem
                           matrix_evaluator::MatrixEvaluatorInterface& matrix_evaluator,
                           common_exception::CancellationTokenInterface& cancellation_token) -> std::shared_ptr<the_matrix::MatrixInterface>
             {
-                std::unique_ptr<score_context_optimizer::IterationContextGeneratorInterface> iteration_projector_gen                = score_context_optimizer::ContextOptimizerFactory::get_best_binary_progress_context_optimizer(std::make_unique<IterationHeuristicProjectorGenerator>(matrix.get_coefficient_vector().size(),
-                                                                                                                                                                                                                                                                                          this->coefficient_projector_float_byte_width));
+                std::unique_ptr<score_context_optimizer::IterationContextGeneratorInterface> iteration_projector_gen                = score_context_optimizer::ContextOptimizerFactory::get_best_binary_progress_context_optimizer(std::make_unique<IterationHeuristicProjectorGenerator>(this->get_projector_generator_pool(matrix.get_coefficient_vector().size())));
 
-                std::unique_ptr<score_context_optimizer::IterationContextGeneratorInterface> iteration_iteration_time_machine_gen   = score_context_optimizer::ContextOptimizerFactory::get_best_binary_progress_context_optimizer(std::make_unique<IterationIterationHeuristicTimeMachineGenerator>(this->time_machine_optimizer_float_byte_width));
+                std::unique_ptr<score_context_optimizer::IterationContextGeneratorInterface> iteration_iteration_time_machine_gen   = score_context_optimizer::ContextOptimizerFactory::get_best_binary_progress_context_optimizer(std::make_unique<IterationIterationHeuristicTimeMachineGenerator>(this->get_time_machine_generator_pool()));
                 std::shared_ptr<the_matrix::MatrixInterface> best_matrix                                                            = matrix.clone();
 
                 std::unique_ptr<score_context_optimizer::IterationContextInterface> iteration_projector_gen_it                      = iteration_projector_gen->get();
@@ -250,6 +263,116 @@ namespace matrix_optimizer_subsystem
             }
 
         private:
+
+            class TimeMachineGeneratorPool
+            {
+                private:
+
+                    std::vector<std::shared_ptr<score_context_optimizer::StatisticalMachineInterface>> time_machine_generator_vec;
+                    size_t cap;
+                    size_t offset;
+                    size_t float_byte_width;
+
+                public:
+
+                    TimeMachineGeneratorPool(size_t cap,
+                                             size_t float_byte_width): time_machine_generator_vec(),
+                                                                       cap(std::max(size_t{1}, cap)),
+                                                                       offset(0u),
+                                                                       float_byte_width(float_byte_width){}
+
+                    auto get() -> std::shared_ptr<score_context_optimizer::StatisticalMachineInterface>
+                    {
+                        if (this->time_machine_generator_vec.size() != this->cap)
+                        {
+                            this->time_machine_generator_vec.push_back(this->get_new());
+                        }
+
+                        auto rs         = this->time_machine_generator_vec[this->offset];
+                        this->offset    = (this->offset + 1) % this->cap;
+
+                        return rs;
+                    }
+                
+                private:
+
+                    auto get_new() -> std::unique_ptr<score_context_optimizer::StatisticalMachineInterface>
+                    {
+                        std::unique_ptr<score_context_optimizer::StatisticalMachineInterface> rs{};
+
+                        auto callback = [&]<class T>(T)
+                        {
+                            rs = std::make_unique<HeuristicTimeMachineAsStatisticalMachine>(global_optimality_approximator::TensorFactoryFactory::get_best_factory<T>());
+                        };
+
+                        float_def::get_float_type_by_byte_width(callback, this->float_byte_width);
+
+                        return rs;
+                    }
+            };
+
+            auto get_time_machine_generator_pool() -> std::unique_ptr<TimeMachineGeneratorPool>
+            {
+                return std::make_unique<TimeMachineGeneratorPool>(DEFAULT_TIME_MACHINE_GENERATOR_CAPACITY,
+                                                                  this->time_machine_optimizer_float_byte_width);
+            }
+
+            class ProjectorGeneratorPool
+            {
+                private:
+
+                    std::vector<std::shared_ptr<score_context_optimizer::StatisticalMachineInterface>> projector_generator_vec;
+                    size_t cap;
+                    size_t offset;
+                    size_t projection_sz;
+                    size_t float_byte_width;
+                
+                public:
+
+                    ProjectorGeneratorPool(size_t cap,
+                                           size_t projection_sz,
+                                           size_t float_byte_width): projector_generator_vec(),
+                                                                     cap(std::max(size_t{1}, cap)),
+                                                                     offset(0u),
+                                                                     projection_sz(projection_sz),
+                                                                     float_byte_width(float_byte_width){}
+
+                    auto get() -> std::shared_ptr<score_context_optimizer::StatisticalMachineInterface>
+                    {
+                        if (this->projector_generator_vec.size() != this->cap)
+                        {
+                            this->projector_generator_vec.push_back(this->get_new());
+                        }
+
+                        auto rs         = this->projector_generator_vec[this->offset];
+                        this->offset    = (this->offset + 1) % this->cap;
+
+                        return rs;
+                    }
+                
+                private:
+
+                    auto get_new() -> std::unique_ptr<score_context_optimizer::StatisticalMachineInterface>
+                    {
+                        std::unique_ptr<score_context_optimizer::StatisticalMachineInterface> rs{};
+
+                        auto callback = [&]<class T>(T)
+                        {
+                            rs = std::make_unique<HeuristicProjectorAsStatisticalMachine>(temporal_coefficient_projector_3::GeneratorFactory::get_best_generator<T>(this->projection_sz, 8u)); //memory
+                        };
+
+                        float_def::get_float_type_by_byte_width(callback, this->float_byte_width);
+
+                        return rs;
+                    }
+            };
+
+            auto get_projector_generator_pool(size_t projection_sz) -> std::unique_ptr<ProjectorGeneratorPool>
+            {
+                return std::make_unique<ProjectorGeneratorPool>(DEFAULT_PROJECTOR_GENERATOR_CAPACITY,
+                                                                projection_sz,
+                                                                this->coefficient_projector_float_byte_width);
+            }
 
             auto get_projector_from(const std::vector<tensor_model::tensor_std_float_t>& origin,
                                     const std::shared_ptr<temporal_coefficient_projector::TemporalCoefficientProjectorInterface>& projectile) -> std::unique_ptr<temporal_coefficient_projector::TemporalCoefficientProjectorInterface>
@@ -481,27 +604,15 @@ namespace matrix_optimizer_subsystem
             {
                 private:
 
-                    size_t projection_sz;
-                    size_t float_byte_width;
+                    std::shared_ptr<ProjectorGeneratorPool> projector_generator_pool;
 
                 public:
 
-                    HeuristicProjectorGenerator(size_t projection_sz,
-                                                size_t float_byte_width): projection_sz(projection_sz),
-                                                                          float_byte_width(float_byte_width){}
+                    HeuristicProjectorGenerator(std::shared_ptr<ProjectorGeneratorPool> projector_generator_pool): projector_generator_pool(std::move(projector_generator_pool)){}
 
-                    auto get() -> std::unique_ptr<score_context_optimizer::StatisticalMachineInterface>
+                    auto get() -> std::shared_ptr<score_context_optimizer::StatisticalMachineInterface>
                     {
-                        std::unique_ptr<score_context_optimizer::StatisticalMachineInterface> rs{};
-
-                        auto callback = [&]<class T>(T)
-                        {
-                            rs = std::make_unique<HeuristicProjectorAsStatisticalMachine>(temporal_coefficient_projector_3::GeneratorFactory::get_best_generator<T>(this->projection_sz, 8u)); //memory
-                        };
-
-                        float_def::get_float_type_by_byte_width(callback, this->float_byte_width);
-
-                        return rs;
+                        return this->projector_generator_pool->get();
                     }
             };
 
@@ -526,19 +637,15 @@ namespace matrix_optimizer_subsystem
             {
                 private:
 
-                    size_t projection_sz;
-                    size_t float_byte_width;
+                    std::shared_ptr<ProjectorGeneratorPool> projector_generator_pool;
 
                 public:
 
-                    IterationHeuristicProjectorGenerator(size_t projection_sz,
-                                                         size_t float_byte_width): projection_sz(projection_sz),
-                                                                                   float_byte_width(float_byte_width){}
+                    IterationHeuristicProjectorGenerator(std::shared_ptr<ProjectorGeneratorPool> projector_generator_pool): projector_generator_pool(std::move(projector_generator_pool)){}
 
-                    auto get() -> std::unique_ptr<score_context_optimizer::StatisticalMachineInterface>
+                    auto get() -> std::shared_ptr<score_context_optimizer::StatisticalMachineInterface>
                     {
-                        auto optimizer = score_context_optimizer::ContextOptimizerFactory::get_best_binary_progress_context_optimizer(std::make_unique<HeuristicProjectorGenerator>(this->projection_sz,
-                                                                                                                                                                                    this->float_byte_width));
+                        auto optimizer = score_context_optimizer::ContextOptimizerFactory::get_best_binary_progress_context_optimizer(std::make_unique<HeuristicProjectorGenerator>(this->projector_generator_pool));
 
                         return std::make_unique<IterationHeuristicProjectorAsStatisticalMachine>(std::move(optimizer));
                     }
@@ -553,7 +660,7 @@ namespace matrix_optimizer_subsystem
 
                 public:
 
-                    HeuristicTimeMachineAsStatisticalMachine(std::unique_ptr<global_optimality_approximator::TensorFactoryInterface> time_machine) noexcept: time_machine(std::move(time_machine)){}
+                    HeuristicTimeMachineAsStatisticalMachine(std::unique_ptr<global_optimality_approximator::TensorFactoryInterface> time_machine): time_machine(std::move(time_machine)){}
 
                     auto get() -> std::unique_ptr<global_optimality_approximator::FactoryTensorInterface>
                     {
@@ -565,24 +672,15 @@ namespace matrix_optimizer_subsystem
             {
                 private:
 
-                    size_t float_byte_width;
+                    std::shared_ptr<TimeMachineGeneratorPool> generator_pool;
 
                 public:
 
-                    HeuristicTimeMachineGenerator(size_t float_byte_width): float_byte_width(float_byte_width){}
+                    HeuristicTimeMachineGenerator(std::shared_ptr<TimeMachineGeneratorPool> generator_pool): generator_pool(std::move(generator_pool)){}
 
-                    auto get() -> std::unique_ptr<score_context_optimizer::StatisticalMachineInterface>
+                    auto get() -> std::shared_ptr<score_context_optimizer::StatisticalMachineInterface>
                     {
-                        std::unique_ptr<score_context_optimizer::StatisticalMachineInterface> rs{};
-
-                        auto callback = [&]<class T>(T)
-                        {
-                            rs = std::make_unique<HeuristicTimeMachineAsStatisticalMachine>(global_optimality_approximator::TensorFactoryFactory::get_best_factory<T>());
-                        };
-
-                        float_def::get_float_type_by_byte_width(callback, this->float_byte_width);
-
-                        return rs;
+                        return this->generator_pool->get();
                     }
             };
 
@@ -607,15 +705,15 @@ namespace matrix_optimizer_subsystem
             {
                 private:
 
-                    size_t float_byte_width;
+                    std::shared_ptr<TimeMachineGeneratorPool> generator_pool;
 
                 public:
 
-                    IterationHeuristicTimeMachineGenerator(size_t float_byte_width): float_byte_width(float_byte_width){}
+                    IterationHeuristicTimeMachineGenerator(std::shared_ptr<TimeMachineGeneratorPool> generator_pool): generator_pool(std::move(generator_pool)){}
 
-                    auto get() -> std::unique_ptr<score_context_optimizer::StatisticalMachineInterface>
+                    auto get() -> std::shared_ptr<score_context_optimizer::StatisticalMachineInterface>
                     {
-                        auto optimizer = score_context_optimizer::ContextOptimizerFactory::get_best_binary_progress_context_optimizer(std::make_unique<HeuristicTimeMachineGenerator>(this->float_byte_width));
+                        auto optimizer = score_context_optimizer::ContextOptimizerFactory::get_best_binary_progress_context_optimizer(std::make_unique<HeuristicTimeMachineGenerator>(this->generator_pool));
 
                         return std::make_unique<IterationHeuristicTimeMachineAsStatisticalMachine>(std::move(optimizer));
                     }
@@ -642,15 +740,15 @@ namespace matrix_optimizer_subsystem
             {
                 private:
 
-                    size_t float_byte_width;
+                    std::shared_ptr<TimeMachineGeneratorPool> generator_pool;
 
                 public:
 
-                    IterationIterationHeuristicTimeMachineGenerator(size_t float_byte_width): float_byte_width(float_byte_width){}
+                    IterationIterationHeuristicTimeMachineGenerator(std::shared_ptr<TimeMachineGeneratorPool> generator_pool): generator_pool(std::move(generator_pool)){}
 
-                    auto get() -> std::unique_ptr<score_context_optimizer::StatisticalMachineInterface>
+                    auto get() -> std::shared_ptr<score_context_optimizer::StatisticalMachineInterface>
                     {
-                        auto optimizer = score_context_optimizer::ContextOptimizerFactory::get_best_binary_progress_context_optimizer(std::make_unique<IterationHeuristicTimeMachineGenerator>(this->float_byte_width));
+                        auto optimizer = score_context_optimizer::ContextOptimizerFactory::get_best_binary_progress_context_optimizer(std::make_unique<IterationHeuristicTimeMachineGenerator>(this->generator_pool));
 
                         return std::make_unique<IterationIterationHeuristicTimeMachineAsStatisticalMachine>(std::move(optimizer));
                     }

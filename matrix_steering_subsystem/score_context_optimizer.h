@@ -40,7 +40,7 @@ namespace score_context_optimizer
 
             virtual ~StatisticalMachineGeneratorInterface() = default;
 
-            virtual auto get() -> std::unique_ptr<StatisticalMachineInterface> = 0;
+            virtual auto get() -> std::shared_ptr<StatisticalMachineInterface> = 0;
     };
 
     class ActionableResultInterface

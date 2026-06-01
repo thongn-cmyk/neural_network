@@ -88,9 +88,29 @@ auto get_random_coordinated_search_optimizer_engine() -> std::unique_ptr<matrix_
         {
             .matrix_cache_map_cap                       = randomize_optional_int<uint64_t>(0, size_t{1} << 4),
             .time_machine_cache_map_cap                 = randomize_optional_int<uint64_t>(0, size_t{1} << 4),
-            .optimization_epoch_sz                      = static_cast<uint64_t>(randomize_int(0, size_t{1} << 4)),
-            .optimization_step_sz                       = static_cast<uint64_t>(randomize_int(0, size_t{1} << 4)),
-            .optimization_loop_sz                       = randomize_optional_int<uint64_t>(0, size_t{1} << 4)
+            .optimization_epoch_sz                      = 256ULL,
+            .optimization_step_sz                       = 32ULL,
+            .optimization_loop_sz                       = 4ULL
+            // .coefficient_projector_float_byte_width     = (randomize_int(0, 1) == 0) ? std::optional<uint64_t>(std::nullopt)
+            //                                                                          : std::optional<uint64_t>(randomize_byte_width()),
+
+            // .time_machine_optimizer_float_byte_width    = (randomize_int(0, 1) == 0) ? std::optional<uint64_t>(std::nullopt),
+            //                                                                          : std::optional<uint64_t>(randomize_byte_width())
+        }
+    );
+}
+
+auto get_test_coordinated_search_optimizer_engine() -> std::unique_ptr<matrix_optimizer_subsystem::CoordinatedSearchOptimizerEngine>
+{
+    return std::make_unique<matrix_optimizer_subsystem::CoordinatedSearchOptimizerEngine>
+    (
+        matrix_optimizer_subsystem::CoordinatedSearchOptimizerEngineConfig
+        {
+            .matrix_cache_map_cap                       = randomize_optional_int<uint64_t>(0, size_t{1} << 4),
+            .time_machine_cache_map_cap                 = randomize_optional_int<uint64_t>(0, size_t{1} << 4),
+            .optimization_epoch_sz                      = 1u,
+            .optimization_step_sz                       = 1u,
+            .optimization_loop_sz                       = 1u
             // .coefficient_projector_float_byte_width     = (randomize_int(0, 1) == 0) ? std::optional<uint64_t>(std::nullopt)
             //                                                                          : std::optional<uint64_t>(randomize_byte_width()),
 
@@ -146,10 +166,15 @@ auto randomize_tensor_vec_for_size_of(size_t sz) -> std::vector<tensor_std_float
     return rs;
 }
 
+auto get_random_matrix_of_size(size_t sz)
+{
+    return std::make_unique<FlatMatrix>(randomize_tensor_vec_for_size_of(sz));
+}
+
 auto get_random_matrix() -> std::unique_ptr<the_matrix::MatrixInterface>
 {
     const size_t TENSOR_SZ_RANGE    = size_t{1} << 2;
-    size_t tensor_sz                = (randomize_int(0, TENSOR_SZ_RANGE) + 1) * 64;
+    size_t tensor_sz                = (randomize_int(0, TENSOR_SZ_RANGE * 64) + 1);
 
     // std::vector<tensor_std_float_t> tensor_vec{};
 
@@ -158,7 +183,7 @@ auto get_random_matrix() -> std::unique_ptr<the_matrix::MatrixInterface>
     //     tensor_vec.push_back(randomize_double(-10, 10));
     // }
 
-    return std::make_unique<FlatMatrix>(randomize_tensor_vec_for_size_of(tensor_sz));
+    return get_random_matrix_of_size(tensor_sz);
 }
 
 auto get_expected_matrix_like(const std::shared_ptr<the_matrix::MatrixInterface>& matrix) -> std::unique_ptr<the_matrix::MatrixInterface>
@@ -216,8 +241,21 @@ auto get_matrix_difference_evaluator(const std::shared_ptr<the_matrix::MatrixInt
     return std::make_unique<SquareDeviationMatrixEvaluator>(expected);
 }
 
+//in this case we've demonstrated the usage of pulling deviation, and the consequences of doing so, a.k.a. incurred entropy, happen to match the projection space that we are looking for
+//so the problem only arises when there is a mismatch of entropy, we are matching a too high entropy function -> a low entropy projection space
+//the problem is that most of the time we'd spend correcting "what we did wrong" rather than "finding the required projection space"
+
+//so there are two ways of solving this
+
+//dynamic cosine space (radian coordinate) for moving one entropy level up (series normalize) and get the data via ground_activator
+//static blockings (lottery + activations)
+
+//I've spent a significant memory, but we'd rather scale it by number of projections than the logit size
+
 void run_one_test()
 {
+    const size_t OPTIMIZATION_SZ    = size_t{1} << 2;
+
     std::shared_ptr<matrix_optimizer_subsystem::CoordinatedSearchOptimizerEngine> test_engine   = get_random_coordinated_search_optimizer_engine();
 
     std::shared_ptr<the_matrix::MatrixInterface> expected_matrix                                = get_random_matrix();
@@ -227,12 +265,59 @@ void run_one_test()
 
     common_exception::CancellationToken cancellation_token{};
 
-    std::shared_ptr<the_matrix::MatrixInterface> output_matrix                                  = test_engine->optimize(*random_matrix, *evaluator, cancellation_token);
+    std::cout << "__BEGIN_OPTIMIZATION_TEST__\n";
 
     double initial_deviation    = evaluator->get_deviation(*random_matrix);
-    double optimized_deviation  = evaluator->get_deviation(*output_matrix);
+    std::cout << "initial deviation > " << initial_deviation << "\n";
 
-    std::cout << "initial_deviation > " << initial_deviation << "<> optimized_deviation > " << optimized_deviation << "\n";
+    for (size_t i = 0u; i < OPTIMIZATION_SZ; ++i)
+    {
+        random_matrix               = test_engine->optimize(*random_matrix, *evaluator, cancellation_token);
+        double optimized_deviation  = evaluator->get_deviation(*random_matrix);
+
+        std::cout << "optimized deviation > " << optimized_deviation << "\n";
+    }
+
+    std::cout << "__END_OPTIMIZATION_TEST__\n";
+}
+
+void matrix_optimization_range_test()
+{
+    const size_t POW2_RANGE_SZ  = 24u;
+
+    std::shared_ptr<matrix_optimizer_subsystem::CoordinatedSearchOptimizerEngine> test_engine   = get_test_coordinated_search_optimizer_engine();
+    common_exception::CancellationToken cancellation_token{};
+
+    for (size_t i = 0u; i < POW2_RANGE_SZ; ++i)
+    {
+        size_t base_sz = size_t{1} << i;
+
+        std::shared_ptr<the_matrix::MatrixInterface> expected_matrix            = get_random_matrix_of_size(base_sz);
+        std::shared_ptr<the_matrix::MatrixInterface> random_matrix              = get_expected_matrix_like(expected_matrix);
+        std::shared_ptr<matrix_evaluator::MatrixEvaluatorInterface> evaluator   = get_matrix_difference_evaluator(expected_matrix);
+
+        random_matrix                                                           = test_engine->optimize(*random_matrix, *evaluator, cancellation_token);
+        double optimized_deviation                                              = evaluator->get_deviation(*random_matrix);
+
+        std::cout << "punched > " << base_sz << "<> deviation > " << optimized_deviation << "\n";
+    }
+}
+
+void matrix_optimization_big_range_test()
+{
+    size_t base_sz = size_t{1} << 24;
+
+    std::shared_ptr<matrix_optimizer_subsystem::CoordinatedSearchOptimizerEngine> test_engine   = get_random_coordinated_search_optimizer_engine();
+    common_exception::CancellationToken cancellation_token{};
+
+    std::shared_ptr<the_matrix::MatrixInterface> expected_matrix            = get_random_matrix_of_size(base_sz);
+    std::shared_ptr<the_matrix::MatrixInterface> random_matrix              = get_expected_matrix_like(expected_matrix);
+    std::shared_ptr<matrix_evaluator::MatrixEvaluatorInterface> evaluator   = get_matrix_difference_evaluator(expected_matrix);
+
+    random_matrix                                                           = test_engine->optimize(*random_matrix, *evaluator, cancellation_token);
+    double optimized_deviation                                              = evaluator->get_deviation(*random_matrix);
+
+    std::cout << "punched > " << base_sz << "<> deviation > " << optimized_deviation << "\n";
 }
 
 void run_test()
@@ -241,6 +326,9 @@ void run_test()
     const size_t COUT_SZ    = size_t{1} << 4;
 
     std::cout << "__BEGIN_COORDINATED_SEARCH_OPTIMIZER_ENGINE_TEST__\n";
+
+    // matrix_optimization_big_range_test();
+    // matrix_optimization_range_test();
 
     for (size_t i = 0u; i < TEST_SZ; ++i)
     {

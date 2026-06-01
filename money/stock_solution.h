@@ -1621,7 +1621,6 @@ namespace stock_solution
 
             std::chrono::time_point<std::chrono::utc_clock> first;
             std::chrono::time_point<std::chrono::utc_clock> last;
-            std::chrono::nanoseconds iteration_step;
 
             size_t training_token_ingestion_window;
 
@@ -1652,7 +1651,6 @@ namespace stock_solution
 
                                first(get_past(DEFAULT_WINDOW)),
                                last(get_now()),
-                               iteration_step(DEFAULT_LAPSE),
 
                                training_token_ingestion_window(DEFAULT_TRAINING_TOKEN_INGESTION_WINDOW),
 
@@ -1741,18 +1739,6 @@ namespace stock_solution
                 return *this;
             }
 
-            auto set_training_iteration_step(std::chrono::nanoseconds dur) -> SolutionBuilder&
-            {
-                if (dur <= std::chrono::nanoseconds(0))
-                {
-                    throw std::invalid_argument("bad lapse, negative or zero");
-                }
-
-                this->iteration_step = dur;
-
-                return *this;
-            }
-
             auto build() -> std::shared_ptr<Promise<SolutionData>>
             {
                 if (this->matrix_broker == nullptr)
@@ -1786,8 +1772,7 @@ namespace stock_solution
 
                                                                                                                                                        this->first,
                                                                                                                                                        this->last,
-                                                                                                                                                       this->iteration_step,
-                                                                                                                                                        
+
                                                                                                                                                        this->training_token_ingestion_window,
 
                                                                                                                                                        std::move(this->cancellation_token))));
@@ -1810,7 +1795,6 @@ namespace stock_solution
 
                     std::chrono::time_point<std::chrono::utc_clock> first;
                     std::chrono::time_point<std::chrono::utc_clock> last;
-                    std::chrono::nanoseconds iteration_step;
 
                     std::shared_ptr<common_exception::CancellationTokenInterface> external_cancellation_token;
                     std::shared_ptr<common_exception::CancellationTokenInterface> running_cancellation_token;
@@ -1833,8 +1817,7 @@ namespace stock_solution
                                 
                                  std::chrono::time_point<std::chrono::utc_clock> first,
                                  std::chrono::time_point<std::chrono::utc_clock> last,
-                                 std::chrono::nanoseconds iteration_step,
-                                 
+
                                  size_t training_token_ingestion_window,
 
                                  std::shared_ptr<common_exception::CancellationTokenInterface> external_cancellation_token) noexcept: focal_option(focal_option),
@@ -1848,7 +1831,6 @@ namespace stock_solution
 
                                                                                                                                       first(first),
                                                                                                                                       last(last),
-                                                                                                                                      iteration_step(iteration_step),
 
                                                                                                                                       external_cancellation_token(std::move(external_cancellation_token)),
                                                                                                                                       running_cancellation_token(),
@@ -1889,7 +1871,7 @@ namespace stock_solution
 
                             .training_first                     = this->first,
                             .training_last                      = this->last,
-                            .training_iteration_step            = this->iteration_step
+                            .training_iteration_step            = this->get_iteration_step()
                         };
                     }
 
@@ -1973,7 +1955,7 @@ namespace stock_solution
                         size_t epoch_first                      = std::chrono::duration_cast<std::chrono::nanoseconds>(this->first.time_since_epoch()).count();
                         size_t epoch_last                       = std::chrono::duration_cast<std::chrono::nanoseconds>(this->last.time_since_epoch()).count();
                         size_t time_interval_uint               = std::chrono::duration_cast<std::chrono::nanoseconds>(this->last - this->first).count();
-                        size_t lapse_uint                       = this->iteration_step.count();
+                        size_t lapse_uint                       = this->get_iteration_step().count();
 
                         if (lapse_uint == 0u)
                         {
@@ -2048,6 +2030,29 @@ namespace stock_solution
                         for (const auto& synchronizable: synchronizable_vec)
                         {
                             synchronizable->wait();
+                        }
+                    }
+
+                    auto get_iteration_step() -> std::chrono::nanoseconds
+                    {
+                        switch (this->focal_option)
+                        {
+                            case SolutionBuilder::FOCAL_OPTION_MINUTE:
+                            {
+                                return std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::minutes(1));
+                            }
+                            case SolutionBuilder::FOCAL_OPTION_SECOND_1:
+                            {
+                                return std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(1));
+                            }
+                            case SolutionBuilder::FOCAL_OPTION_SECOND_0:
+                            {
+                                return std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(1));
+                            }
+                            default:
+                            {
+                                throw std::invalid_argument("bad focal option, enumeration out of range");
+                            }
                         }
                     }
 

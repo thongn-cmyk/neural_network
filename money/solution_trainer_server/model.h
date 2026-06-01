@@ -17,6 +17,8 @@ namespace stock_solution_trainer_server
 {
     using Remote = dg_sock::network_rest_frame::model::Remote;
 
+    //alter semantic
+
     static inline constexpr uint8_t OPTIMIZATION_FLAG_O1    = 0u;
     static inline constexpr uint8_t OPTIMIZATION_FLAG_O2    = 1u;
     static inline constexpr uint8_t OPTIMIZATION_FLAG_O3    = 2u;
@@ -190,22 +192,19 @@ namespace stock_solution_trainer_server
     {
         std::chrono::time_point<std::chrono::utc_clock> from_timepoint;
         std::chrono::time_point<std::chrono::utc_clock> to_timepoint;
-        std::chrono::nanoseconds iteration_step;
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector) const
         {
             reflector(from_timepoint,
-                      to_timepoint,
-                      iteration_step);
+                      to_timepoint);
         }
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector)
         {
             reflector(from_timepoint,
-                      to_timepoint,
-                      iteration_step);
+                      to_timepoint);
         }
     };
 

@@ -988,8 +988,8 @@ namespace cosine_recommender_machine_x
 
             static auto get_coordinate_recommender() -> std::unique_ptr<coordinate_recommender_machine::CoordinateRecommenderMachineInterface>
             {
-                const size_t COORDINATE_ECHO_SZ     = size_t{1} << 4;
-                const size_t COORDINATE_WINDOW_SZ   = size_t{1} << 6;
+                const size_t COORDINATE_ECHO_SZ     = size_t{1} << 6;
+                const size_t COORDINATE_WINDOW_SZ   = size_t{1} << 4;
 
                 std::unique_ptr<coordinate_recommender_machine::CoordinateRecommenderMachineInterface> base     = std::make_unique<coordinate_recommender_machine::MixedCoordinateRecommenderMachine>();
                 std::unique_ptr<coordinate_recommender_machine::CoordinateRecommenderMachineInterface> result   = std::make_unique<coordinate_recommender_machine::EchoCoordinateRecommenderMachine>(std::move(base), COORDINATE_ECHO_SZ);

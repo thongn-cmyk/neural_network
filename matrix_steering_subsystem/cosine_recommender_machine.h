@@ -494,7 +494,7 @@ namespace cosine_recommender_machine
 
             static auto get_temporal_cosine_recommender_machine(crm_float_t focal_angle_deviation = 1,
                                                                 crm_float_t uniform_angle_deviation = 1,
-                                                                size_t temporal_queue_sz = 1024u) -> std::unique_ptr<CosineRecommenderMachineInterface>
+                                                                size_t temporal_queue_sz = 16u) -> std::unique_ptr<CosineRecommenderMachineInterface>
             {
                 std::unique_ptr<EuclideanCoordinateCosineRandomizer> randomizer                             = std::make_unique<EuclideanCoordinateCosineRandomizer>(focal_angle_deviation, uniform_angle_deviation);
                 std::unique_ptr<coordinate_recommender_machine::CoordinateRecommenderMachineInterface> base = std::make_unique<coordinate_recommender_machine::MixedCoordinateRecommenderMachine>();
@@ -506,7 +506,7 @@ namespace cosine_recommender_machine
 
             static auto get_echo_temporal_cosine_recommender_machine(crm_float_t focal_angle_deviation = 1,
                                                                      crm_float_t uniform_angle_deviation = 1,
-                                                                     size_t temporal_queue_sz = 1024u,
+                                                                     size_t temporal_queue_sz = 16u,
                                                                      size_t echo_sz = 16u) -> std::unique_ptr<CosineRecommenderMachineInterface>
             {
                 std::unique_ptr<EuclideanCoordinateCosineRandomizer> randomizer                                     = std::make_unique<EuclideanCoordinateCosineRandomizer>(focal_angle_deviation, uniform_angle_deviation);

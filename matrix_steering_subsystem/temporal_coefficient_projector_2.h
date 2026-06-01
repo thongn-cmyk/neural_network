@@ -1232,7 +1232,7 @@ namespace temporal_coefficient_projector_2
     {
         private:
 
-            static inline constexpr size_t ENUMERATION_SZ = 32u;
+            static inline constexpr size_t ENUMERATION_SZ = 10u;
         
         public:
 
@@ -1422,14 +1422,13 @@ namespace temporal_coefficient_projector_2
             static auto get_autolense_generator(std::unique_ptr<TemporalCoefficientProjectorGeneratorInterface>&& base) -> std::unique_ptr<TemporalCoefficientProjectorGeneratorInterface>
             {
                 return get_auto_range_lense_generator(get_auto_domain_lense_generator(std::move(base)));
-                // return get_auto_range_lense_generator(std::move(base));
             }
 
             template <class PromotedFloatType = std_float_t>
             static auto get_multispace_shape_generator() -> std::unique_ptr<TemporalCoefficientProjectorGeneratorInterface>
             {
                 const size_t TAYLOR_COEFFICIENT_SZ  = 8u;
-                const size_t RECOMMENDER_SZ         = 32u;
+                const size_t RECOMMENDER_SZ         = 16u;
 
                 std::vector<std::unique_ptr<cosine_recommender_machine_x::CosineRecommenderMachineInterface>> cosine_recommender_vec{};
 
@@ -1445,7 +1444,7 @@ namespace temporal_coefficient_projector_2
             static auto get_monospace_shape_generator() -> std::unique_ptr<TemporalCoefficientProjectorGeneratorInterface>
             {
                 const size_t TAYLOR_COEFFICIENT_SZ  = 8u;
-                const size_t EXPECTED_DIMENSION_SZ  = 64u;
+                const size_t EXPECTED_DIMENSION_SZ  = 32u;
                 const size_t TOTAL_SPACE_SZ         = TAYLOR_COEFFICIENT_SZ * EXPECTED_DIMENSION_SZ;
 
                 return std::make_unique<MonoSpaceTaylorSeriesProjectorGenerator<PromotedFloatType>>(cosine_recommender_machine_x::MachineFactory::get_best_recommender_machine(TOTAL_SPACE_SZ),

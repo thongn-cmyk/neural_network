@@ -42,7 +42,6 @@ namespace stock_solution_builder
 
         std::optional<std::chrono::time_point<std::chrono::utc_clock>> from_timepoint;
         std::optional<std::chrono::time_point<std::chrono::utc_clock>> to_timepoint;
-        std::optional<std::chrono::nanoseconds> iteration_step;
 
         uint8_t optimization_flag;
 
@@ -69,7 +68,6 @@ namespace stock_solution_builder
 
             std::optional<std::chrono::time_point<std::chrono::utc_clock>> from_timepoint;
             std::optional<std::chrono::time_point<std::chrono::utc_clock>> to_timepoint;
-            std::optional<std::chrono::nanoseconds> iteration_step;
 
             static inline constexpr std::chrono::nanoseconds DEFAULT_ITERATION_STEP = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::days(1));
 
@@ -88,7 +86,6 @@ namespace stock_solution_builder
                                                            .set_training_last_timepoint(this->get_training_last_timepoint())
                                                            .set_feature_name_list(this->get_feature_name_list())
                                                            .set_tickers(this->get_ticker_vec())
-                                                           .set_training_iteration_step(this->get_training_iteration_step())
                                                            .build()->wait();
 
                 return stock_solution::to_external_solution_data(rs);
@@ -396,23 +393,6 @@ namespace stock_solution_builder
 
                 return this->ticker_vec.value();
             }
-
-            auto get_training_iteration_step() -> std::chrono::nanoseconds
-            {
-                if (!this->iteration_step.has_value())
-                {
-                    if (this->resource_base.iteration_step.has_value())
-                    {
-                        this->iteration_step    = this->resource_base.iteration_step.value();
-                    }
-                    else
-                    {
-                        this->iteration_step    = DEFAULT_ITERATION_STEP;
-                    }
-                }
-
-                return this->iteration_step.value();
-            }
     };
 
     class SolutionBuilder
@@ -477,13 +457,6 @@ namespace stock_solution_builder
             auto set_to(std::chrono::time_point<std::chrono::utc_clock> timepoint) -> SolutionBuilder&
             {
                 this->resource_base.to_timepoint = timepoint;
-
-                return *this;
-            }
-
-            auto set_iteration_step(std::chrono::nanoseconds dur) -> SolutionBuilder&
-            {
-                this->resource_base.iteration_step = dur;
 
                 return *this;
             }

@@ -212,22 +212,19 @@ namespace stock_solution_trainer_client
     {
         std::chrono::time_point<std::chrono::utc_clock> from_timepoint;
         std::chrono::time_point<std::chrono::utc_clock> to_timepoint;
-        std::chrono::nanoseconds iteration_step;
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector) const
         {
             reflector(from_timepoint,
-                      to_timepoint,
-                      iteration_step);
+                      to_timepoint);
         }
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector)
         {
             reflector(from_timepoint,
-                      to_timepoint,
-                      iteration_step);
+                      to_timepoint);
         }
     };
 
@@ -236,6 +233,7 @@ namespace stock_solution_trainer_client
         StockDataSource data_source;
         std::vector<ComputeSink> compute_sink_vec;
         TrainingWindowInfo training_window;
+
         uint8_t optimization_flag;
 
         template <class Reflector>

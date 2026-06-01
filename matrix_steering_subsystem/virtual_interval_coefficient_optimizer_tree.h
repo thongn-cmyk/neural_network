@@ -12,6 +12,7 @@
 #include "graph_optimizer.h"
 #include <stl_extension/unordered_node_map.h>
 #include <stl_extension/hasher.h>
+#include <stl_extension/stdx.h>
 #include "assert.h"
 #include <algorithm_extension/short_heap.h>
 
@@ -36,7 +37,27 @@ namespace virtual_interval_coefficient_optimizer_tree
             virtual ~BatchCoefficientOptimizerTreeInterface() = default;
 
             virtual auto get_coefficient_span(const std::vector<std::pair<size_t, size_t>>& range_vec) -> std::unique_ptr<BatchCoefficientSpaceTensorInterface> = 0;
-            virtual auto translate(const std::pair<size_t, size_t>& interval) -> std::vector<std::pair<size_t, size_t>> = 0;
+            virtual void rearrange_focal() = 0;
+            virtual auto size() -> size_t = 0;
+    };
+
+    class TranslationSpaceTensorInterface
+    {
+        public:
+
+            virtual ~TranslationSpaceTensorInterface() = default;
+
+            virtual auto get_translation_space() -> std::vector<std::vector<std::pair<size_t, size_t>>> = 0;
+            virtual void feedback(std_float_t rating) = 0;
+    };
+
+    class TranslationOptimizerTreeInterface
+    {
+        public:
+
+            virtual ~TranslationOptimizerTreeInterface() = default;
+
+            virtual auto get_translation_tensor(const std::vector<std::pair<size_t, size_t>>& range_vec) -> std::unique_ptr<TranslationSpaceTensorInterface> = 0;
             virtual void rearrange_focal() = 0;
             virtual auto size() -> size_t = 0;
     };
@@ -52,12 +73,6 @@ namespace virtual_interval_coefficient_optimizer_tree
             virtual void apply() = 0;
             virtual auto map(const std::pair<size_t, size_t>& segment) -> std::vector<std::pair<size_t, size_t>> = 0;
     };
-
-    //without the help of the segment mapper, we could never find the accumulating Taylor's coordinate
-    //it's not impossible, it's incredibly very hard if we actually do it "per fetch"
-    //we have covered roughly 20% of the materials for this quarter
-    //I guess that we'd try our best to cuda this and apply all the optimizables based on our knowledge
-    //other than that, I dont think that it's easily written without the help of the first program
 
     class SegmentMapper: public virtual SegmentMapperInterface
     {
@@ -89,6 +104,11 @@ namespace virtual_interval_coefficient_optimizer_tree
                 if (leaf_sz == 0u)
                 {
                     throw std::invalid_argument("bad leaf size, 0");
+                }
+
+                if (base_sz % leaf_sz != 0u)
+                {
+                    throw std::invalid_argument("bad base size, not multipliers of leaf size");
                 }
 
                 size_t translation_table_sz = base_sz / leaf_sz + size_t{base_sz % leaf_sz != 0u};
@@ -469,6 +489,188 @@ namespace virtual_interval_coefficient_optimizer_tree
             }
     };
 
+    class OddRangeSegmentMapper: public virtual SegmentMapperInterface
+    {
+        private:
+
+            std::unique_ptr<SegmentMapper> base;
+            size_t odd_first;
+            size_t odd_last;
+
+        public:
+
+            OddRangeSegmentMapper(size_t base_sz,
+                                  size_t leaf_sz,
+                                  size_t promotion_queue_cap)
+            {
+                size_t ceil_base_sz = stdx::mul_ceil(base_sz, leaf_sz);
+
+                if (ceil_base_sz == base_sz)
+                {
+                    this->base      = std::make_unique<SegmentMapper>(base_sz, leaf_sz, promotion_queue_cap);
+                    this->odd_first = base_sz;
+                    this->odd_last  = base_sz;
+                }
+                else
+                {
+                    size_t floor_base_sz    = ceil_base_sz - leaf_sz;
+                    this->base              = std::make_unique<SegmentMapper>(floor_base_sz, leaf_sz, promotion_queue_cap);
+                    this->odd_first         = floor_base_sz;
+                    this->odd_last          = base_sz;
+                }
+            }
+
+            void hint(const std::vector<std::pair<size_t, size_t>>& segment_vec, std_float_t rating)
+            {
+                if (this->odd_first == this->odd_last)
+                {
+                    this->base->hint(segment_vec, rating);
+                    return;
+                }
+
+                std::vector<std::pair<size_t, size_t>> transformed_segment_vec{};
+
+                for (const auto& segment: segment_vec)
+                {
+                    auto new_segment    = this->trim_interval(segment);
+                    transformed_segment_vec.push_back(new_segment);
+                }
+
+                this->base->hint(transformed_segment_vec, rating);
+            }
+
+            void clear()
+            {
+                this->base->clear();
+            }
+
+            void apply()
+            {
+                this->base->apply();
+            }
+
+            auto map(const std::pair<size_t, size_t>& segment) -> std::vector<std::pair<size_t, size_t>>
+            {
+                if (this->odd_first == this->odd_last)
+                {
+                    return this->base->map(segment);
+                }
+
+                size_t first    = segment.first;
+                size_t last     = first + segment.second;
+
+                if (first == last)
+                {
+                    return {};
+                }
+
+                if (last <= this->odd_first)
+                {
+                    return this->base->map(segment);
+                }
+
+                if (last > this->odd_last)
+                {
+                    throw std::invalid_argument("bad interval, out of range access");
+                }
+
+                if (first >= this->odd_first)
+                {
+                    return {segment};
+                }
+
+                std::vector<std::pair<size_t, size_t>> rs   = this->base->map({first, this->odd_first - first});
+                std::pair<size_t, size_t> odd_interval      = std::make_pair(this->odd_first, last - this->odd_first);
+
+                rs.push_back(odd_interval);
+
+                return rs;
+            }
+        
+        private:
+            
+            auto trim_interval(const std::pair<size_t, size_t>& interval) -> std::pair<size_t, size_t>
+            {
+                size_t first            = interval.first;
+                size_t last             = first + interval.second;
+
+                size_t trimmed_first    = std::min(first, this->odd_first);
+                size_t trimmed_last     = std::min(last, this->odd_first);
+
+                return std::make_pair(trimmed_first, trimmed_last - trimmed_first);
+            }
+    };
+
+    class TranslationOptimizerTree: public virtual TranslationOptimizerTreeInterface
+    {
+        private:
+            
+            std::shared_ptr<SegmentMapperInterface> segment_mapper;
+            size_t base_tree_sz;
+
+        public:
+
+            TranslationOptimizerTree(std::shared_ptr<SegmentMapperInterface> segment_mapper,
+                                     size_t base_tree_sz) noexcept: segment_mapper(std::move(segment_mapper)),
+                                                                    base_tree_sz(base_tree_sz){}
+
+            auto get_translation_tensor(const std::vector<std::pair<size_t, size_t>>& range_vec) -> std::unique_ptr<TranslationSpaceTensorInterface>
+            {
+                return std::make_unique<InternalTranslationSpaceTensor>(range_vec,
+                                                                        this->segment_mapper);
+            }
+
+            void rearrange_focal()
+            {
+                this->segment_mapper->apply();
+            }
+
+            auto size() -> size_t
+            {
+                return this->base_tree_sz;
+            }
+        
+        private:
+            
+            class InternalTranslationSpaceTensor: public virtual TranslationSpaceTensorInterface
+            {
+                private:
+
+                    std::vector<std::pair<size_t, size_t>> range_vec;
+                    std::shared_ptr<SegmentMapperInterface> segment_mapper;
+                    bool was_feedback_received;
+
+                public:
+
+                    InternalTranslationSpaceTensor(std::vector<std::pair<size_t, size_t>> range_vec,
+                                                   std::shared_ptr<SegmentMapperInterface> segment_mapper): range_vec(std::move(range_vec)),
+                                                                                                            segment_mapper(std::move(segment_mapper)),
+                                                                                                            was_feedback_received(false){}
+
+                    auto get_translation_space() -> std::vector<std::vector<std::pair<size_t, size_t>>>
+                    {
+                        std::vector<std::vector<std::pair<size_t, size_t>>> rs{};
+
+                        for (const auto& e: this->range_vec)
+                        {
+                            rs.push_back(this->segment_mapper->map(e));
+                        }
+
+                        return rs;
+                    }
+
+                    void feedback(std_float_t rating)
+                    {
+                        if (std::exchange(this->was_feedback_received, true))
+                        {
+                            return;
+                        }
+
+                        this->segment_mapper->hint(this->range_vec, rating);
+                    }
+            };
+    };
+
     class BatchCoefficientOptimizerTree : public virtual BatchCoefficientOptimizerTreeInterface
     {
         private:
@@ -589,6 +791,11 @@ namespace virtual_interval_coefficient_optimizer_tree
                 const size_t MULTIPLIER             = leaf_sz;
                 const size_t PROMOTION_QUEUE_CAP    = size_t{1} << 8;
 
+                if (MULTIPLIER == 0u)
+                {
+                    throw std::invalid_argument("bad leaf size, 0");
+                }
+
                 if (space_sz % MULTIPLIER != 0u)
                 {
                     throw std::invalid_argument("bad space size, space size is not a multiplication of leaf size");
@@ -604,6 +811,23 @@ namespace virtual_interval_coefficient_optimizer_tree
 
                 return std::make_unique<BatchCoefficientOptimizerTree>(std::move(optimizer),
                                                                        std::move(segment_mapper));
+            }
+
+            static auto get_translation_focal_tree(size_t space_sz,
+                                                   size_t leaf_sz = 64u) -> std::unique_ptr<TranslationOptimizerTreeInterface>
+            {
+                const size_t MULTIPLIER             = leaf_sz;
+                const size_t PROMOTION_QUEUE_CAP    = size_t{1} << 8;
+
+                if (MULTIPLIER == 0u)
+                {
+                    throw std::invalid_argument("bad leaf size, 0");
+                }
+
+                return std::make_unique<TranslationOptimizerTree>(std::make_unique<OddRangeSegmentMapper>(space_sz,
+                                                                                                          MULTIPLIER,
+                                                                                                          PROMOTION_QUEUE_CAP),
+                                                                  space_sz);
             }
     };
 }

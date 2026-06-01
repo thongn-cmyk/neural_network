@@ -38,7 +38,7 @@ class MagicMachineFactory: public virtual score_context_optimizer::StatisticalMa
 {
     public:
 
-        auto get() -> std::unique_ptr<score_context_optimizer::StatisticalMachineInterface>
+        auto get() -> std::shared_ptr<score_context_optimizer::StatisticalMachineInterface>
         {
             return std::make_unique<MagicMachine>(global_optimality_approximator::TensorFactoryFactory::get_best_factory());            
         }

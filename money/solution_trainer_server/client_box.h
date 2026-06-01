@@ -51,7 +51,6 @@ namespace stock_solution_trainer_server
                                                                                            .set_data_loader_config(this->work_order.data_source.data_loader_config)
                                                                                            .set_from(this->work_order.training_window.from_timepoint)
                                                                                            .set_to(this->work_order.training_window.to_timepoint)
-                                                                                           .set_iteration_step(this->work_order.training_window.iteration_step)
                                                                                            .set_optimization_flag(this->work_order.optimization_flag);
 
                         for (const auto& sink: this->work_order.compute_sink_vec)
