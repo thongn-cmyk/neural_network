@@ -790,7 +790,7 @@ namespace temporal_coefficient_projector_2
                                                                                 std::next(coefficient_vec.begin(), last)));
                 }
 
-                std::unique_ptr<temporal_coefficient_projector::TemporalCoefficientProjectorInterface> projector = std::make_unique<temporal_coefficient_projector::TaylorSeriesProjector<PromotedFloatType>>(std::move(coefficient_2d_vec));
+                std::unique_ptr<temporal_coefficient_projector::TemporalCoefficientProjectorInterface> projector = std::make_unique<temporal_coefficient_projector::TaylorRadianSeriesProjector<PromotedFloatType>>(std::move(coefficient_2d_vec));
 
                 return std::make_unique<InternalFactoryTensor>
                 (
@@ -1437,7 +1437,7 @@ namespace temporal_coefficient_projector_2
                     cosine_recommender_vec.push_back(cosine_recommender_machine_x::MachineFactory::get_best_recommender_machine(TAYLOR_COEFFICIENT_SZ));
                 }
 
-                return std::make_unique<TaylorSeriesProjectorGenerator<PromotedFloatType>>(std::move(cosine_recommender_vec));
+                return std::make_unique<TaylorRadianSeriesProjectorGenerator<PromotedFloatType>>(std::move(cosine_recommender_vec));
             }
 
             template <class PromotedFloatType = std_float_t>

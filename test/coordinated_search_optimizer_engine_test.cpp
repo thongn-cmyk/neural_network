@@ -88,8 +88,8 @@ auto get_random_coordinated_search_optimizer_engine() -> std::unique_ptr<matrix_
         {
             .matrix_cache_map_cap                       = randomize_optional_int<uint64_t>(0, size_t{1} << 4),
             .time_machine_cache_map_cap                 = randomize_optional_int<uint64_t>(0, size_t{1} << 4),
-            .optimization_epoch_sz                      = 256ULL,
-            .optimization_step_sz                       = 32ULL,
+            .optimization_epoch_sz                      = 128ULL,
+            .optimization_step_sz                       = 16ULL,
             .optimization_loop_sz                       = 4ULL
             // .coefficient_projector_float_byte_width     = (randomize_int(0, 1) == 0) ? std::optional<uint64_t>(std::nullopt)
             //                                                                          : std::optional<uint64_t>(randomize_byte_width()),
@@ -196,17 +196,26 @@ class SquareDeviationMatrixEvaluator: public virtual matrix_evaluator::MatrixEva
     private:
 
         std::shared_ptr<the_matrix::MatrixInterface> expected;
+        size_t counter;
     
     public:
 
-        SquareDeviationMatrixEvaluator(std::shared_ptr<the_matrix::MatrixInterface> expected): expected(std::move(expected)){}
+        SquareDeviationMatrixEvaluator(std::shared_ptr<the_matrix::MatrixInterface> expected): expected(std::move(expected)),
+                                                                                               counter(0u){}
 
         auto get_deviation(the_matrix::MatrixInterface& matrix) -> eval_float_t
         {
             std::vector<tensor_std_float_t> expected_tensor_vec = this->expected->get_coefficient_vector();
             std::vector<tensor_std_float_t> compared_tensor_vec = matrix.get_coefficient_vector();
 
+            this->counter += 1;
+
             return this->mean_square_root(expected_tensor_vec, compared_tensor_vec);
+        }
+
+        auto get_counter() -> size_t
+        {
+            return this->counter;
         }
 
     private:
@@ -236,7 +245,7 @@ class SquareDeviationMatrixEvaluator: public virtual matrix_evaluator::MatrixEva
         }
 };
 
-auto get_matrix_difference_evaluator(const std::shared_ptr<the_matrix::MatrixInterface>& expected) -> std::unique_ptr<matrix_evaluator::MatrixEvaluatorInterface>
+auto get_matrix_difference_evaluator(const std::shared_ptr<the_matrix::MatrixInterface>& expected) -> std::unique_ptr<SquareDeviationMatrixEvaluator>
 {
     return std::make_unique<SquareDeviationMatrixEvaluator>(expected);
 }
@@ -261,7 +270,7 @@ void run_one_test()
     std::shared_ptr<the_matrix::MatrixInterface> expected_matrix                                = get_random_matrix();
     std::shared_ptr<the_matrix::MatrixInterface> random_matrix                                  = get_expected_matrix_like(expected_matrix);
 
-    std::shared_ptr<matrix_evaluator::MatrixEvaluatorInterface> evaluator                       = get_matrix_difference_evaluator(expected_matrix);
+    std::shared_ptr<SquareDeviationMatrixEvaluator> evaluator                                   = get_matrix_difference_evaluator(expected_matrix);
 
     common_exception::CancellationToken cancellation_token{};
 
@@ -276,6 +285,7 @@ void run_one_test()
         double optimized_deviation  = evaluator->get_deviation(*random_matrix);
 
         std::cout << "optimized deviation > " << optimized_deviation << "\n";
+        std::cout << "counter > " << evaluator->get_counter() << "\n";
     }
 
     std::cout << "__END_OPTIMIZATION_TEST__\n";

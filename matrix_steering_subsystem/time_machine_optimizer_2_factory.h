@@ -260,10 +260,10 @@ namespace global_optimality_approximator
                 const double X_A                            = stdx::float_clamp(static_cast<double>(ApplicationRandomizer::ld_randomize_focal_2()), MIN_X_A, MAX_X_A);
 
                 const size_t STEP_COUNT_FIRST               = 1u;
-                const size_t STEP_COUNT_LAST                = size_t{1} << 4;
+                const size_t STEP_COUNT_LAST                = size_t{1} << 2;
 
                 const size_t ITERATION_COUNT_FIRST          = 1u;
-                const size_t ITERATION_COUNT_LAST           = 7u;
+                const size_t ITERATION_COUNT_LAST           = 4u;
 
                 double seed                                 = ApplicationRandomizer::ld_randomize_focal();
                 double exp_base                             = Randomizer::randomize_fixed_point_float(EXP_BASE_FIRST, EXP_BASE_LAST, EXP_BASE_DISCRETIZATION_SZ);
@@ -295,10 +295,10 @@ namespace global_optimality_approximator
                 const double X_A                            = stdx::float_clamp(static_cast<double>(ApplicationRandomizer::ld_randomize_focal_2()), MIN_X_A, MAX_X_A);
 
                 const size_t STEP_COUNT_FIRST               = 1u;
-                const size_t STEP_COUNT_LAST                = size_t{1} << 4;
+                const size_t STEP_COUNT_LAST                = size_t{1} << 2;
 
                 const size_t ITERATION_COUNT_FIRST          = 1u;
-                const size_t ITERATION_COUNT_LAST           = 7u;
+                const size_t ITERATION_COUNT_LAST           = 4u;
 
                 double seed                                 = ApplicationRandomizer::ld_randomize_focal();
                 double exp_base                             = Randomizer::randomize_fixed_point_float(EXP_BASE_FIRST, EXP_BASE_LAST, EXP_BASE_DISCRETIZATION_SZ);
@@ -334,10 +334,10 @@ namespace global_optimality_approximator
                 const double RELIABLE_X                     = stdx::float_clamp(static_cast<double>(ApplicationRandomizer::ld_randomize_focal_2()), MIN_X_A, MAX_X_A);
 
                 const size_t STEP_COUNT_FIRST               = 1u;
-                const size_t STEP_COUNT_LAST                = size_t{1} << 3;
+                const size_t STEP_COUNT_LAST                = size_t{1} << 2;
 
                 const size_t ITERATION_COUNT_FIRST          = 1u;
-                const size_t ITERATION_COUNT_LAST           = 7u;
+                const size_t ITERATION_COUNT_LAST           = 4u;
 
                 double seed                                 = ApplicationRandomizer::ld_randomize_focal_2();
                 double exp_base                             = Randomizer::randomize_fixed_point_float(EXP_BASE_FIRST, EXP_BASE_LAST, EXP_BASE_DISCRETIZATION_SZ);
@@ -374,10 +374,10 @@ namespace global_optimality_approximator
                 const double RELIABLE_X                     = stdx::float_clamp(static_cast<double>(ApplicationRandomizer::ld_randomize_focal_2()), MIN_X_A, MAX_X_A);
 
                 const size_t STEP_COUNT_FIRST               = 1u;
-                const size_t STEP_COUNT_LAST                = size_t{1} << 3;
+                const size_t STEP_COUNT_LAST                = size_t{1} << 2;
 
                 const size_t ITERATION_COUNT_FIRST          = 1u;
-                const size_t ITERATION_COUNT_LAST           = 7u;
+                const size_t ITERATION_COUNT_LAST           = 4u;
 
                 double seed                                 = ApplicationRandomizer::ld_randomize_focal_2();
                 double exp_base                             = Randomizer::randomize_fixed_point_float(EXP_BASE_FIRST, EXP_BASE_LAST, EXP_BASE_DISCRETIZATION_SZ);
@@ -409,10 +409,10 @@ namespace global_optimality_approximator
                 const double X_A                            = stdx::float_clamp(static_cast<double>(ApplicationRandomizer::ld_randomize_focal_2()), MIN_X_A, MAX_X_A);
 
                 const size_t STEP_COUNT_FIRST               = 1u;
-                const size_t STEP_COUNT_LAST                = size_t{1} << 3;
+                const size_t STEP_COUNT_LAST                = size_t{1} << 2;
 
                 const size_t ITERATION_COUNT_FIRST          = 1u;
-                const size_t ITERATION_COUNT_LAST           = 7u;
+                const size_t ITERATION_COUNT_LAST           = 4u;
 
                 double seed                                 = ApplicationRandomizer::ld_randomize_focal();
                 double exp_base                             = Randomizer::randomize_fixed_point_float(EXP_BASE_FIRST, EXP_BASE_LAST, EXP_BASE_DISCRETIZATION_SZ);
@@ -444,10 +444,10 @@ namespace global_optimality_approximator
                 const double X_A                            = stdx::float_clamp(static_cast<double>(ApplicationRandomizer::ld_randomize_focal_2()), MIN_X_A, MAX_X_A);
 
                 const size_t STEP_COUNT_FIRST               = 1u;
-                const size_t STEP_COUNT_LAST                = size_t{1} << 3;
+                const size_t STEP_COUNT_LAST                = size_t{1} << 2;
 
                 const size_t ITERATION_COUNT_FIRST          = 1u;
-                const size_t ITERATION_COUNT_LAST           = 7u;
+                const size_t ITERATION_COUNT_LAST           = 4u;
 
                 double seed                                 = ApplicationRandomizer::ld_randomize_focal();
                 double exp_base                             = Randomizer::randomize_fixed_point_float(EXP_BASE_FIRST, EXP_BASE_LAST, EXP_BASE_DISCRETIZATION_SZ);
@@ -483,10 +483,10 @@ namespace global_optimality_approximator
                 const double RELIABLE_X                     = stdx::float_clamp(static_cast<double>(ApplicationRandomizer::ld_randomize_focal_2()), MIN_X_A, MAX_X_A);
 
                 const size_t STEP_COUNT_FIRST               = 1u;
-                const size_t STEP_COUNT_LAST                = size_t{1} << 3;
+                const size_t STEP_COUNT_LAST                = size_t{1} << 2;
 
                 const size_t ITERATION_COUNT_FIRST          = 1u;
-                const size_t ITERATION_COUNT_LAST           = 7u;
+                const size_t ITERATION_COUNT_LAST           = 4u;
 
                 double seed                                 = ApplicationRandomizer::ld_randomize_focal_2();
                 double exp_base                             = Randomizer::randomize_fixed_point_float(EXP_BASE_FIRST, EXP_BASE_LAST, EXP_BASE_DISCRETIZATION_SZ);
@@ -523,10 +523,10 @@ namespace global_optimality_approximator
                 const double RELIABLE_X                     = stdx::float_clamp(static_cast<double>(ApplicationRandomizer::ld_randomize_focal_2()), MIN_X_A, MAX_X_A);
 
                 const size_t STEP_COUNT_FIRST               = 1u;
-                const size_t STEP_COUNT_LAST                = size_t{1} << 3;
+                const size_t STEP_COUNT_LAST                = size_t{1} << 2;
 
                 const size_t ITERATION_COUNT_FIRST          = 1u;
-                const size_t ITERATION_COUNT_LAST           = 7u;
+                const size_t ITERATION_COUNT_LAST           = 4u;
 
                 double seed                                 = ApplicationRandomizer::ld_randomize_focal_2();
                 double exp_base                             = Randomizer::randomize_fixed_point_float(EXP_BASE_FIRST, EXP_BASE_LAST, EXP_BASE_DISCRETIZATION_SZ);
@@ -807,7 +807,7 @@ namespace global_optimality_approximator
                 }
 
                 const size_t STEP_COUNT_FIRST               = 0u;
-                const size_t STEP_COUNT_LAST                = 5u;
+                const size_t STEP_COUNT_LAST                = 4u;
 
                 double step                                 = this->get_unfdst_decimalrange_seed();
                 size_t step_count                           = size_t{1} << this->raw_randomizer.randomize_uint(STEP_COUNT_FIRST, STEP_COUNT_LAST);
@@ -831,7 +831,7 @@ namespace global_optimality_approximator
                 }
 
                 const size_t STEP_COUNT_FIRST               = 0u;
-                const size_t STEP_COUNT_LAST                = 5u;
+                const size_t STEP_COUNT_LAST                = 4u;
 
                 double step                                 = this->get_unfdst_lowrange_seed();
                 size_t step_count                           = size_t{1} << this->raw_randomizer.randomize_uint(STEP_COUNT_FIRST, STEP_COUNT_LAST);
@@ -855,7 +855,7 @@ namespace global_optimality_approximator
                 }
 
                 const size_t STEP_COUNT_FIRST               = 0u;
-                const size_t STEP_COUNT_LAST                = 5u;
+                const size_t STEP_COUNT_LAST                = 4u;
 
                 double step                                 = this->get_unfdst_midrange_seed();
                 size_t step_count                           = size_t{1} << this->raw_randomizer.randomize_uint(STEP_COUNT_FIRST, STEP_COUNT_LAST);
@@ -879,7 +879,7 @@ namespace global_optimality_approximator
                 }
 
                 const size_t STEP_COUNT_FIRST               = 0u;
-                const size_t STEP_COUNT_LAST                = 5u;
+                const size_t STEP_COUNT_LAST                = 4u;
 
                 double step                                 = this->get_unfdst_highrange_seed();
                 size_t step_count                           = size_t{1} << this->raw_randomizer.randomize_uint(STEP_COUNT_FIRST, STEP_COUNT_LAST);
@@ -905,7 +905,7 @@ namespace global_optimality_approximator
                 }
 
                 const size_t STEP_COUNT_FIRST               = 0u;
-                const size_t STEP_COUNT_LAST                = 5u;
+                const size_t STEP_COUNT_LAST                = 4u;
 
                 double step                                 = this->get_expdst_decimalrange_seed();
                 size_t step_count                           = size_t{1} << this->raw_randomizer.randomize_uint(STEP_COUNT_FIRST, STEP_COUNT_LAST);
@@ -929,7 +929,7 @@ namespace global_optimality_approximator
                 }
 
                 const size_t STEP_COUNT_FIRST               = 0u;
-                const size_t STEP_COUNT_LAST                = 5u;
+                const size_t STEP_COUNT_LAST                = 4u;
 
                 double step                                 = this->get_expdst_lowrange_seed();
                 size_t step_count                           = size_t{1} << this->raw_randomizer.randomize_uint(STEP_COUNT_FIRST, STEP_COUNT_LAST);
@@ -954,7 +954,7 @@ namespace global_optimality_approximator
                 }
 
                 const size_t STEP_COUNT_FIRST               = 0u;
-                const size_t STEP_COUNT_LAST                = 5u;
+                const size_t STEP_COUNT_LAST                = 4u;
 
                 double step                                 = this->get_expdst_midrange_seed();
                 size_t step_count                           = size_t{1} << this->raw_randomizer.randomize_uint(STEP_COUNT_FIRST, STEP_COUNT_LAST);
@@ -979,7 +979,7 @@ namespace global_optimality_approximator
                 }
 
                 const size_t STEP_COUNT_FIRST               = 0u;
-                const size_t STEP_COUNT_LAST                = 5u;
+                const size_t STEP_COUNT_LAST                = 4u;
 
                 double step                                 = this->get_expdst_highrange_seed();
                 size_t step_count                           = size_t{1} << this->raw_randomizer.randomize_uint(STEP_COUNT_FIRST, STEP_COUNT_LAST);
@@ -1010,7 +1010,7 @@ namespace global_optimality_approximator
                 const size_t EXP_BASE_DISCRETIZATION_SZ     = 1'000'000'000'000ULL;
 
                 const size_t STEP_COUNT_FIRST               = 0u;
-                const size_t STEP_COUNT_LAST                = 5u;
+                const size_t STEP_COUNT_LAST                = 4u;
 
                 double exp_base                             = this->raw_randomizer.randomize_fixed_point_float(EXP_BASE_FIRST, EXP_BASE_LAST, EXP_BASE_DISCRETIZATION_SZ);
                 size_t step_count                           = size_t{1} << this->raw_randomizer.randomize_uint(STEP_COUNT_FIRST, STEP_COUNT_LAST);
@@ -1038,7 +1038,7 @@ namespace global_optimality_approximator
                 const size_t EXP_BASE_DISCRETIZATION_SZ     = 1'000'000'000'000ULL;
 
                 const size_t STEP_COUNT_FIRST               = 0u;
-                const size_t STEP_COUNT_LAST                = 5u;
+                const size_t STEP_COUNT_LAST                = 4u;
 
                 double exp_base                             = this->raw_randomizer.randomize_fixed_point_float(EXP_BASE_FIRST, EXP_BASE_LAST, EXP_BASE_DISCRETIZATION_SZ);
                 size_t step_count                           = size_t{1} << this->raw_randomizer.randomize_uint(STEP_COUNT_FIRST, STEP_COUNT_LAST);
@@ -1077,7 +1077,7 @@ namespace global_optimality_approximator
                 const size_t EXP_BASE_DISCRETIZATION_SZ     = 1'000'000'000'000ULL;
 
                 const size_t STEP_COUNT_FIRST               = 0u;
-                const size_t STEP_COUNT_LAST                = 5u;
+                const size_t STEP_COUNT_LAST                = 4u;
 
                 double exp_base                             = this->raw_randomizer.randomize_fixed_point_float(EXP_BASE_FIRST, EXP_BASE_LAST, EXP_BASE_DISCRETIZATION_SZ);
                 size_t step_count                           = size_t{1} << this->raw_randomizer.randomize_uint(STEP_COUNT_FIRST, STEP_COUNT_LAST);
@@ -1116,7 +1116,7 @@ namespace global_optimality_approximator
                 const size_t EXP_BASE_DISCRETIZATION_SZ     = 1'000'000'000'000ULL;
 
                 const size_t STEP_COUNT_FIRST               = 0u;
-                const size_t STEP_COUNT_LAST                = 5u;
+                const size_t STEP_COUNT_LAST                = 4u;
 
                 double exp_base                             = this->raw_randomizer.randomize_fixed_point_float(EXP_BASE_FIRST, EXP_BASE_LAST, EXP_BASE_DISCRETIZATION_SZ);
                 size_t step_count                           = size_t{1} << this->raw_randomizer.randomize_uint(STEP_COUNT_FIRST, STEP_COUNT_LAST);
@@ -1142,10 +1142,10 @@ namespace global_optimality_approximator
                 }
 
                 const size_t STEP_COUNT_FIRST               = 0u;
-                const size_t STEP_COUNT_LAST                = 5u;
+                const size_t STEP_COUNT_LAST                = 3u;
 
                 const size_t ITERATION_COUNT_FIRST          = 0u;
-                const size_t ITERATION_COUNT_LAST           = 5u;
+                const size_t ITERATION_COUNT_LAST           = 3u;
 
                 double a                                    = this->get_unfdst_decimalrange_seed();
                 double iterative_epsilon                    = this->app_randomizer.ld_randomize_focal_2();
@@ -1175,10 +1175,10 @@ namespace global_optimality_approximator
                 }
 
                 const size_t STEP_COUNT_FIRST               = 0u;
-                const size_t STEP_COUNT_LAST                = 5u;
+                const size_t STEP_COUNT_LAST                = 3u;
 
                 const size_t ITERATION_COUNT_FIRST          = 0u;
-                const size_t ITERATION_COUNT_LAST           = 5u;
+                const size_t ITERATION_COUNT_LAST           = 3u;
 
                 double a                                    = this->get_unfdst_lowrange_seed();
                 double iterative_epsilon                    = this->app_randomizer.ld_randomize_focal_2();
@@ -1209,10 +1209,10 @@ namespace global_optimality_approximator
                 }
 
                 const size_t STEP_COUNT_FIRST               = 0u;
-                const size_t STEP_COUNT_LAST                = 5u;
+                const size_t STEP_COUNT_LAST                = 3u;
 
                 const size_t ITERATION_COUNT_FIRST          = 0u;
-                const size_t ITERATION_COUNT_LAST           = 5u;
+                const size_t ITERATION_COUNT_LAST           = 3u;
 
                 double a                                    = this->get_unfdst_midrange_seed();
                 double iterative_epsilon                    = this->app_randomizer.ld_randomize_focal_2();
@@ -1243,10 +1243,10 @@ namespace global_optimality_approximator
                 }
 
                 const size_t STEP_COUNT_FIRST               = 0u;
-                const size_t STEP_COUNT_LAST                = 5u;
+                const size_t STEP_COUNT_LAST                = 3u;
 
                 const size_t ITERATION_COUNT_FIRST          = 0u;
-                const size_t ITERATION_COUNT_LAST           = 5u;
+                const size_t ITERATION_COUNT_LAST           = 3u;
 
                 double a                                    = this->get_unfdst_highrange_seed();
                 double iterative_epsilon                    = this->app_randomizer.ld_randomize_focal_2();
@@ -1282,10 +1282,10 @@ namespace global_optimality_approximator
                 const size_t EXP_BASE_DISCRETIZATION_SZ     = 1'000'000'000'000ULL;
 
                 const size_t STEP_COUNT_FIRST               = 0u;
-                const size_t STEP_COUNT_LAST                = 5u;
+                const size_t STEP_COUNT_LAST                = 3u;
 
                 const size_t ITERATION_COUNT_FIRST          = 0u;
-                const size_t ITERATION_COUNT_LAST           = 5u;
+                const size_t ITERATION_COUNT_LAST           = 3u;
 
                 double exp_base                             = this->raw_randomizer.randomize_fixed_point_float(EXP_BASE_FIRST, EXP_BASE_LAST, EXP_BASE_DISCRETIZATION_SZ);
                 double iterative_epsilon                    = this->app_randomizer.ld_randomize_focal_2();
@@ -1319,10 +1319,10 @@ namespace global_optimality_approximator
                 const size_t EXP_BASE_DISCRETIZATION_SZ     = 1'000'000'000'000ULL;
 
                 const size_t STEP_COUNT_FIRST               = 0u;
-                const size_t STEP_COUNT_LAST                = 5u;
+                const size_t STEP_COUNT_LAST                = 3u;
 
                 const size_t ITERATION_COUNT_FIRST          = 0u;
-                const size_t ITERATION_COUNT_LAST           = 5u;
+                const size_t ITERATION_COUNT_LAST           = 3u;
 
                 double exp_base                             = this->raw_randomizer.randomize_fixed_point_float(EXP_BASE_FIRST, EXP_BASE_LAST, EXP_BASE_DISCRETIZATION_SZ);
                 double iterative_epsilon                    = this->app_randomizer.ld_randomize_focal_2();
@@ -1356,10 +1356,10 @@ namespace global_optimality_approximator
                 const size_t EXP_BASE_DISCRETIZATION_SZ     = 1'000'000'000'000ULL;
 
                 const size_t STEP_COUNT_FIRST               = 0u;
-                const size_t STEP_COUNT_LAST                = 5u;
+                const size_t STEP_COUNT_LAST                = 3u;
 
                 const size_t ITERATION_COUNT_FIRST          = 0u;
-                const size_t ITERATION_COUNT_LAST           = 5u;
+                const size_t ITERATION_COUNT_LAST           = 3u;
 
                 double exp_base                             = this->raw_randomizer.randomize_fixed_point_float(EXP_BASE_FIRST, EXP_BASE_LAST, EXP_BASE_DISCRETIZATION_SZ);
                 double iterative_epsilon                    = this->app_randomizer.ld_randomize_focal_2();
@@ -1395,10 +1395,10 @@ namespace global_optimality_approximator
                 const size_t EXP_BASE_DISCRETIZATION_SZ     = 1'000'000'000'000ULL;
 
                 const size_t STEP_COUNT_FIRST               = 0u;
-                const size_t STEP_COUNT_LAST                = 5u;
+                const size_t STEP_COUNT_LAST                = 3u;
 
                 const size_t ITERATION_COUNT_FIRST          = 0u;
-                const size_t ITERATION_COUNT_LAST           = 5u;
+                const size_t ITERATION_COUNT_LAST           = 3u;
 
                 double exp_base                             = this->raw_randomizer.randomize_fixed_point_float(EXP_BASE_FIRST, EXP_BASE_LAST, EXP_BASE_DISCRETIZATION_SZ);
                 double iterative_epsilon                    = this->app_randomizer.ld_randomize_focal_2();
@@ -1431,10 +1431,10 @@ namespace global_optimality_approximator
                 }
 
                 const size_t STEP_COUNT_FIRST               = 0u;
-                const size_t STEP_COUNT_LAST                = 5u;
+                const size_t STEP_COUNT_LAST                = 3u;
 
                 const size_t ITERATION_COUNT_FIRST          = 0u;
-                const size_t ITERATION_COUNT_LAST           = 5u;
+                const size_t ITERATION_COUNT_LAST           = 3u;
 
                 double height                               = this->get_expdst_decimalrange_seed();
                 double iterative_epsilon                    = this->app_randomizer.ld_randomize_focal_2();
@@ -1464,10 +1464,10 @@ namespace global_optimality_approximator
                 }
 
                 const size_t STEP_COUNT_FIRST               = 0u;
-                const size_t STEP_COUNT_LAST                = 5u;
+                const size_t STEP_COUNT_LAST                = 3u;
 
                 const size_t ITERATION_COUNT_FIRST          = 0u;
-                const size_t ITERATION_COUNT_LAST           = 5u;
+                const size_t ITERATION_COUNT_LAST           = 3u;
 
                 double height                               = this->get_expdst_lowrange_seed();
                 double iterative_epsilon                    = this->app_randomizer.ld_randomize_focal_2();
@@ -1499,10 +1499,10 @@ namespace global_optimality_approximator
 
 
                 const size_t STEP_COUNT_FIRST               = 0u;
-                const size_t STEP_COUNT_LAST                = 5u;
+                const size_t STEP_COUNT_LAST                = 3u;
 
                 const size_t ITERATION_COUNT_FIRST          = 0u;
-                const size_t ITERATION_COUNT_LAST           = 5u;
+                const size_t ITERATION_COUNT_LAST           = 3u;
 
                 double height                               = this->get_expdst_midrange_seed();
                 double iterative_epsilon                    = this->app_randomizer.ld_randomize_focal_2();
@@ -1533,10 +1533,10 @@ namespace global_optimality_approximator
 
 
                 const size_t STEP_COUNT_FIRST               = 0u;
-                const size_t STEP_COUNT_LAST                = 5u;
+                const size_t STEP_COUNT_LAST                = 3u;
 
                 const size_t ITERATION_COUNT_FIRST          = 0u;
-                const size_t ITERATION_COUNT_LAST           = 5u;
+                const size_t ITERATION_COUNT_LAST           = 3u;
 
                 double height                               = this->get_expdst_highrange_seed();
                 double iterative_epsilon                    = this->app_randomizer.ld_randomize_focal_2();
@@ -2411,7 +2411,7 @@ namespace global_optimality_approximator
             static auto get_normal_factory() -> std::unique_ptr<TensorFactoryInterface>
             {
                 std::unique_ptr<DecisiveFactoryInterface> decisive_factory                              = std::make_unique<NormalDecisiveFactory<PromotedFloatType>>();
-                std::unique_ptr<branch_optimizer::MultipleBranchPredictorInterface> branch_predictor    = branch_optimizer::HierarchicalBranchPredictorFactory::get_best_branch_predictor_from_preorder_tree(decisive_factory->get_enumeration_preorder_tree());
+                std::unique_ptr<branch_optimizer::MultipleBranchPredictorInterface> branch_predictor    = branch_optimizer::HierarchicalBranchPredictorFactory::get_light_branch_predictor_from_preorder_tree(decisive_factory->get_enumeration_preorder_tree());
 
                 return std::make_unique<TensorFactory>(std::move(decisive_factory),
                                                        std::move(branch_predictor));
@@ -2421,7 +2421,7 @@ namespace global_optimality_approximator
             static auto get_advanced_factory() -> std::unique_ptr<TensorFactoryInterface>
             {
                 std::unique_ptr<DecisiveFactoryInterface> decisive_factory                              = std::make_unique<AdvancedDecisiveFactory<PromotedFloatType>>();
-                std::unique_ptr<branch_optimizer::MultipleBranchPredictorInterface> branch_predictor    = branch_optimizer::HierarchicalBranchPredictorFactory::get_best_branch_predictor_from_preorder_tree(decisive_factory->get_enumeration_preorder_tree());
+                std::unique_ptr<branch_optimizer::MultipleBranchPredictorInterface> branch_predictor    = branch_optimizer::HierarchicalBranchPredictorFactory::get_light_branch_predictor_from_preorder_tree(decisive_factory->get_enumeration_preorder_tree());
 
                 return std::make_unique<TensorFactory>(std::move(decisive_factory),
                                                        std::move(branch_predictor));

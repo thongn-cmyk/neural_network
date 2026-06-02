@@ -287,10 +287,10 @@ namespace global_optimality_approximator
                 const size_t EXP_BASE_DISCRETIZATION_SZ     = 1'000'000'000'000ULL;
 
                 const size_t STEP_COUNT_FIRST               = 1u;
-                const size_t STEP_COUNT_LAST                = size_t{1} << 4;
+                const size_t STEP_COUNT_LAST                = size_t{1} << 2;
 
                 const size_t ITERATION_COUNT_FIRST          = 1u;
-                const size_t ITERATION_COUNT_LAST           = size_t{1} << 4;
+                const size_t ITERATION_COUNT_LAST           = size_t{1} << 2;
 
                 double seed                                 = ApplicationRandomizer::ld_randomize_focal(true);
                 double exp_base                             = Randomizer::randomize_fixed_point_float(EXP_BASE_FIRST, EXP_BASE_LAST, EXP_BASE_DISCRETIZATION_SZ);
@@ -318,10 +318,10 @@ namespace global_optimality_approximator
                 const size_t EXP_BASE_DISCRETIZATION_SZ     = 1'000'000'000'000ULL;
 
                 const size_t STEP_COUNT_FIRST               = 1u;
-                const size_t STEP_COUNT_LAST                = size_t{1} << 4;
+                const size_t STEP_COUNT_LAST                = size_t{1} << 2;
 
                 const size_t ITERATION_COUNT_FIRST          = 1u;
-                const size_t ITERATION_COUNT_LAST           = size_t{1} << 4;
+                const size_t ITERATION_COUNT_LAST           = size_t{1} << 2;
 
                 double seed                                 = ApplicationRandomizer::ld_randomize_focal(true);
                 double range                                = ApplicationRandomizer::ld_randomize_focal();

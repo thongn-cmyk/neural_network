@@ -172,6 +172,11 @@ namespace virtual_interval_coefficient_optimizer_tree
 
             void apply()
             {
+                if (this->promotion_queue.empty())
+                {
+                    return;
+                }
+
                 std::vector<graph_optimizer::BinaryFCDEdgeInformation> optimizing_edge_vec{};
                 size_t self_vtx_sz = this->translation_table.size();
 

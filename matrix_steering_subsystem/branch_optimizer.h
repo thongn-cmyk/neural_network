@@ -200,6 +200,8 @@ namespace branch_optimizer
                 branch_float_t first                = 0;
                 branch_float_t inc_val              = branch_float_t{1} / sz;
 
+                result.reserve(sz);
+
                 for (size_t i = 0u; i < sz; ++i)
                 {
                     result.push_back(first);
@@ -546,6 +548,8 @@ namespace branch_optimizer
                 std::vector<branch_float_t> result  = {};
                 branch_float_t first                = 0;
                 branch_float_t inc_val              = branch_float_t{1} / sz;
+                
+                result.reserve(sz);
 
                 for (size_t i = 0u; i < sz; ++i)
                 {
@@ -1322,7 +1326,7 @@ namespace branch_optimizer
                                                                                      conventional_randomizer::RandomizerObject(),
                                                                                      2u,
                                                                                      1u);
-                
+
                 auto rhs    = std::make_unique<ProbabilisticMultipleBranchPredictor>(get_traditional_adaptive_branch_predictor_from_preorder_tree(preorder_enumeration_table),
                                                                                      get_aggressive_adaptive_branch_predictor_from_preorder_tree(preorder_enumeration_table),
                                                                                      conventional_randomizer::RandomizerObject(),
@@ -1334,6 +1338,11 @@ namespace branch_optimizer
                                                                               conventional_randomizer::RandomizerObject(),
                                                                               2u,
                                                                               1u);
+            }
+
+            static auto get_light_branch_predictor_from_preorder_tree(const std::vector<size_t>& preorder_enumeration_table) -> std::unique_ptr<MultipleBranchPredictorInterface>
+            {
+                return get_traditional_adaptive_branch_predictor_from_preorder_tree(preorder_enumeration_table);
             }
     };
 }

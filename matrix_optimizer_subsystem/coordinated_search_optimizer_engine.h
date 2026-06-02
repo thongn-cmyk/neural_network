@@ -103,6 +103,8 @@ namespace matrix_optimizer_subsystem
     //the theory of "context" engineering and "score" feedbacks, how we turned machine learning into context engineering by using "feedback()" function
     //one could say that if we could engineer context to perfection, such is that we incorporate every single detail into the "masterpiece", we'd get perfect next action, and you are absolutely right
 
+    //now I know why candy is good
+
     class CoordinatedSearchOptimizerEngine: public virtual MatrixOptimizerEngineInterface
     {
         private:
@@ -127,8 +129,8 @@ namespace matrix_optimizer_subsystem
             static inline constexpr size_t DEFAULT_COEFFICIENT_PROJECTOR_FLOAT_BYTE_WIDTH   = size_t{1} << 3;
             static inline constexpr size_t DEFAULT_TIME_MACHINE_OPTIMIZER_FLOAT_BYTE_WIDTH  = size_t{1} << 3;
 
-            static inline constexpr size_t DEFAULT_TIME_MACHINE_GENERATOR_CAPACITY          = size_t{1} << 8;
-            static inline constexpr size_t DEFAULT_PROJECTOR_GENERATOR_CAPACITY             = size_t{1} << 4;
+            static inline constexpr size_t DEFAULT_TIME_MACHINE_GENERATOR_CAPACITY          = size_t{1} << 10;
+            static inline constexpr size_t DEFAULT_PROJECTOR_GENERATOR_CAPACITY             = size_t{1} << 8;
 
         public:
 
@@ -226,9 +228,16 @@ namespace matrix_optimizer_subsystem
 
                                 if (stdx::nan_cmp(matrix_evaluator.get_deviation(*test_matrix), matrix_evaluator.get_deviation(*tmp_matrix)) < 0)
                                 {
-                                    tmp_matrix          = test_matrix;
-                                    projection_score    = 1;
-                                    time_machine_score  = 1;
+                                    double tentative_score  = std::abs(matrix_evaluator.get_deviation(*test_matrix) - matrix_evaluator.get_deviation(*tmp_matrix));
+
+                                    if (std::isnan(tentative_score))
+                                    {
+                                        tentative_score = 1;
+                                    }
+
+                                    tmp_matrix              = test_matrix;
+                                    projection_score        = std::max(projection_score, tentative_score);
+                                    time_machine_score      = std::max(projection_score, tentative_score);
                                 }
                             }
                             catch (common_exception::operation_canceled_error& e)
@@ -248,9 +257,16 @@ namespace matrix_optimizer_subsystem
 
                     if (stdx::nan_cmp(matrix_evaluator.get_deviation(*tmp_matrix), matrix_evaluator.get_deviation(*best_matrix)) < 0)
                     {
+                        double tentative_score  = std::abs(matrix_evaluator.get_deviation(*tmp_matrix) - matrix_evaluator.get_deviation(*best_matrix));
+
+                        if (std::isnan(tentative_score))
+                        {
+                            tentative_score = 1;
+                        }
+
                         best_matrix = tmp_matrix;
-                        outer_time_machine_iteration_ctx_wrapper->feedback(1u);
-                        projector_iteration_ctx_wrapper->feedback(1u);
+                        outer_time_machine_iteration_ctx_wrapper->feedback(tentative_score);
+                        projector_iteration_ctx_wrapper->feedback(tentative_score);
                     }
                     else
                     {
@@ -468,7 +484,7 @@ namespace matrix_optimizer_subsystem
                     {
                         if (*this->is_in_stack == false)
                         {
-                            throw std::invalid_argument("illegal invoke, out of stack");
+                            std::abort();
                         }
 
                         tm_float_t rs = this->base->f(t);
@@ -568,7 +584,7 @@ namespace matrix_optimizer_subsystem
                     {
                         if (*this->is_in_stack == false)
                         {
-                            throw std::invalid_argument("illegal invoke, out of stack");
+                            std::abort();
                         }
 
                         std::vector<std_float_t> coeff_vec = this->coefficient_projector->project(t);

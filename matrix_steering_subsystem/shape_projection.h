@@ -16,6 +16,7 @@ namespace shape_projection
 
     static inline constexpr size_t MAX_BASE_COEFFICIENT = 20;
     static inline constexpr bool HAS_FAST_DIV           = true;
+    static inline constexpr size_t HORIZONTAL_SCALER    = 20u;
 
     template <class LhsFloatType, class RhsFloatType>
     constexpr auto fast_div(LhsFloatType lhs, RhsFloatType rhs) -> decltype(lhs / rhs)
@@ -59,7 +60,8 @@ namespace shape_projection
             PromotedFloatType delta_result  = fast_div(static_cast<PromotedFloatType>(coeff_arr[i]), static_cast<PromotedFloatType>(factorial_denum)) * x_multiplier;
             projected_result                += delta_result;
             x_multiplier                    *= x;
-            factorial_denum                 *= i + 2;
+            factorial_denum                 *= i + 1;
+            factorial_denum                 *= HORIZONTAL_SCALER;
         }
 
         return projected_result;
@@ -111,8 +113,8 @@ namespace shape_projection
 
         for (size_t i = 0u; i < coeff_arr_sz_container.get(); ++i)
         {
-            euclid_coeff_arr[i] = carry_multiplier * std::sin(static_cast<PromotedFloatType>(radian_coeff_arr[i]));
-            carry_multiplier    *= std::cos(static_cast<PromotedFloatType>(radian_coeff_arr[i]));
+            euclid_coeff_arr[i] = carry_multiplier * std::cos(static_cast<PromotedFloatType>(radian_coeff_arr[i]));
+            carry_multiplier    *= std::sin(static_cast<PromotedFloatType>(radian_coeff_arr[i]));
         }
     }
 

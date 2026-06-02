@@ -1395,7 +1395,7 @@ namespace local_optimality_approximator
                 static_assert(std::is_floating_point_v<PromotedFloatType>);
 
                 const size_t ITERATION_SZ_FIRST     = 0u;
-                const size_t ITERATION_SZ_LAST      = 4u;
+                const size_t ITERATION_SZ_LAST      = 2u;
 
                 const std_float_t MIN_X_A           = std::numeric_limits<std_float_t>::min();
                 const std_float_t MAX_X_A           = stdx::to_precise_float_conversion_initializer<double>(1);
@@ -1422,7 +1422,7 @@ namespace local_optimality_approximator
                 static_assert(std::is_floating_point_v<PromotedFloatType>);
 
                 const size_t ITERATION_SZ_FIRST             = 0u;
-                const size_t ITERATION_SZ_LAST              = 4u;
+                const size_t ITERATION_SZ_LAST              = 2u;
 
                 const std_float_t MIN_X_A                   = std::numeric_limits<std_float_t>::min();
                 const std_float_t MAX_X_A                   = stdx::to_precise_float_conversion_initializer<double>(1);
@@ -1465,7 +1465,7 @@ namespace local_optimality_approximator
                 static_assert(std::is_floating_point_v<PromotedFloatType>);
 
                 const size_t ITERATION_SZ_FIRST             = 0u;
-                const size_t ITERATION_SZ_LAST              = 4u;
+                const size_t ITERATION_SZ_LAST              = 2u;
 
                 const std_float_t MIN_X_A                   = std::numeric_limits<std_float_t>::min();
                 const std_float_t MAX_X_A                   = stdx::to_precise_float_conversion_initializer<double>(1);
@@ -1509,7 +1509,7 @@ namespace local_optimality_approximator
                 static_assert(std::is_floating_point_v<PromotedFloatType>);
 
                 const size_t ITERATION_SZ_FIRST             = 0u;
-                const size_t ITERATION_SZ_LAST              = 4u;
+                const size_t ITERATION_SZ_LAST              = 2u;
 
                 const std_float_t MIN_X_A                   = std::numeric_limits<std_float_t>::min();
                 const std_float_t MAX_X_A                   = stdx::to_precise_float_conversion_initializer<double>(1);
@@ -1553,7 +1553,7 @@ namespace local_optimality_approximator
                 static_assert(std::is_floating_point_v<PromotedFloatType>);
 
                 const size_t ITERATION_SZ_FIRST             = 0u;
-                const size_t ITERATION_SZ_LAST              = 4u;
+                const size_t ITERATION_SZ_LAST              = 2u;
 
                 const std_float_t MIN_X_A                   = std::numeric_limits<std_float_t>::min();
                 const std_float_t MAX_X_A                   = stdx::to_precise_float_conversion_initializer<double>(1);

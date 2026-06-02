@@ -988,7 +988,7 @@ namespace cosine_recommender_machine_x
 
             static auto get_coordinate_recommender() -> std::unique_ptr<coordinate_recommender_machine::CoordinateRecommenderMachineInterface>
             {
-                const size_t COORDINATE_ECHO_SZ     = size_t{1} << 6;
+                const size_t COORDINATE_ECHO_SZ     = size_t{1} << 4;
                 const size_t COORDINATE_WINDOW_SZ   = size_t{1} << 4;
 
                 std::unique_ptr<coordinate_recommender_machine::CoordinateRecommenderMachineInterface> base     = std::make_unique<coordinate_recommender_machine::MixedCoordinateRecommenderMachine>();
@@ -1042,7 +1042,7 @@ namespace cosine_recommender_machine_x
                 }
 
                 std::unique_ptr<EnumerableCosineProjectorInterface> cosine_projector                                    = get_decisive_cosine_projector();
-                std::unique_ptr<branch_optimizer::MultipleBranchPredictorInterface> branch_predictor                    = branch_optimizer::HierarchicalBranchPredictorFactory::get_best_branch_predictor_from_preorder_tree(cosine_projector->get_enumeration_prefix_tree());
+                std::unique_ptr<branch_optimizer::MultipleBranchPredictorInterface> branch_predictor                    = branch_optimizer::HierarchicalBranchPredictorFactory::get_light_branch_predictor_from_preorder_tree(cosine_projector->get_enumeration_prefix_tree());
                 std::unique_ptr<VectorRandomizerMachineInterface> vector_randomizer                                     = get_radian_vector_randomizer();
                 std::unique_ptr<coordinate_recommender_machine::CoordinateRecommenderMachineInterface> coor_recommender = get_coordinate_recommender();
                 ChanceMachine chance_machine                                                                            = ChanceMachine(RANDOM_CHANCE_DENOM, RANDOM_CHANCE_NUM);
@@ -1067,7 +1067,7 @@ namespace cosine_recommender_machine_x
 
             static auto get_best_recommender_machine(size_t space_sz) -> std::unique_ptr<CosineRecommenderMachineInterface>
             {
-                const size_t POOL_SZ = 2u;
+                const size_t POOL_SZ = 1u;
 
                 std::vector<std::unique_ptr<CosineRecommenderMachineInterface>> machine_pool{};
 
