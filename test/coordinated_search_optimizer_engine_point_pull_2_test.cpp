@@ -19,6 +19,8 @@
 #include <type_traits>
 #include <stl_extension/stdx.h>
 #include <stl_extension/hasher.h>
+#include <matrix_steering_subsystem/by_step_optimizer.h>
+#include <unordered_map>
 
 using tensor_std_float_t = tensor_model::tensor_std_float_t;
 
@@ -109,7 +111,7 @@ auto get_random_point_bag(size_t sz) -> std::vector<std::pair<tensor_std_float_t
 
     for (size_t i = 0u; i < sz; ++i)
     {
-        rs.push_back(std::make_pair(randomize_double(0, 2), randomize_double(0, 2)));
+        rs.push_back(std::make_pair(randomize_double(0, 10), randomize_double(0, 2)));
     }
 
     return rs;
@@ -200,7 +202,18 @@ class HashTablePointPullMatrixEvaluator: public virtual matrix_evaluator::Matrix
 
         auto get_sub_coeff_vec(const std::vector<tensor_std_float_t>& master_vec, tensor_std_float_t x) -> std::vector<tensor_std_float_t>
         {
-            size_t hash_clue    = hasher::hash_reflectible(x);
+            // static size_t hash_clue = 0u;
+            
+            static std::unordered_map<tensor_std_float_t, size_t> hash_map{};
+
+            if (hash_map.find(x) == hash_map.end())
+            {
+                hash_map.insert({x, hash_map.size()});
+            }
+
+            size_t hash_clue    = hash_map[x];
+            // hash_clue           += 1;
+            // size_t hash_clue    = hasher::hash_reflectible(x); //point is that we use this hash_clue throughout the transformation function, and at the base of the transformation (or process_unit), so we'd hash it once
             size_t hash_idx     = hash_clue % this->hash_sz;
 
             size_t chunk_sz     = master_vec.size() / this->hash_sz;
@@ -255,52 +268,65 @@ auto get_random_coordinated_search_optimizer_engine() -> std::unique_ptr<matrix_
         {
             .matrix_cache_map_cap                       = randomize_optional_int<uint64_t>(0, size_t{1} << 4),
             .time_machine_cache_map_cap                 = randomize_optional_int<uint64_t>(0, size_t{1} << 4),
-            .optimization_epoch_sz                      = 256ULL,
-            .optimization_step_sz                       = 32LL,
+            .optimization_epoch_sz                      = 16LL,
+            .optimization_step_sz                       = 64LL,
             .optimization_loop_sz                       = 4ULL
-            // .coefficient_projector_float_byte_width     = (randomize_int(0, 1) == 0) ? std::optional<uint64_t>(std::nullopt)
-            //                                                                          : std::optional<uint64_t>(randomize_byte_width()),
-
-            // .time_machine_optimizer_float_byte_width    = (randomize_int(0, 1) == 0) ? std::optional<uint64_t>(std::nullopt),
-            //                                                                          : std::optional<uint64_t>(randomize_byte_width())
         }
     );
 }
 
-//let's dig deeper
+class StepOptimizer: public virtual by_step_optimizer::StepOptimizerInterface
+{
+    private:
 
-//I think that we should have a map to retain best results, but I really can't quantify the unit of the storable
-//whether it is a sequence of steps or is it one step
-//what is really the unit of that?
+        std::shared_ptr<matrix_evaluator::MatrixEvaluatorInterface> matrix_evaluator;
 
-//how do we unhinge the map?
-//is it by best velocity, for distance being the deviation achieved thus far, and time being the efforts
+    public:
 
-//but first, we'd need blockages
+        StepOptimizer(const std::shared_ptr<matrix_evaluator::MatrixEvaluatorInterface>& matrix_evaluator_arg): matrix_evaluator(matrix_evaluator_arg){}
 
-//second is whether we should change the coordinate or hash_dispatch the projection to include more points inside the projections
-//the problem is that these points would be then very detached and I dont know if it is "trainable" or that we are operating on the same coordinate to be trainable
+        auto step(const std::shared_ptr<void>& optimizable,
+                  common_exception::CancellationTokenInterface& cancellation_token) -> by_step_optimizer::OptimizationResult
+        {
+            std::shared_ptr<the_matrix::MatrixInterface> matrix = std::static_pointer_cast<the_matrix::MatrixInterface>(optimizable);
 
-//I understand that we'd be tempted to hash it first, then dispatch accordingly, but that is a dangerous property that is not intellectual
+            if (matrix == nullptr)
+            {
+                throw std::invalid_argument("bad matrix, null");
+            }
 
-//I understand that blocked search would actually break the encapsulation of the optimization engine for exposing the low level structure of the logits
+            std::unique_ptr<matrix_optimizer_subsystem::CoordinatedSearchOptimizerEngine> optimizer = get_random_coordinated_search_optimizer_engine();
+
+            auto rs                 = optimizer->optimize(*matrix, *this->matrix_evaluator, cancellation_token);
+            eval_float_t difference = this->matrix_evaluator->get_deviation(*rs);
+
+            std::cout << "optimized > " << difference << "\n";
+
+            return
+            {
+                .eval_value = difference,
+                .result     = std::shared_ptr<void>(std::move(rs))
+            };
+        }
+};
 
 void run_one_test()
 {
-    const size_t OPTIMIZATION_SZ                = size_t{1} << 4;
+    const size_t OPTIMIZATION_SZ                = size_t{1} << 8;
 
     const size_t POINT_PULL_SZ_RANGE            = size_t{1} << 3;
     const size_t TAYLOR_COEFFICIENT_SZ_RANGE    = size_t{1} << 3;
 
-    size_t point_pull_sz    = 20u;
+    size_t point_pull_sz    = 40u;
     size_t coefficient_sz   = 6u;
-    size_t hash_table_sz    = 20u;
+    size_t hash_table_sz    = 40u;
 
     std::shared_ptr<matrix_optimizer_subsystem::CoordinatedSearchOptimizerEngine> test_engine   = get_random_coordinated_search_optimizer_engine();
 
     std::shared_ptr<the_matrix::MatrixInterface> expected_matrix                                = get_taylor_matrix_table(coefficient_sz, hash_table_sz);
     std::vector<std::pair<tensor_std_float_t, tensor_std_float_t>> point_bag                    = get_random_point_bag(point_pull_sz);
     std::shared_ptr<matrix_evaluator::MatrixEvaluatorInterface> evaluator                       = get_distributed_matrix_evaluator(point_bag, hash_table_sz);
+    std::unique_ptr<by_step_optimizer::OptimizerInterface> optimizer                            = by_step_optimizer::ComponentFactory::get_finite_step_optimizer(std::make_unique<StepOptimizer>(evaluator), OPTIMIZATION_SZ);
 
     common_exception::CancellationToken cancellation_token{};
 
@@ -312,13 +338,10 @@ void run_one_test()
     double initial_deviation    = evaluator->get_deviation(*expected_matrix);
     std::cout << "initial deviation > " << initial_deviation << "\n";
 
-    for (size_t i = 0u; i < OPTIMIZATION_SZ; ++i)
-    {
-        expected_matrix  = test_engine->optimize(*expected_matrix, *evaluator, cancellation_token);
-        double optimized_deviation  = evaluator->get_deviation(*expected_matrix);
-
-        std::cout << "optimized deviation > " << optimized_deviation << "\n";
-    }
+    auto rs                     = std::static_pointer_cast<the_matrix::MatrixInterface>(optimizer->optimize(expected_matrix, cancellation_token));
+    
+    double final_deviation      = evaluator->get_deviation(*rs);
+    std::cout << "final deviation > " << final_deviation << "\n";
 
     std::cout << "__END_OPTIMIZATION_TEST__\n";
 }
