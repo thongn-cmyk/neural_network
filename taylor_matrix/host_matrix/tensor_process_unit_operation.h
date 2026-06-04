@@ -194,6 +194,34 @@ namespace taylor_matrix::host_matrix::tensor_process_unit_operation
         }
     }
 
+    template <class TaylorBaseCoeffSizeContainer,
+              class TaylorBasePromotedFloatType = tensor_model::tensor_std_float_t>
+    constexpr auto mono_transform(const tensor_model::ProcessUnit& arg,
+                                  TaylorBaseCoeffSizeContainer base_coeff_sz_container,
+                                  const tensor_model::tensor_std_float_t * coeff_arr, size_t& coeff_arr_offset, size_t coeff_arr_cap,
+                                  const stdx::Tag<TaylorBasePromotedFloatType>& taylor_base_promotion_tag = stdx::Tag<TaylorBasePromotedFloatType>()) -> tensor_model::ProcessUnit
+    {
+        tensor_model::ProcessUnit rs{};
+
+        for (size_t i = 0u; i < PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ; ++i)
+        {
+            size_t required_sz  = coeff_arr_offset + base_coeff_sz_container.get();
+
+            if (required_sz > coeff_arr_cap)
+            {
+                throw std::invalid_argument("bad operation, insufficient remaining logit size");
+            }
+
+            rs.logit_vec[i]     = taylor_projection::taylor_project(arg.logit_vec[i],
+                                                                    std::next(coeff_arr, coeff_arr_offset), base_coeff_sz_container,
+                                                                    taylor_base_promotion_tag);
+
+            coeff_arr_offset    = required_sz;
+        }
+
+        return rs;
+    }
+
     constexpr auto deparameterize(const tensor_model::ProcessUnit& process_unit, double perc) -> tensor_model::ProcessUnit
     {
         return {.logit_vec = stdx::copy_and_trail_defaultize(process_unit.logit_vec,

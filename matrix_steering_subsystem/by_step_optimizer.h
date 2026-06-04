@@ -113,7 +113,14 @@ namespace by_step_optimizer
             {
                 if (this->randomizer.flip_a_coin())
                 {
-                    return this->get_best_converge_next_step();
+                    if (this->randomizer.flip_a_coin())
+                    {
+                        return this->get_best_converge_next_step();
+                    }
+                    else
+                    {
+                        return this->get_forward_scanner_next_step();
+                    }
                 }
                 else
                 {

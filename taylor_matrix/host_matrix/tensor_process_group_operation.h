@@ -165,6 +165,30 @@ namespace taylor_matrix::host_matrix::tensor_process_group_operation
         return std::allocate_shared<tensor_model::ProcessGroup>(allocator, std::move(rs));
     }
 
+    template <class TaylorBaseCoeffSizeContainer,
+              class TaylorBasePromotedFloatType = tensor_model::tensor_std_float_t,
+              class Allocator = std::allocator<char>>
+    constexpr __attribute__((noinline)) auto mono_transform(const std::shared_ptr<tensor_model::ProcessGroup>& arg,
+                                                            TaylorBaseCoeffSizeContainer base_coeff_sz_container,
+                                                            const tensor_model::tensor_std_float_t * coeff_arr, size_t& coeff_arr_offset, size_t coeff_arr_cap,
+                                                            const stdx::Tag<TaylorBasePromotedFloatType>& taylor_base_promotion_tag = stdx::Tag<TaylorBasePromotedFloatType>{},
+                                                            const Allocator& allocator = Allocator()) -> std::shared_ptr<tensor_model::ProcessGroup>
+    {
+        stdx::safe_ptr_access(arg.get());
+
+        tensor_model::ProcessGroup rs{};
+
+        for (size_t i = 0u; i < tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ; ++i)
+        {
+            rs.process_vec[i]   = tensor_process_unit_operation::mono_transform(arg->process_vec[i],
+                                                                                base_coeff_sz_container,
+                                                                                coeff_arr, coeff_arr_offset, coeff_arr_cap,
+                                                                                taylor_base_promotion_tag); 
+        }
+
+        return std::allocate_shared<tensor_model::ProcessGroup>(allocator, std::move(rs));
+    }
+
     template <class Allocator = std::allocator<char>>
     constexpr auto deparameterize(const std::shared_ptr<tensor_model::ProcessGroup>& process_group,
                                   double perc,

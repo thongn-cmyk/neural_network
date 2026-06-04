@@ -1187,6 +1187,24 @@ namespace stdx
 
         return std::chrono::time_point_cast<clock_dur_t>(timepoint - dur);
     }
+
+    template <class T, class Allocator = std::allocator<char>>
+    auto make_2d_vector(size_t first_sz, size_t second_sz, const T& default_val = T(),
+                        const Allocator& allocator = Allocator()) -> transparent_vector<transparent_vector<T, Allocator>, Allocator>
+    {
+        transparent_vector<transparent_vector<T, Allocator>, Allocator> rs(first_sz,
+                                                                           transparent_vector<T, Allocator>(allocator),
+                                                                           allocator);
+
+        for (auto& e: rs)
+        {
+            e  = transparent_vector<T, Allocator>(second_sz,
+                                                  default_val,
+                                                  allocator);
+        }
+
+        return rs;
+    }
 }
 
 #endif

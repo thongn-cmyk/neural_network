@@ -16,7 +16,7 @@ namespace shape_projection
 
     static inline constexpr size_t MAX_BASE_COEFFICIENT = 20;
     static inline constexpr bool HAS_FAST_DIV           = true;
-    static inline constexpr size_t HORIZONTAL_SCALER    = 20u;
+    static inline constexpr size_t HORIZONTAL_SCALER    = 10u;
 
     template <class LhsFloatType, class RhsFloatType>
     constexpr auto fast_div(LhsFloatType lhs, RhsFloatType rhs) -> decltype(lhs / rhs)

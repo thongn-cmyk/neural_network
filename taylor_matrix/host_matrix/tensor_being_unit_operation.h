@@ -138,6 +138,33 @@ namespace taylor_matrix::host_matrix::tensor_being_unit_operation
                                                                                      .process_group_vec_sz  = lhs->process_group_vec_sz});
     }
 
+    template <class TaylorBaseCoeffSizeContainer,
+              class TaylorBasePromotedFloatType = tensor_model::tensor_std_float_t,
+              class Allocator = std::allocator<char>>
+    constexpr __attribute__((noinline)) auto mono_transform(const std::shared_ptr<tensor_model::BeingUnit>& arg,
+                                                            TaylorBaseCoeffSizeContainer base_coeff_sz_container,
+                                                            const tensor_model::tensor_std_float_t * coeff_arr, size_t& coeff_arr_offset, size_t coeff_arr_cap,
+                                                            const stdx::Tag<TaylorBasePromotedFloatType>& taylor_base_promotion_tag = stdx::Tag<TaylorBasePromotedFloatType>(),
+                                                            const Allocator& allocator = Allocator()) -> std::shared_ptr<tensor_model::BeingUnit>
+    {
+        stdx::safe_ptr_access(arg.get());
+
+        std::shared_ptr<std::shared_ptr<tensor_model::ProcessGroup>[]> rs = std::allocate_shared<std::shared_ptr<tensor_model::ProcessGroup>[]>(allocator, arg->process_group_vec_sz);
+
+        for (size_t i = 0u; i < arg->process_group_vec_sz; ++i)
+        {
+            rs[i]   = tensor_process_group_operation::mono_transform(arg->process_group_vec[i],
+                                                                     base_coeff_sz_container,
+                                                                     coeff_arr, coeff_arr_offset, coeff_arr_cap,
+                                                                     taylor_base_promotion_tag,
+                                                                     allocator);
+        }
+
+        return std::allocate_shared<tensor_model::BeingUnit>(allocator,
+                                                             tensor_model::BeingUnit{.process_group_vec     = std::move(rs),
+                                                                                     .process_group_vec_sz  = arg->process_group_vec_sz});
+    }
+
     template <class Allocator = std::allocator<char>>
     constexpr auto deparameterize(const std::shared_ptr<tensor_model::BeingUnit>& being,
                                   double perc,

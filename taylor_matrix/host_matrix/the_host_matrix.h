@@ -3,7 +3,7 @@
 #ifndef __TAYLOR_MATRIX_HOST_MATRIX_THE_HOST_MATRIX_H__
 #define __TAYLOR_MATRIX_HOST_MATRIX_THE_HOST_MATRIX_H__
 
-#include <seqpar_async/async_x.h>
+// #include <seqpar_async/async_x.h>
 #include <matrix/the_matrix_interface.h>
 #include "tensor_matrix_operation.h"
 #include "shape_projection.h"
@@ -18,6 +18,43 @@ namespace taylor_matrix::host_matrix::the_host_matrix
 {
     using namespace the_matrix;
     using tensor_std_float_t = tensor_model::tensor_std_float_t;
+
+    //this is the reason why I have Factory for every matrix, it does not always make "sense" in the "sense" of reusability
+
+    template <class T>
+    auto to_2d_array(const std::vector<std::vector<T>>& vec) -> std::shared_ptr<std::add_pointer_t<T>[]>
+    {
+        std::vector<std::vector<T>> tmp             = vec;
+        std::unique_ptr<std::add_pointer_t<T>[]> rs = std::make_unique<std::add_pointer_t<T>[]>(tmp.size());
+        T ** ptr                                    = rs.get();
+
+        for (size_t i = 0u; i < vec.size(); ++i)
+        {
+            rs[i] = tmp[i].data();
+        }
+
+        std::shared_ptr<void> resource_holder_0                     = std::make_unique<std::pair<decltype(tmp), decltype(rs)>>(std::make_pair(std::move(tmp), std::move(rs)));
+        std::unique_ptr<std::shared_ptr<void>> immutable_wrapper    = std::make_unique<std::shared_ptr<void>>(resource_holder_0);
+
+        auto destructor = [resource_holder = std::move(immutable_wrapper)](T ** obj) noexcept
+        {
+            (void) obj;
+            *resource_holder = {};
+        };
+
+        return std::unique_ptr<std::add_pointer_t<T>[], decltype(destructor)>(ptr, std::move(destructor));
+    }
+
+    //we implemented two very important optimizables
+
+    //first is the increase the logit touch bases by using hash_map
+    //second is the mono_transform
+
+    //we have proved that doing so does not interfere with the training process, because two random tokens going through the transformation will likely collide at some process functions due to the randomness of the hash_table_dispatch
+    //and that we have "stable" projection, in the sense that each training token has a set of dedicated "go-to" transformations
+    //mono_transform increase the stability of the projection, especially for 3-4 random points, because we have proved that power series work best for 3-4 random projection points
+
+    //
 
     template <size_t TAYLOR_BASE_COEFF_SZ, size_t SHAPE_BASE_COEFF_SZ, class TaylorBasePromotedFloatType, class ShapeBasePromotedFloatType>
     class TheHostMatrix: public virtual MatrixInterface
@@ -34,8 +71,10 @@ namespace taylor_matrix::host_matrix::the_host_matrix
             bool has_process_group_logit_reuse_tag;
             bool has_being_logit_reuse_tag;
             bool has_base_matrix_logit_reuse_tag;
-            std::vector<tensor_std_float_t> coeff_vec;
-            std::vector<tensor_std_float_t> shape_coeff_vec;
+
+            std::vector<std::vector<tensor_std_float_t>> taylor_coeff_2d_vec;
+            std::vector<std::vector<tensor_std_float_t>> shape_coeff_2d_vec;
+
             tensor_std_float_t pe_frequency_multiplier;
             tensor_std_float_t pe_amplitude_discrete_unit;
             size_t pe_dedicated_pe_sz;
@@ -59,8 +98,10 @@ namespace taylor_matrix::host_matrix::the_host_matrix
                           bool has_process_group_logit_reuse_tag,
                           bool has_being_logit_reuse_tag,
                           bool has_base_matrix_logit_reuse_tag,
-                          std::vector<tensor_std_float_t> coeff_vec,
-                          std::vector<tensor_std_float_t> shape_coeff_vec,
+
+                          std::vector<std::vector<tensor_std_float_t>> taylor_coeff_2d_vec,
+                          std::vector<std::vector<tensor_std_float_t>> shape_coeff_2d_vec,
+
                           tensor_std_float_t pe_frequency_multiplier,
                           tensor_std_float_t pe_amplitude_discrete_unit,
                           size_t pe_dedicated_pe_sz,
@@ -74,8 +115,10 @@ namespace taylor_matrix::host_matrix::the_host_matrix
                                                                                  has_process_group_logit_reuse_tag(has_process_group_logit_reuse_tag),
                                                                                  has_being_logit_reuse_tag(has_being_logit_reuse_tag),
                                                                                  has_base_matrix_logit_reuse_tag(has_base_matrix_logit_reuse_tag),
-                                                                                 coeff_vec(std::move(coeff_vec)),
-                                                                                 shape_coeff_vec(std::move(shape_coeff_vec)),
+
+                                                                                 taylor_coeff_2d_vec(std::move(taylor_coeff_2d_vec)),
+                                                                                 shape_coeff_2d_vec(std::move(shape_coeff_2d_vec)),
+
                                                                                  pe_frequency_multiplier(pe_frequency_multiplier),
                                                                                  pe_amplitude_discrete_unit(pe_amplitude_discrete_unit),
                                                                                  pe_dedicated_pe_sz(pe_dedicated_pe_sz),
@@ -89,32 +132,50 @@ namespace taylor_matrix::host_matrix::the_host_matrix
                     {
                         throw std::invalid_argument("bad matrix vector, null element");
                     }
-
-                    // if (tensor_matrix_operation::get_shape(matrix) != this->shape_vec)
-                    // {
-                    //     throw std::runtime_error("invalid argument, invalid matrix shape");
-                    // }
                 }
 
                 std::vector<std::shared_ptr<tensor_model::Matrix>> result_vec(matrix_vec.size());
                 std::vector<std::pair<size_t, std::shared_ptr<tensor_model::Matrix>>> enumerated_matrix_vec = stdx::enumerate_vector(matrix_vec);
 
+                std::shared_ptr<std::add_pointer_t<tensor_std_float_t>[]> taylor_coeff_2d_arr   = to_2d_array(this->taylor_coeff_2d_vec);
+                std::shared_ptr<std::add_pointer_t<tensor_std_float_t>[]> shape_coeff_2d_arr    = to_2d_array(this->shape_coeff_2d_vec);
+
+                size_t row_sz   = this->taylor_coeff_2d_vec.size();
+                size_t row1_sz  = this->shape_coeff_2d_vec.size();
+
+                if (row_sz != row1_sz)
+                {
+                    std::abort();
+                }
+
+                if (row_sz == 0u)
+                {
+                    std::abort();
+                }
+                
                 auto par_func = [&](auto&& e)
                 {
-                    size_t coeff_arr_offset         = 0u;
+                    size_t taylor_coeff_arr_offset  = 0u;
                     size_t shape_coeff_arr_offset   = 0u;
+                    size_t transformed_counter      = 0u;
 
-                    result_vec[e.first] = tensor_matrix_operation::matrix_transform(e.second,
+                    result_vec[e.first] = tensor_matrix_operation::matrix_transform(e.second, e.second,
                                                                                     this->focal_sz_vec,
                                                                                     this->focal_suffix_map,
                                                                                     this->accum_suffix_map,
                                                                                     this->rotation_sz_vec,
                                                                                     this->parameter_bound_ratio_vec,
+
                                                                                     stdx::to_size_container(std::integral_constant<size_t, TAYLOR_BASE_COEFF_SZ>{}),
-                                                                                    this->coeff_vec.data(), coeff_arr_offset, this->coeff_vec.size(),
+                                                                                    taylor_coeff_2d_arr.get(), taylor_coeff_arr_offset, this->taylor_coeff_2d_vec.front().size(),
+
                                                                                     stdx::to_size_container(std::integral_constant<size_t, SHAPE_BASE_COEFF_SZ>{}),
-                                                                                    this->shape_coeff_vec.data(), shape_coeff_arr_offset, this->shape_coeff_vec.size(),
+                                                                                    shape_coeff_2d_arr.get(), shape_coeff_arr_offset, this->shape_coeff_2d_vec.front().size(),
+
                                                                                     this->pe_frequency_multiplier, this->pe_amplitude_discrete_unit, 0u, this->pe_dedicated_pe_sz,
+
+                                                                                    transformed_counter, row_sz,
+
                                                                                     stdx::Tag<TaylorBasePromotedFloatType>{},
                                                                                     stdx::Tag<ShapeBasePromotedFloatType>{},
                                                                                     this->has_process_unit_logit_reuse_tag,
@@ -125,7 +186,7 @@ namespace taylor_matrix::host_matrix::the_host_matrix
 
                 if (this->project_concurrent_sz.has_value())
                 {
-                    async_x::sequential_parallel_group_launch_2(enumerated_matrix_vec.begin(), enumerated_matrix_vec.end(), par_func, this->project_concurrent_sz.value());
+                    // async_x::sequential_parallel_group_launch_2(enumerated_matrix_vec.begin(), enumerated_matrix_vec.end(), par_func, this->project_concurrent_sz.value());
                 }
                 else
                 {
@@ -139,54 +200,178 @@ namespace taylor_matrix::host_matrix::the_host_matrix
             {
                 std::vector<tensor_std_float_t> rs{};
 
-                std::copy(this->coeff_vec.begin(), this->coeff_vec.end(), std::back_inserter(rs));
-                std::copy(this->shape_coeff_vec.begin(), this->shape_coeff_vec.end(), std::back_inserter(rs));
+                std::vector<tensor_std_float_t> taylor_vec  = this->get_taylor_coefficient_vector();
+                std::vector<tensor_std_float_t> shape_vec   = this->get_shape_coefficient_vector();
+
+                std::copy(taylor_vec.begin(), taylor_vec.end(), std::back_inserter(rs));
+                std::copy(shape_vec.begin(), shape_vec.end(), std::back_inserter(rs));
 
                 return rs;
             }
 
             void set_coefficient_vector(const std::vector<tensor_std_float_t>& new_coeff_vec)
             {
-                if (this->coeff_vec.size() + this->shape_coeff_vec.size() != new_coeff_vec.size())
+                size_t taylor_vec_sz    = this->get_taylor_coefficient_vector_size();
+                size_t shape_vec_sz     = this->get_shape_coefficient_vector_size();
+                size_t vec_sz           = taylor_vec_sz + shape_vec_sz;
+
+                if (new_coeff_vec.size() != vec_sz)
                 {
                     throw std::invalid_argument("bad new coefficient vector, invalid size");
                 }
 
-                std::vector<tensor_std_float_t> shadow_coeff_vec(this->coeff_vec.size());
-                std::vector<tensor_std_float_t> shadow_shape_coeff_vec(this->shape_coeff_vec.size());
+                std::vector<tensor_std_float_t> taylor_vec  = std::vector<tensor_std_float_t>(new_coeff_vec.begin(), std::next(new_coeff_vec.begin(), taylor_vec_sz));
+                std::vector<tensor_std_float_t> shape_vec   = std::vector<tensor_std_float_t>(std::next(new_coeff_vec.begin(), taylor_vec_sz), new_coeff_vec.end());
 
-                for (size_t i = 0u; i < shadow_coeff_vec.size(); ++i)
+                this->check_taylor_coefficient_vector(taylor_vec);
+                this->check_shape_coefficient_vector(shape_vec);
+
+                try
                 {
-                    if (std::isnan(new_coeff_vec[i]))
-                    {
-                        throw std::invalid_argument("bad new coefficient vector, contains NaN");
-                    }
-
-                    shadow_coeff_vec[i] = new_coeff_vec[i];
+                    this->set_taylor_coefficient_vector(taylor_vec);
+                    this->set_shape_coefficient_vector(shape_vec);
                 }
-
-                for (size_t i = 0u; i < shadow_shape_coeff_vec.size(); ++i)
+                catch (...)
                 {
-                    if (std::isnan(new_coeff_vec[i + shadow_coeff_vec.size()]))
-                    {
-                        throw std::invalid_argument("bad new coefficient vector, contains NaN");
-                    }
-
-                    shadow_shape_coeff_vec[i] = shape_projection::radian_normalize(new_coeff_vec[i + shadow_coeff_vec.size()]);
-
-                    if (std::isnan(shadow_shape_coeff_vec[i]))
-                    {
-                        throw std::runtime_error("bad new coefficient vector, post_normalization contains NaN");
-                    }
+                    std::abort();
                 }
-
-                this->coeff_vec         = std::move(shadow_coeff_vec);
-                this->shape_coeff_vec   = std::move(shadow_shape_coeff_vec);
             }
 
             auto clone() -> std::shared_ptr<MatrixInterface>
             {
                 return std::make_shared<self>(*this);
+            }
+
+        private:
+
+            auto get_taylor_coefficient_vector() -> std::vector<tensor_std_float_t>
+            {
+                std::vector<tensor_std_float_t> rs{};
+
+                for (const auto& sub_vec: this->taylor_coeff_2d_vec)
+                {
+                    std::copy(sub_vec.begin(), sub_vec.end(), std::back_inserter(rs));
+                }
+
+                return rs;
+            }
+
+            auto get_shape_coefficient_vector() -> std::vector<tensor_std_float_t>
+            {
+                std::vector<tensor_std_float_t> rs{};
+
+                for (const auto & sub_vec: this->shape_coeff_2d_vec)
+                {
+                    std::copy(sub_vec.begin(), sub_vec.end(), std::back_inserter(rs));
+                }
+
+                return rs;
+            }
+
+            auto get_taylor_coefficient_vector_size() -> size_t
+            {
+                if (this->taylor_coeff_2d_vec.size() == 0u)
+                {
+                    std::abort();
+                }
+
+                return this->taylor_coeff_2d_vec.size() * this->taylor_coeff_2d_vec.front().size();
+            }
+
+            auto get_shape_coefficient_vector_size() -> size_t
+            {
+                if (this->shape_coeff_2d_vec.size() == 0u)
+                {
+                    std::abort();
+                }
+
+                return this->shape_coeff_2d_vec.size() * this->shape_coeff_2d_vec.front().size();
+            }
+
+            void check_taylor_coefficient_vector(const std::vector<tensor_std_float_t>& coeff_vec)
+            {
+                if (coeff_vec.size() != this->get_taylor_coefficient_vector_size())
+                {
+                    throw std::invalid_argument("bad taylor coefficient vector size, mismatched size");
+                }
+
+                for (tensor_std_float_t e: coeff_vec)
+                {
+                    if (std::isnan(e))
+                    {
+                        throw std::invalid_argument("bad tensor argument, NaN");
+                    }
+                }
+            }
+
+            void set_taylor_coefficient_vector(const std::vector<tensor_std_float_t>& coeff_vec)
+            {
+                check_taylor_coefficient_vector(coeff_vec);
+
+                size_t row_sz   = this->taylor_coeff_2d_vec.size();
+
+                if (row_sz == 0u)
+                {
+                    std::abort();
+                }
+
+                size_t col_sz   = this->taylor_coeff_2d_vec.front().size();
+
+                for (size_t i = 0u; i < row_sz; ++i)
+                {
+                    size_t first    = col_sz * i;
+                    size_t last     = col_sz * (i + 1);
+
+                    std::copy(std::next(coeff_vec.begin(), first),
+                              std::next(coeff_vec.begin(), last),
+                              this->taylor_coeff_2d_vec[i].data());
+                }
+            }
+
+            void check_shape_coefficient_vector(const std::vector<tensor_std_float_t>& coeff_vec)
+            {
+                if (coeff_vec.size() != this->get_shape_coefficient_vector_size())
+                {
+                    throw std::invalid_argument("bad shape coefficient vector size, mismatched size");
+                }
+
+                for (tensor_std_float_t e: coeff_vec)
+                {
+                    if (std::isnan(e))
+                    {
+                        throw std::invalid_argument("bad tensor argument, NaN");
+                    }
+
+                    if (std::isnan(shape_projection::radian_normalize(e)))
+                    {
+                        throw std::invalid_argument("bad tensor argument, induced NaN");
+                    }
+                }
+            }
+
+            void set_shape_coefficient_vector(const std::vector<tensor_std_float_t>& coeff_vec)
+            {
+                check_shape_coefficient_vector(coeff_vec);
+
+                size_t row_sz   = this->shape_coeff_2d_vec.size();
+
+                if (row_sz == 0u)
+                {
+                    std::abort();
+                }
+
+                size_t col_sz   = this->shape_coeff_2d_vec.front().size();
+
+                for (size_t i = 0u; i < row_sz; ++i)
+                {
+                    size_t first    = col_sz * i;
+                    size_t last     = col_sz * (i + 1);
+
+                    for (size_t j = 0u; j < col_sz; ++j)
+                    {
+                        this->shape_coeff_2d_vec[i][j] = shape_projection::radian_normalize(coeff_vec[first + j]);
+                    }
+                }
             }
     };
 
@@ -388,6 +573,10 @@ namespace taylor_matrix::host_matrix::the_host_matrix
             static inline const double PE_AMPLITUDE_DISCRETE_UNIT   = 0.1;
             static inline const size_t TENTATIVE_PE_SZ              = 4;
 
+            static inline const size_t LOW_ENTROPY_HASH_TABLE_SZ    = 8u;
+            static inline const size_t MID_ENTROPY_HASH_TABLE_SZ    = 16u;
+            static inline const size_t HIGH_ENTROPY_HASH_TABLE_SZ   = 32u;
+
             static inline const std::unordered_map<uint8_t, std::optional<size_t>> CONCURRENT_WORKER_MAP =
             {
                 {LOW_COMPUTE, std::optional<size_t>(std::nullopt)},
@@ -406,6 +595,7 @@ namespace taylor_matrix::host_matrix::the_host_matrix
                                         tensor_std_float_t pe_frequency_multiplier,
                                         tensor_std_float_t pe_amplitude_discrete_unit,
                                         size_t pe_dedicated_pe_sz,
+                                        size_t hash_table_sz,
                                         const std::integral_constant<size_t, TAYLOR_BASE_COEFF_SZ>& taylor_base_coeff_sz,
                                         const std::integral_constant<size_t, SHAPE_BASE_COEFF_SZ>& shape_base_coeff_sz,
                                         const stdx::Tag<TaylorBasePromotedFloatType>& taylor_base_promotion_tag = stdx::Tag<TaylorBasePromotedFloatType>{},
@@ -425,48 +615,57 @@ namespace taylor_matrix::host_matrix::the_host_matrix
                 {
                     try
                     {
-                        std::vector<tensor_std_float_t> coeff_vec(current_logit_vec_capacity);
-                        std::vector<tensor_std_float_t> shape_coeff_vec(current_logit_vec_capacity);
+                        std::vector<std::vector<tensor_std_float_t>> coeff_vec          = stdx::make_2d_vector<tensor_std_float_t>(hash_table_sz, current_logit_vec_capacity);
+                        std::vector<std::vector<tensor_std_float_t>> shape_coeff_vec    = stdx::make_2d_vector<tensor_std_float_t>(hash_table_sz, current_logit_vec_capacity);
+                        
+                        auto coeff_arr                                                  = to_2d_array(coeff_vec);
+                        auto shape_coeff_arr                                            = to_2d_array(shape_coeff_vec);
 
                         size_t coeff_vec_sz         = 0u;
                         size_t shape_coeff_vec_sz   = 0u;
+                        size_t transformed_counter  = 0u;
 
-                        tensor_matrix_operation::matrix_transform(tensor_matrix_operation::make_matrix_from_shape_vec(matrix_shape),
-                                                                focal_sz_vec,
-                                                                focal_suffix_map,
-                                                                accum_suffix_map,
-                                                                rotation_sz_vec,
-                                                                parameter_bound_ratio_vec,
-                                                                stdx::to_size_container(taylor_base_coeff_sz),
-                                                                coeff_vec.data(), coeff_vec_sz, current_logit_vec_capacity,
-                                                                stdx::to_size_container(shape_base_coeff_sz),
-                                                                shape_coeff_vec.data(), shape_coeff_vec_sz, current_logit_vec_capacity,
-                                                                pe_frequency_multiplier, pe_amplitude_discrete_unit, 0u, pe_dedicated_pe_sz,
-                                                                taylor_base_promotion_tag,
-                                                                shape_base_promotion_tag,
-                                                                has_process_unit_logit_reuse_tag,
-                                                                has_process_group_logit_reuse_tag,
-                                                                has_being_logit_reuse_tag,
-                                                                has_base_matrix_logit_reuse_tag);
+                        tensor_matrix_operation::matrix_transform(tensor_matrix_operation::make_matrix_from_shape_vec(matrix_shape), tensor_matrix_operation::make_matrix_from_shape_vec(matrix_shape),
+                                                                  focal_sz_vec,
+                                                                  focal_suffix_map,
+                                                                  accum_suffix_map,
+                                                                  rotation_sz_vec,
+                                                                  parameter_bound_ratio_vec,
+                                                                  stdx::to_size_container(taylor_base_coeff_sz),
+                                                                  coeff_arr.get(), coeff_vec_sz, current_logit_vec_capacity,
+                                                                  stdx::to_size_container(shape_base_coeff_sz),
+                                                                  shape_coeff_arr.get(), shape_coeff_vec_sz, current_logit_vec_capacity,
+                                                                  pe_frequency_multiplier, pe_amplitude_discrete_unit, 0u, pe_dedicated_pe_sz,
+
+                                                                  transformed_counter, hash_table_sz,
+
+                                                                  taylor_base_promotion_tag,
+                                                                  shape_base_promotion_tag,
+                                                                  has_process_unit_logit_reuse_tag,
+                                                                  has_process_group_logit_reuse_tag,
+                                                                  has_being_logit_reuse_tag,
+                                                                  has_base_matrix_logit_reuse_tag);
 
                         TheHostMatrix matrix(matrix_shape,
-                                            focal_sz_vec,
-                                            focal_suffix_map,
-                                            accum_suffix_map,
-                                            rotation_sz_vec,
-                                            parameter_bound_ratio_vec,
-                                            taylor_base_coeff_sz,
-                                            shape_base_coeff_sz,
-                                            taylor_base_promotion_tag,
-                                            shape_base_promotion_tag,
-                                            has_process_unit_logit_reuse_tag,
-                                            has_process_group_logit_reuse_tag,
-                                            has_being_logit_reuse_tag,
-                                            has_base_matrix_logit_reuse_tag,
-                                            std::vector<tensor_std_float_t>(coeff_vec_sz, 0.f),
-                                            std::vector<tensor_std_float_t>(shape_coeff_vec_sz, 0.f),
-                                            pe_frequency_multiplier, pe_amplitude_discrete_unit, pe_dedicated_pe_sz,
-                                            project_concurrent_sz);
+                                             focal_sz_vec,
+                                             focal_suffix_map,
+                                             accum_suffix_map,
+                                             rotation_sz_vec,
+                                             parameter_bound_ratio_vec,
+                                             taylor_base_coeff_sz,
+                                             shape_base_coeff_sz,
+                                             taylor_base_promotion_tag,
+                                             shape_base_promotion_tag,
+                                             has_process_unit_logit_reuse_tag,
+                                             has_process_group_logit_reuse_tag,
+                                             has_being_logit_reuse_tag,
+                                             has_base_matrix_logit_reuse_tag,
+
+                                             stdx::make_2d_vector(hash_table_sz, coeff_vec_sz, 0.f),
+                                             stdx::make_2d_vector(hash_table_sz, shape_coeff_vec_sz, 0.f),
+
+                                             pe_frequency_multiplier, pe_amplitude_discrete_unit, pe_dedicated_pe_sz,
+                                             project_concurrent_sz);
 
                         return std::make_unique<decltype(matrix)>(std::move(matrix));
                     }
@@ -598,6 +797,7 @@ namespace taylor_matrix::host_matrix::the_host_matrix
                                        this->get_pe_frequency_multiplier(),
                                        this->get_pe_amplitude_discrete_unit(),
                                        this->get_pe_dedicated_pe_size(),
+                                       this->get_hash_table_size(),
                                        this->get_taylor_base_coefficient_size(),
                                        this->get_shape_base_coefficient_size(),
                                        this->get_taylor_base_promotion_tag(),
@@ -610,6 +810,29 @@ namespace taylor_matrix::host_matrix::the_host_matrix
             }
 
         private:
+
+            auto get_hash_table_size() -> size_t
+            {
+                switch (this->entropy_option)
+                {
+                    case LOW_ENTROPY:
+                    {
+                        return self::LOW_ENTROPY_HASH_TABLE_SZ;
+                    }
+                    case MID_ENTROPY:
+                    {
+                        return self::MID_ENTROPY_HASH_TABLE_SZ;
+                    }
+                    case HIGH_ENTROPY:
+                    {
+                        return self::HIGH_ENTROPY_HASH_TABLE_SZ;
+                    }
+                    default:
+                    {
+                        std::abort();
+                    }
+                }
+            }
 
             auto ceil_vector_size(size_t sz) -> size_t
             {
