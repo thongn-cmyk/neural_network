@@ -168,7 +168,7 @@ namespace taylor_matrix::host_matrix::tensor_process_unit_operation
                                                                  has_logit_reuse_tag);
 
         shape_projection::batch_multidimensional_taylor_shape_project(input_arr, stdx::to_size_container(std::integral_constant<size_t, COMBINED_DIMENSION_SZ>{}), stdx::to_size_container(batch_sz),
-                                                                      base_coeff_sz_container,
+                                                                      base_shape_coeff_sz_container,
                                                                       shape_coeff_arr, shape_coeff_arr_offset, shape_coeff_arr_cap,
                                                                       shape_output_arr, std::integral_constant<size_t, PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ>{},
                                                                       has_logit_reuse_tag);

@@ -7,7 +7,7 @@
 #include <matrix_optimizer_subsystem/generic_optimizer_engine.h>
 #include <matrix_evaluator/matrix_evaluator_interface.h>
 
-namespace  matrix_optimizer_subsystem
+namespace matrix_optimizer_subsystem
 {
     class Optimizer
     {

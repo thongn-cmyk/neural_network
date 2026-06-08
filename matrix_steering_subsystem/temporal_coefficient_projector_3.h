@@ -351,7 +351,7 @@ namespace temporal_coefficient_projector_3
             static auto get_normal_generator(size_t coefficient_sz,
                                              size_t leaf_sz = 8u) -> std::unique_ptr<TemporalCoefficientProjectorGeneratorInterface>
             {
-                const size_t REFOCAL_THRESHOLD  = size_t{1} << 8;
+                const size_t REFOCAL_THRESHOLD  = size_t{1} << 4;
                 const size_t LEAF_SZ            = leaf_sz;
 
                 return std::make_unique<DynamicFocalTemporalCoefficientProjectorGenerator>(virtual_interval_coefficient_optimizer_tree::TreeFactory::get_translation_focal_tree(coefficient_sz, LEAF_SZ),

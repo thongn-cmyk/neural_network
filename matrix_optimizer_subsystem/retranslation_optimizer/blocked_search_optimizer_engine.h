@@ -1,5 +1,5 @@
-#ifndef __BLOCKED_SEARCH_OPTIMIZER_ENGINE_H__
-#define __BLOCKED_SEARCH_OPTIMIZER_ENGINE_H__
+#ifndef __MATRIX_OPTIMIZER_SUBSYSTEM_RETRANSLATION_OPTIMIZER_BLOCKED_SEARCH_OPTIMIZER_ENGINE_H__
+#define __MATRIX_OPTIMIZER_SUBSYSTEM_RETRANSLATION_OPTIMIZER_BLOCKED_SEARCH_OPTIMIZER_ENGINE_H__
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -8,7 +8,7 @@
 #include <functional>
 #include <algorithm>
 #include <memory>
-#include "matrix_optimizer_engine_interface.h"
+#include <matrix_optimizer_subsystem/matrix_optimizer_engine_interface.h>
 #include <matrix/tensor_model.h>
 #include <matrix/the_matrix_interface.h>
 #include <common_exception/cancellation_token.h>
@@ -17,12 +17,6 @@
 
 namespace matrix_optimizer_subsystem
 {
-    using namespace float_def;
-
-    using tensor_std_float_t    = tensor_model::tensor_std_float_t;
-
-    //I normally would not through this decision to do blocked search, but it is actually one important decision to have lots of other optimizations built on top of this
-
     class BlockedSearchOptimizerEngine: public virtual MatrixOptimizerEngineInterface
     {
         private:
@@ -55,9 +49,13 @@ namespace matrix_optimizer_subsystem
                                                                                                                                this->get_translation_table(matrix)),
                                                                                   &matrix_evaluator);
 
-                return this->base->optimize(retranslated_matrix,
-                                            retranslated_matrix_evaluator,
-                                            cancellation_token);
+                auto rs = this->base->optimize(retranslated_matrix,
+                                               retranslated_matrix_evaluator,
+                                               cancellation_token);
+
+                retranslated_matrix.set_coefficient_vector(rs->get_coefficient_vector());
+
+                return retranslated_matrix.clone_original_matrix();
             }
 
         private:
@@ -103,10 +101,10 @@ namespace matrix_optimizer_subsystem
                         return this->base_matrix->project(matrix_vec);
                     }
 
-                    auto get_coefficient_vector() -> std::vector<tensor_std_float_t>
+                    auto get_coefficient_vector() -> std::vector<tensor_model::tensor_std_float_t>
                     {
-                        std::vector<tensor_std_float_t> base_logit = this->base_matrix->get_coefficient_vector();
-                        std::vector<tensor_std_float_t> rs{};
+                        std::vector<tensor_model::tensor_std_float_t> base_logit = this->base_matrix->get_coefficient_vector();
+                        std::vector<tensor_model::tensor_std_float_t> rs{};
 
                         for (size_t idx: this->translation_table)
                         {
@@ -116,14 +114,14 @@ namespace matrix_optimizer_subsystem
                         return rs;
                     }
 
-                    void set_coefficient_vector(const std::vector<tensor_std_float_t>& coeff_vec)
+                    void set_coefficient_vector(const std::vector<tensor_model::tensor_std_float_t>& coeff_vec)
                     {
                         if (coeff_vec.size() != this->translation_table.size())
                         {
                             throw std::invalid_argument("bad coefficient vector, mismatched size");
                         }
 
-                        std::vector<tensor_std_float_t> full_coeff_vec  = this->base_matrix->get_coefficient_vector();
+                        std::vector<tensor_model::tensor_std_float_t> full_coeff_vec  = this->base_matrix->get_coefficient_vector();
 
                         for (size_t i = 0u; i < coeff_vec.size(); ++i)
                         {
@@ -158,7 +156,7 @@ namespace matrix_optimizer_subsystem
                                                         matrix_evaluator::MatrixEvaluatorInterface * matrix_evaluator_arg): original_matrix(std::move(original_matrix_arg)),
                                                                                                                             matrix_evaluator(matrix_evaluator_arg){}
 
-                    auto get_deviation(the_matrix::MatrixInterface& matrix) -> eval_float_t
+                    auto get_deviation(the_matrix::MatrixInterface& matrix) -> float_def::eval_float_t
                     {
                         this->original_matrix->set_coefficient_vector(matrix.get_coefficient_vector());
                         std::shared_ptr<the_matrix::MatrixInterface> org_matrix = this->original_matrix->clone_original_matrix();

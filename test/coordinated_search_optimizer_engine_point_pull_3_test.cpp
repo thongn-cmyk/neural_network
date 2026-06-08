@@ -1,7 +1,6 @@
 #define STRONG_MEMORY_ORDERING_FLAG true
 #define DEBUG_MODE_FLAG true
 
-#include <matrix_optimizer_subsystem/config_builder.h>
 #include <matrix_optimizer_subsystem/coordinated_search_optimizer_engine.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -20,6 +19,8 @@
 #include <type_traits>
 #include <stl_extension/stdx.h>
 #include <stl_extension/hasher.h>
+#include <matrix_steering_subsystem/by_step_optimizer.h>
+#include <unordered_map>
 
 using tensor_std_float_t = tensor_model::tensor_std_float_t;
 
@@ -104,13 +105,41 @@ auto get_taylor_matrix_table(size_t coefficient_sz, size_t hash_sz) -> std::uniq
     return std::make_unique<TaylorMatrix>(std::vector<tensor_std_float_t>(coefficient_sz * hash_sz, 0));
 }
 
+auto get_3d_taylor_matrix_table(size_t coefficient_sz, size_t hash_sz) -> std::unique_ptr<the_matrix::MatrixInterface>
+{
+    return std::make_unique<TaylorMatrix>(std::vector<tensor_std_float_t>(coefficient_sz * coefficient_sz * hash_sz, 0));
+}
+
 auto get_random_point_bag(size_t sz) -> std::vector<std::pair<tensor_std_float_t, tensor_std_float_t>>
 {
     std::vector<std::pair<tensor_std_float_t, tensor_std_float_t>> rs{};
 
     for (size_t i = 0u; i < sz; ++i)
     {
-        rs.push_back(std::make_pair(randomize_double(0, 2), randomize_double(0, 2)));
+        rs.push_back(std::make_pair(randomize_double(0, 10), randomize_double(0, 2)));
+    }
+
+    return rs;
+}
+
+auto get_random_3d_point_bag(size_t sz) -> std::vector<std::pair<std::pair<tensor_std_float_t, tensor_std_float_t>, tensor_std_float_t>>
+{
+    std::vector<std::pair<std::pair<tensor_std_float_t, tensor_std_float_t>, tensor_std_float_t>> rs{};
+
+    for (size_t i = 0u; i < sz; ++i)
+    {
+        rs.push_back
+        (
+            std::make_pair
+            (
+                std::make_pair
+                (
+                    randomize_double(0, 10),
+                    randomize_double(0, 10)
+                ),
+                randomize_double(0, 2)
+            )
+        );
     }
 
     return rs;
@@ -201,7 +230,18 @@ class HashTablePointPullMatrixEvaluator: public virtual matrix_evaluator::Matrix
 
         auto get_sub_coeff_vec(const std::vector<tensor_std_float_t>& master_vec, tensor_std_float_t x) -> std::vector<tensor_std_float_t>
         {
-            size_t hash_clue    = hasher::hash_reflectible(x);
+            // static size_t hash_clue = 0u;
+            
+            static std::unordered_map<tensor_std_float_t, size_t> hash_map{};
+
+            if (hash_map.find(x) == hash_map.end())
+            {
+                hash_map.insert({x, hash_map.size()});
+            }
+
+            size_t hash_clue    = hash_map[x];
+            // hash_clue           += 1;
+            // size_t hash_clue    = hasher::hash_reflectible(x); //point is that we use this hash_clue throughout the transformation function, and at the base of the transformation (or process_unit), so we'd hash it once
             size_t hash_idx     = hash_clue % this->hash_sz;
 
             size_t chunk_sz     = master_vec.size() / this->hash_sz;
@@ -237,6 +277,87 @@ class HashTablePointPullMatrixEvaluator: public virtual matrix_evaluator::Matrix
         }
 };
 
+class HashTable3DPointPullMatrixEvaluator: public virtual matrix_evaluator::MatrixEvaluatorInterface
+{
+    private:
+
+        std::vector<std::pair<std::pair<tensor_std_float_t, tensor_std_float_t>, tensor_std_float_t>> point_vec;
+        size_t hash_sz;
+    
+    public:
+
+        HashTable3DPointPullMatrixEvaluator(std::vector<std::pair<std::pair<tensor_std_float_t, tensor_std_float_t>, tensor_std_float_t>> point_vec,
+                                            size_t hash_sz): point_vec(std::move(point_vec)),
+                                                             hash_sz(hash_sz){}
+
+        auto get_deviation(the_matrix::MatrixInterface& matrix) -> eval_float_t
+        {
+            std::vector<std::pair<std::pair<tensor_std_float_t, tensor_std_float_t>, tensor_std_float_t>> projected_vec{};
+            auto coeff_vec = matrix.get_coefficient_vector();
+
+            for (const auto& [x, y]: this->point_vec)
+            {
+                auto sub_coeff_vec  = this->get_sub_coeff_vec(coeff_vec, x);
+                size_t base_sz      = std::sqrt(sub_coeff_vec.size());
+                size_t offset       = 0u;
+                
+                tensor_std_float_t x_arr[]{std::get<0>(x), std::get<1>(x)};
+
+                projected_vec.push_back(std::make_pair(x, taylor_projection::multivariate_taylor_project(x_arr, stdx::to_size_container(2u),
+                                                                                                         stdx::to_size_container(base_sz),
+                                                                                                         sub_coeff_vec.data(), offset, sub_coeff_vec.size())));
+            }
+
+            return this->mean_square_root(projected_vec, this->point_vec);
+        }
+
+    private:
+
+        auto get_sub_coeff_vec(const std::vector<tensor_std_float_t>& master_vec, std::pair<tensor_std_float_t, tensor_std_float_t> x) -> std::vector<tensor_std_float_t>
+        {
+            static std::unordered_map<decltype(x), size_t, hasher::default_hasher<decltype(x)>> hash_map{};
+
+            if (hash_map.find(x) == hash_map.end())
+            {
+                hash_map.insert({x, hash_map.size()});
+            }
+
+            size_t hash_clue    = hash_map[x];
+            size_t hash_idx     = hash_clue % this->hash_sz;
+
+            size_t chunk_sz     = master_vec.size() / this->hash_sz;
+
+            size_t first        = hash_idx * chunk_sz;
+            size_t last         = first + chunk_sz;
+
+            return std::vector<tensor_std_float_t>(std::next(master_vec.begin(), first), std::next(master_vec.begin(), last));
+        }
+
+        auto mean_square_root(const std::vector<std::pair<std::pair<tensor_std_float_t, tensor_std_float_t>, tensor_std_float_t>>& lhs,
+                              const std::vector<std::pair<std::pair<tensor_std_float_t, tensor_std_float_t>, tensor_std_float_t>>& rhs) -> eval_float_t
+        {
+            if (lhs.size() != rhs.size())
+            {
+                std::cout << "mayday, mismatched tensor dimension size\n";
+                std::abort();
+            }
+
+            eval_float_t rs = 0;
+
+            for (size_t i = 0u; i < lhs.size(); ++i)
+            {
+                rs += std::pow(lhs[i].second - rhs[i].second, 2);
+            }
+
+            if (lhs.size() != 0u)
+            {
+                rs /= lhs.size() * 2;
+            }
+
+            return std::sqrt(rs);
+        }
+};
+
 auto get_matrix_evaluator(const std::vector<std::pair<tensor_std_float_t, tensor_std_float_t>>& point_vec) -> std::unique_ptr<matrix_evaluator::MatrixEvaluatorInterface>
 {
     return std::make_unique<PointPullMatrixEvaluator>(point_vec);
@@ -248,6 +369,12 @@ auto get_distributed_matrix_evaluator(const std::vector<std::pair<tensor_std_flo
     return std::make_unique<HashTablePointPullMatrixEvaluator>(point_vec, hash_table_sz);
 }
 
+auto get_distributed_3d_matrix_evaluator(const std::vector<std::pair<std::pair<tensor_std_float_t, tensor_std_float_t>, tensor_std_float_t>>& point_vec,
+                                         size_t hash_table_sz) -> std::unique_ptr<matrix_evaluator::MatrixEvaluatorInterface>
+{
+    return std::make_unique<HashTable3DPointPullMatrixEvaluator>(point_vec, hash_table_sz);
+}
+
 auto get_random_coordinated_search_optimizer_engine() -> std::unique_ptr<matrix_optimizer_subsystem::CoordinatedSearchOptimizerEngine>
 {
     return std::make_unique<matrix_optimizer_subsystem::CoordinatedSearchOptimizerEngine>
@@ -256,34 +383,65 @@ auto get_random_coordinated_search_optimizer_engine() -> std::unique_ptr<matrix_
         {
             .matrix_cache_map_cap                       = randomize_optional_int<uint64_t>(0, size_t{1} << 4),
             .time_machine_cache_map_cap                 = randomize_optional_int<uint64_t>(0, size_t{1} << 4),
-            .optimization_epoch_sz                      = 256ULL,
-            .optimization_step_sz                       = 32LL,
+            .optimization_epoch_sz                      = 16LL,
+            .optimization_step_sz                       = 64LL,
             .optimization_loop_sz                       = 4ULL
-            // .coefficient_projector_float_byte_width     = (randomize_int(0, 1) == 0) ? std::optional<uint64_t>(std::nullopt)
-            //                                                                          : std::optional<uint64_t>(randomize_byte_width()),
-
-            // .time_machine_optimizer_float_byte_width    = (randomize_int(0, 1) == 0) ? std::optional<uint64_t>(std::nullopt),
-            //                                                                          : std::optional<uint64_t>(randomize_byte_width())
         }
     );
 }
 
+class StepOptimizer: public virtual by_step_optimizer::StepOptimizerInterface
+{
+    private:
+
+        std::shared_ptr<matrix_evaluator::MatrixEvaluatorInterface> matrix_evaluator;
+
+    public:
+
+        StepOptimizer(const std::shared_ptr<matrix_evaluator::MatrixEvaluatorInterface>& matrix_evaluator_arg): matrix_evaluator(matrix_evaluator_arg){}
+
+        auto step(const std::shared_ptr<void>& optimizable,
+                  common_exception::CancellationTokenInterface& cancellation_token) -> by_step_optimizer::OptimizationResult
+        {
+            std::shared_ptr<the_matrix::MatrixInterface> matrix = std::static_pointer_cast<the_matrix::MatrixInterface>(optimizable);
+
+            if (matrix == nullptr)
+            {
+                throw std::invalid_argument("bad matrix, null");
+            }
+
+            std::unique_ptr<matrix_optimizer_subsystem::CoordinatedSearchOptimizerEngine> optimizer = get_random_coordinated_search_optimizer_engine();
+
+            auto rs                 = optimizer->optimize(*matrix, *this->matrix_evaluator, cancellation_token);
+            eval_float_t difference = this->matrix_evaluator->get_deviation(*rs);
+
+            std::cout << "optimized > " << difference << "\n";
+
+            return
+            {
+                .eval_value = difference,
+                .result     = std::shared_ptr<void>(std::move(rs))
+            };
+        }
+};
+
 void run_one_test()
 {
-    const size_t OPTIMIZATION_SZ                = size_t{1} << 4;
+    const size_t OPTIMIZATION_SZ                = size_t{1} << 8;
 
     const size_t POINT_PULL_SZ_RANGE            = size_t{1} << 3;
     const size_t TAYLOR_COEFFICIENT_SZ_RANGE    = size_t{1} << 3;
 
-    size_t point_pull_sz    = 20u;
+    size_t point_pull_sz    = 800u;
     size_t coefficient_sz   = 6u;
-    size_t hash_table_sz    = 20u;
+    size_t hash_table_sz    = 40u;
 
-    std::shared_ptr<matrix_optimizer_subsystem::CoordinatedSearchOptimizerEngine> test_engine   = get_random_coordinated_search_optimizer_engine();
+    std::shared_ptr<matrix_optimizer_subsystem::CoordinatedSearchOptimizerEngine> test_engine               = get_random_coordinated_search_optimizer_engine();
 
-    std::shared_ptr<the_matrix::MatrixInterface> expected_matrix                                = get_taylor_matrix_table(coefficient_sz, hash_table_sz);
-    std::vector<std::pair<tensor_std_float_t, tensor_std_float_t>> point_bag                    = get_random_point_bag(point_pull_sz);
-    std::shared_ptr<matrix_evaluator::MatrixEvaluatorInterface> evaluator                       = get_distributed_matrix_evaluator(point_bag, hash_table_sz);
+    std::shared_ptr<the_matrix::MatrixInterface> expected_matrix                                            = get_3d_taylor_matrix_table(coefficient_sz, hash_table_sz);
+    std::vector<std::pair<std::pair<tensor_std_float_t, tensor_std_float_t>, tensor_std_float_t>> point_bag = get_random_3d_point_bag(point_pull_sz);
+    std::shared_ptr<matrix_evaluator::MatrixEvaluatorInterface> evaluator                                   = get_distributed_3d_matrix_evaluator(point_bag, hash_table_sz);
+    std::unique_ptr<by_step_optimizer::OptimizerInterface> optimizer                                        = by_step_optimizer::ComponentFactory::get_finite_step_optimizer(std::make_unique<StepOptimizer>(evaluator), OPTIMIZATION_SZ);
 
     common_exception::CancellationToken cancellation_token{};
 

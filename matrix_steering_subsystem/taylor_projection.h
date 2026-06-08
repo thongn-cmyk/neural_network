@@ -13,6 +13,7 @@ namespace taylor_projection
 {
     static inline constexpr size_t MAX_BASE_COEFFICIENT = 20u;
     static inline constexpr bool HAS_FAST_DIV           = true;
+    static inline constexpr size_t HORIZONTAL_SCALER    = 10u;
 
     template <class LhsFloatType, class RhsFloatType>
     constexpr auto fast_div(LhsFloatType lhs, RhsFloatType rhs) -> decltype(lhs / rhs)
@@ -95,6 +96,7 @@ namespace taylor_projection
             projected_result                += delta_result;
             x_multiplier                    *= x;
             factorial_denum                 *= i + 1;
+            factorial_denum                 *= HORIZONTAL_SCALER;
         }
 
         return projected_result;

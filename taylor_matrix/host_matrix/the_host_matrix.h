@@ -45,16 +45,8 @@ namespace taylor_matrix::host_matrix::the_host_matrix
         return std::unique_ptr<std::add_pointer_t<T>[], decltype(destructor)>(ptr, std::move(destructor));
     }
 
-    //we implemented two very important optimizables
-
-    //first is the increase the logit touch bases by using hash_map
-    //second is the mono_transform
-
-    //we have proved that doing so does not interfere with the training process, because two random tokens going through the transformation will likely collide at some process functions due to the randomness of the hash_table_dispatch
-    //and that we have "stable" projection, in the sense that each training token has a set of dedicated "go-to" transformations
-    //mono_transform increase the stability of the projection, especially for 3-4 random points, because we have proved that power series work best for 3-4 random projection points
-
-    //
+    //we'd implement by region transportation, essentially we'd scan over the interval or having a dedicated interval tree to transport only the mutated regions
+    //because the hash is important and we never actually touch more than just a handful of points 
 
     template <size_t TAYLOR_BASE_COEFF_SZ, size_t SHAPE_BASE_COEFF_SZ, class TaylorBasePromotedFloatType, class ShapeBasePromotedFloatType>
     class TheHostMatrix: public virtual MatrixInterface
@@ -248,9 +240,35 @@ namespace taylor_matrix::host_matrix::the_host_matrix
             {
                 std::vector<tensor_std_float_t> rs{};
 
-                for (const auto& sub_vec: this->taylor_coeff_2d_vec)
+                size_t row_sz       = this->taylor_coeff_2d_vec.size();
+                
+                if (row_sz == 0u)
                 {
-                    std::copy(sub_vec.begin(), sub_vec.end(), std::back_inserter(rs));
+                    std::abort();
+                }
+
+                size_t col_sz       = this->taylor_coeff_2d_vec.front().size();
+
+                static_assert(TAYLOR_BASE_COEFF_SZ != 0u);
+
+                if (col_sz % TAYLOR_BASE_COEFF_SZ != 0u)
+                {
+                    std::abort();
+                }
+
+                size_t chunk_col_sz = col_sz / TAYLOR_BASE_COEFF_SZ;
+
+                for (size_t i = 0u; i < chunk_col_sz; ++i)
+                {
+                    for (size_t j = 0u; j < row_sz; ++j)
+                    {
+                        size_t first    = i * TAYLOR_BASE_COEFF_SZ;
+                        size_t last     = first + TAYLOR_BASE_COEFF_SZ;
+
+                        std::copy(std::next(this->taylor_coeff_2d_vec[j].begin(), first),
+                                  std::next(this->taylor_coeff_2d_vec[j].begin(), last),
+                                  std::back_inserter(rs));
+                    }
                 }
 
                 return rs;
@@ -260,9 +278,35 @@ namespace taylor_matrix::host_matrix::the_host_matrix
             {
                 std::vector<tensor_std_float_t> rs{};
 
-                for (const auto & sub_vec: this->shape_coeff_2d_vec)
+                size_t row_sz       = this->shape_coeff_2d_vec.size();
+
+                if (row_sz == 0u)
                 {
-                    std::copy(sub_vec.begin(), sub_vec.end(), std::back_inserter(rs));
+                    std::abort();
+                }
+
+                size_t col_sz       = this->shape_coeff_2d_vec.front().size();
+
+                static_assert(SHAPE_BASE_COEFF_SZ != 0u);
+
+                if (col_sz % SHAPE_BASE_COEFF_SZ != 0u)
+                {
+                    std::abort();
+                }
+
+                size_t chunk_col_sz = col_sz / SHAPE_BASE_COEFF_SZ;
+
+                for (size_t i = 0u; i < chunk_col_sz; ++i)
+                {
+                    for (size_t j = 0u; j < row_sz; ++j)
+                    {
+                        size_t first    = i * SHAPE_BASE_COEFF_SZ;
+                        size_t last     = first + SHAPE_BASE_COEFF_SZ;
+
+                        std::copy(std::next(this->shape_coeff_2d_vec[j].begin(), first),
+                                  std::next(this->shape_coeff_2d_vec[j].begin(), last),
+                                  std::back_inserter(rs));
+                    }
                 }
 
                 return rs;
@@ -308,23 +352,36 @@ namespace taylor_matrix::host_matrix::the_host_matrix
             {
                 check_taylor_coefficient_vector(coeff_vec);
 
-                size_t row_sz   = this->taylor_coeff_2d_vec.size();
+                size_t row_sz       = this->taylor_coeff_2d_vec.size();
 
                 if (row_sz == 0u)
                 {
                     std::abort();
                 }
 
-                size_t col_sz   = this->taylor_coeff_2d_vec.front().size();
+                size_t col_sz       = this->taylor_coeff_2d_vec.front().size();
 
-                for (size_t i = 0u; i < row_sz; ++i)
+                static_assert(TAYLOR_BASE_COEFF_SZ != 0u);
+
+                if (col_sz % TAYLOR_BASE_COEFF_SZ != 0u)
                 {
-                    size_t first    = col_sz * i;
-                    size_t last     = col_sz * (i + 1);
+                    std::abort();
+                }
 
-                    std::copy(std::next(coeff_vec.begin(), first),
-                              std::next(coeff_vec.begin(), last),
-                              this->taylor_coeff_2d_vec[i].data());
+                size_t chunk_col_sz = col_sz / TAYLOR_BASE_COEFF_SZ;
+
+                for (size_t i = 0u; i < chunk_col_sz; ++i)
+                {
+                    for (size_t j = 0u; j < row_sz; ++j)
+                    {
+                        size_t dst_first    = i * TAYLOR_BASE_COEFF_SZ;
+                        size_t src_first    = (i * row_sz + j) * TAYLOR_BASE_COEFF_SZ;
+                        size_t src_last     = src_first + TAYLOR_BASE_COEFF_SZ;
+
+                        std::copy(std::next(coeff_vec.begin(), src_first),
+                                  std::next(coeff_vec.begin(), src_last),
+                                  std::next(this->taylor_coeff_2d_vec[j].begin(), dst_first));
+                    }
                 }
             }
 
@@ -353,23 +410,35 @@ namespace taylor_matrix::host_matrix::the_host_matrix
             {
                 check_shape_coefficient_vector(coeff_vec);
 
-                size_t row_sz   = this->shape_coeff_2d_vec.size();
+                size_t row_sz       = this->shape_coeff_2d_vec.size();
 
                 if (row_sz == 0u)
                 {
                     std::abort();
                 }
 
-                size_t col_sz   = this->shape_coeff_2d_vec.front().size();
+                size_t col_sz       = this->shape_coeff_2d_vec.front().size();
 
-                for (size_t i = 0u; i < row_sz; ++i)
+                static_assert(SHAPE_BASE_COEFF_SZ != 0u);
+
+                if (col_sz % SHAPE_BASE_COEFF_SZ != 0u)
                 {
-                    size_t first    = col_sz * i;
-                    size_t last     = col_sz * (i + 1);
+                    std::abort();
+                }
 
-                    for (size_t j = 0u; j < col_sz; ++j)
+                size_t chunk_col_sz = col_sz / SHAPE_BASE_COEFF_SZ;
+
+                for (size_t i = 0u; i < chunk_col_sz; ++i)
+                {
+                    for (size_t j = 0u; j < row_sz; ++j)
                     {
-                        this->shape_coeff_2d_vec[i][j] = shape_projection::radian_normalize(coeff_vec[first + j]);
+                        size_t dst_first    = i * SHAPE_BASE_COEFF_SZ;
+                        size_t src_first    = (i * row_sz + j) * SHAPE_BASE_COEFF_SZ;
+                        size_t src_last     = src_first + SHAPE_BASE_COEFF_SZ;
+
+                        std::copy(std::next(coeff_vec.begin(), src_first),
+                                  std::next(coeff_vec.begin(), src_last),
+                                  std::next(this->shape_coeff_2d_vec[j].begin(), dst_first));
                     }
                 }
             }

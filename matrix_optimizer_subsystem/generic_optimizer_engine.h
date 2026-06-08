@@ -6,6 +6,7 @@
 #include <memory>
 #include <string>
 #include "coordinated_search_optimizer_engine.h"
+#include "block_coordinated_search_optimizer_engine.h"
 #include <serializer/compact_serializer.h>
 #include "matrix_optimizer_engine_interface.h"
 #include <variant>
@@ -15,7 +16,9 @@ namespace matrix_optimizer_subsystem
 {
     struct GenericOptimizerEngineConfig
     {
-        std::variant<stdx::reflectible_monostate, ExternalCoordinatedSearchOptimizerEngineConfig> config;
+        std::variant<stdx::reflectible_monostate,
+                     ExternalCoordinatedSearchOptimizerEngineConfig,
+                     ExternalBlockCoordinatedSearchOptimizerEngineConfig> config;
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector) const
@@ -72,7 +75,11 @@ namespace matrix_optimizer_subsystem
             {
                 if (std::holds_alternative<ExternalCoordinatedSearchOptimizerEngineConfig>(config.config))
                 {
-                    this->base = std::make_unique<CoordinatedSearchOptimizerEngine>(std::get<ExternalCoordinatedSearchOptimizerEngineConfig>(config.config));
+                    this->base  = std::make_unique<CoordinatedSearchOptimizerEngine>(std::get<ExternalCoordinatedSearchOptimizerEngineConfig>(config.config));
+                }
+                else if (std::holds_alternative<ExternalBlockCoordinatedSearchOptimizerEngineConfig>(config.config))
+                {
+                    this->base  = std::make_unique<BlockCoordinatedSearchOptimizerEngine>(std::get<ExternalBlockCoordinatedSearchOptimizerEngineConfig>(config.config));
                 }
                 else
                 {

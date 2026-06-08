@@ -20,14 +20,9 @@
 #include <general_definition/float_def.h>
 #include <stl_extension/stdx.h>
 #include <matrix_steering_subsystem/score_context_optimizer.h>
-#include <iostream>
 
 namespace matrix_optimizer_subsystem
 {
-    using namespace float_def;
-
-    using tensor_std_float_t = tensor_model::tensor_std_float_t;
-
     struct CoordinatedSearchOptimizerEngineConfig
     {
         std::optional<uint64_t> matrix_cache_map_cap;
@@ -93,18 +88,6 @@ namespace matrix_optimizer_subsystem
         return dg::network_compact_serializer::dgstd_deserialize<CoordinatedSearchOptimizerEngineConfig>(config.config_bytestream);
     }
 
-    //we'd try to work on this component
-    //this component is actually one of the hardest components that I've invested a significant amount of time on
-
-    //first is the random nature of the optimizer makes it multi-thread compatible, we can actually use multiple optimizers in parallel with no synchronization hints, then we'd get best result
-    //second is the focal building of the projection space by using graph optimization
-    //third is multi-level tensor + score optimization
-
-    //the theory of "context" engineering and "score" feedbacks, how we turned machine learning into context engineering by using "feedback()" function
-    //one could say that if we could engineer context to perfection, such is that we incorporate every single detail into the "masterpiece", we'd get perfect next action, and you are absolutely right
-
-    //now I know why candy is good
-
     class CoordinatedSearchOptimizerEngine: public virtual MatrixOptimizerEngineInterface
     {
         private:
@@ -117,11 +100,11 @@ namespace matrix_optimizer_subsystem
             size_t coefficient_projector_float_byte_width;
             size_t time_machine_optimizer_float_byte_width;
 
-            static inline constexpr size_t DEFAULT_MATRIX_CACHE_MAP_CAPACITY                = size_t{1} << 10;
+            static inline constexpr size_t DEFAULT_MATRIX_CACHE_MAP_CAPACITY                = size_t{1} << 4;
             static inline constexpr size_t MIN_MATRIX_CACHE_MAP_CAPACITY                    = size_t{1} << 0;
             static inline constexpr size_t MAX_MATRIX_CACHE_MAP_CAPACITY                    = size_t{1} << 14;
 
-            static inline constexpr size_t DEFAULT_TIME_MACHINE_CACHE_MAP_CAPACITY          = size_t{1} << 10;
+            static inline constexpr size_t DEFAULT_TIME_MACHINE_CACHE_MAP_CAPACITY          = size_t{1} << 4;
             static inline constexpr size_t MIN_TIME_MACHINE_CACHE_MAP_CAPACITY              = size_t{1} << 0;
             static inline constexpr size_t MAX_TIME_MACHINE_CACHE_MAP_CAPACITY              = size_t{1} << 14;
 
@@ -217,11 +200,11 @@ namespace matrix_optimizer_subsystem
 
                             try
                             {
-                                std::vector<tensor_std_float_t> new_coefficient_vec         = this->optimize_one(*tmp_matrix,
-                                                                                                                 *coefficient_projector,
-                                                                                                                 matrix_evaluator,
-                                                                                                                 *time_machine_optimizer,
-                                                                                                                 cancellation_token);
+                                std::vector<tensor_model::tensor_std_float_t> new_coefficient_vec         = this->optimize_one(*tmp_matrix,
+                                                                                                                               *coefficient_projector,
+                                                                                                                               matrix_evaluator,
+                                                                                                                               *time_machine_optimizer,
+                                                                                                                               cancellation_token);
 
                                 std::shared_ptr<the_matrix::MatrixInterface> test_matrix    = tmp_matrix->clone();
                                 test_matrix->set_coefficient_vector(new_coefficient_vec);
@@ -374,7 +357,7 @@ namespace matrix_optimizer_subsystem
 
                         auto callback = [&]<class T>(T)
                         {
-                            rs = std::make_unique<HeuristicProjectorAsStatisticalMachine>(temporal_coefficient_projector_3::GeneratorFactory::get_best_generator<T>(this->projection_sz, 8u)); //memory
+                            rs = std::make_unique<HeuristicProjectorAsStatisticalMachine>(temporal_coefficient_projector_3::GeneratorFactory::get_best_generator<T>(this->projection_sz, 1u)); //memory (very important)
                         };
 
                         float_def::get_float_type_by_byte_width(callback, this->float_byte_width);
@@ -409,7 +392,7 @@ namespace matrix_optimizer_subsystem
                               temporal_coefficient_projector::TemporalCoefficientProjectorInterface& projector,
                               matrix_evaluator::MatrixEvaluatorInterface& deviation_extractor,
                               global_optimality_approximator::TimeMachineOptimizerInterface& time_machine_optimizer,
-                              common_exception::CancellationTokenInterface& cancellation_token) -> std::vector<tensor_std_float_t>
+                              common_exception::CancellationTokenInterface& cancellation_token) -> std::vector<tensor_model::tensor_std_float_t>
             {
                 if (cancellation_token.is_canceled())
                 {
@@ -448,15 +431,15 @@ namespace matrix_optimizer_subsystem
                 DeviationCapturedTimeMachine deviation_captured_time_machine(&cached_time_machine,
                                                                              is_in_stack_2);
 
-                std_float_t t                                           = time_machine_optimizer.optimize(deviation_captured_time_machine);
-                std::optional<std::pair<std_float_t, tm_float_t>> cand  = deviation_captured_time_machine.best();
+                float_def::std_float_t t                                                        = time_machine_optimizer.optimize(deviation_captured_time_machine);
+                std::optional<std::pair<float_def::std_float_t, float_def::tm_float_t>> cand    = deviation_captured_time_machine.best();
 
                 if (cand.has_value())
                 {
                     t = cand->first;
                 }
 
-                std::vector<std_float_t> coeff_vec  = projector.project(t);
+                std::vector<float_def::std_float_t> coeff_vec  = projector.project(t);
 
                 return stdx::to_castable_vector_initializer(std::move(coeff_vec));
             }
@@ -467,8 +450,8 @@ namespace matrix_optimizer_subsystem
 
                     time_machine::TimeMachineInterface * base;
 
-                    std::optional<std_float_t> best_x;
-                    std::optional<tm_float_t> best_y;
+                    std::optional<float_def::std_float_t> best_x;
+                    std::optional<float_def::tm_float_t> best_y;
 
                     std::shared_ptr<bool> is_in_stack; //we keep this as peace of mind, because if we have race condition, or multithreading, we aren't splitting the responsibility correctly, so that is never going to happen
                 
@@ -480,14 +463,14 @@ namespace matrix_optimizer_subsystem
                                                                                      best_y(),
                                                                                      is_in_stack(std::move(is_in_stack)){}
 
-                    auto f(std_float_t t) -> tm_float_t
+                    auto f(float_def::std_float_t t) -> float_def::tm_float_t
                     {
                         if (*this->is_in_stack == false)
                         {
                             std::abort();
                         }
 
-                        tm_float_t rs = this->base->f(t);
+                        float_def::tm_float_t rs = this->base->f(t);
 
                         if (!std::isnan(t) && !std::isnan(rs))
                         {
@@ -507,7 +490,7 @@ namespace matrix_optimizer_subsystem
                         return rs;
                     }
 
-                    auto best() -> std::optional<std::pair<std_float_t, tm_float_t>>
+                    auto best() -> std::optional<std::pair<float_def::std_float_t, float_def::tm_float_t>>
                     {
                         if (this->best_x.has_value())
                         {
@@ -544,12 +527,12 @@ namespace matrix_optimizer_subsystem
                         return this->cache_base.project(matrix_vec);
                     }
 
-                    auto get_coefficient_vector() -> std::vector<tensor_std_float_t>
+                    auto get_coefficient_vector() -> std::vector<tensor_model::tensor_std_float_t>
                     {
                         return this->matrix_base->get_coefficient_vector();
                     }
 
-                    void set_coefficient_vector(const std::vector<tensor_std_float_t>& coeff_vec)
+                    void set_coefficient_vector(const std::vector<tensor_model::tensor_std_float_t>& coeff_vec)
                     {
                         this->matrix_base->set_coefficient_vector(coeff_vec);
                         this->cache_base.clear_cache();
@@ -580,14 +563,14 @@ namespace matrix_optimizer_subsystem
                                                                                   product_evaluator(product_evaluator),
                                                                                   is_in_stack(std::move(is_in_stack)){}
 
-                    auto f(std_float_t t) -> tm_float_t
+                    auto f(float_def::std_float_t t) -> float_def::tm_float_t
                     {
                         if (*this->is_in_stack == false)
                         {
                             std::abort();
                         }
 
-                        std::vector<std_float_t> coeff_vec = this->coefficient_projector->project(t);
+                        std::vector<float_def::std_float_t> coeff_vec = this->coefficient_projector->project(t);
                         this->base_matrix->set_coefficient_vector(stdx::to_castable_vector_initializer(std::move(coeff_vec)));
 
                         return this->product_evaluator->get_deviation(*this->base_matrix);
