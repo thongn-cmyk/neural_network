@@ -169,6 +169,8 @@ namespace matrix_optimizer_subsystem
                 std::unique_ptr<score_context_optimizer::IterationContextInterface> iteration_projector_gen_it                      = iteration_projector_gen->get();
                 std::unique_ptr<score_context_optimizer::IterationContextInterface> iteration_iteration_time_machine_gen_it         = iteration_iteration_time_machine_gen->get();
 
+                size_t counter = 0u;
+
                 for (size_t i = 0u; i < this->optimization_epoch_sz; ++i)
                 {
                     std::unique_ptr<score_context_optimizer::ActionableResultInterface> projector_iteration_ctx_wrapper             = iteration_projector_gen_it->next();
@@ -192,6 +194,8 @@ namespace matrix_optimizer_subsystem
 
                         for (size_t z = 0u; z < this->optimization_loop_sz; ++z)
                         {
+                            std::cout << "counter > " << counter++ << "\n";
+
                             std::unique_ptr<score_context_optimizer::ActionableResultInterface> heuristic_time_machine_wrapper      = time_machine_iteration_ctx->next();
                             std::shared_ptr<global_optimality_approximator::TensorFactoryInterface> heuristic_time_machine          = std::dynamic_pointer_cast<global_optimality_approximator::TensorFactoryInterface>(heuristic_time_machine_wrapper->get_statistical_machine());
                             std::shared_ptr<global_optimality_approximator::FactoryTensorInterface> time_machine_container          = heuristic_time_machine->get();
@@ -357,7 +361,7 @@ namespace matrix_optimizer_subsystem
 
                         auto callback = [&]<class T>(T)
                         {
-                            rs = std::make_unique<HeuristicProjectorAsStatisticalMachine>(temporal_coefficient_projector_3::GeneratorFactory::get_best_generator<T>(this->projection_sz, 1u)); //memory (very important)
+                            rs = std::make_unique<HeuristicProjectorAsStatisticalMachine>(temporal_coefficient_projector_3::GeneratorFactory::get_best_generator<T>(this->projection_sz, 8u)); //memory (very important)
                         };
 
                         float_def::get_float_type_by_byte_width(callback, this->float_byte_width);
