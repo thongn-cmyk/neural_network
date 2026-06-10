@@ -13,7 +13,7 @@ namespace device_tensor::model
 
     __device__ static inline constexpr size_t PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ       = 1u;
     __device__ static inline constexpr size_t PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ   = 8u;
-    __device__ static inline constexpr size_t DIMENSION_SZ                              = 4u;
+    __device__ static inline constexpr size_t DIMENSION_SZ                              = 1u;
 
     struct ProcessUnit
     {

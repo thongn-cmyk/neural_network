@@ -23,6 +23,7 @@
 #include <mutex_extension/fair_mutex.h>
 #include <climits>
 #include "assert.h"
+#include <optional>
 
 namespace stdx
 {
@@ -1088,6 +1089,46 @@ namespace stdx
         }
 
         return rs;
+    }
+
+    auto shrunk_adjecent_interval(const std::vector<std::pair<size_t, size_t>>& arg_vec) -> std::vector<std::pair<size_t, size_t>>
+    {
+        std::vector<std::pair<size_t, size_t>> result_vec               = {};
+        std::optional<std::pair<size_t, size_t>> aggregated_interval    = std::nullopt;
+
+        for (size_t i = 0u; i < arg_vec.size(); ++i)
+        {
+            if (!aggregated_interval.has_value())
+            {
+                aggregated_interval = arg_vec[i];
+                continue;
+            }
+
+            size_t now_last     = aggregated_interval->first + aggregated_interval->second;
+            size_t nxt_first    = arg_vec[i].first;
+            size_t nxt_last     = arg_vec[i].first + arg_vec[i].second;
+
+            if (now_last >= nxt_first)
+            {
+                if (nxt_last > now_last)
+                {
+                    size_t new_sz = nxt_last - aggregated_interval->first;
+                    aggregated_interval->second = new_sz;
+                }
+
+                continue;
+            }
+
+            result_vec.push_back(aggregated_interval.value());
+            aggregated_interval = arg_vec[i];
+        }
+
+        if (aggregated_interval.has_value())
+        {
+            result_vec.push_back(aggregated_interval.value());
+        }
+
+        return result_vec;
     }
 
     class memtransaction_guard

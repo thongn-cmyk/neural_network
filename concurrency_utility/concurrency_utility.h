@@ -16,6 +16,46 @@ namespace concurrency_utility
 
     //__internal_usage__
     template <class T>
+    class ValueAsTaskPromise: public virtual TaskPromise<T>
+    {
+        private:
+
+            bool was_wait_invoked;
+            T value;
+
+        public:
+
+            ValueAsTaskPromise(T value): value(std::move(value)),
+                                         was_wait_invoked(false){}
+
+            auto is_completed() noexcept -> bool
+            {
+                return true;
+            }
+
+            void interrupt() noexcept
+            {
+                (void) this->value;
+            }
+
+            auto wait() -> T
+            {
+                if (std::exchange(this->was_wait_invoked, true))
+                {
+                    throw std::invalid_argument("bad wait, second wait");
+                }
+
+                return std::move(this->value);
+            }
+
+            void detach() noexcept
+            {
+                (void) this->value;
+            }
+    };
+
+    //__internal_usage__
+    template <class T>
     class RestAsTaskPromise: public virtual TaskPromise<T>
     {
         private:
@@ -139,6 +179,12 @@ namespace concurrency_utility
 
         return std::make_unique<CastedTaskPromise<T, std::decay_t<Resolutor>>>(promise,
                                                                                std::forward<Resolutor>(resolutor));
+    }
+
+    template <class T>
+    auto value_to_task_promise(T&& value) -> std::unique_ptr<TaskPromise<std::decay_t<T>>>
+    {
+        return std::make_unique<ValueAsTaskPromise<std::decay_t<T>>>(std::forward<T>(value));
     }
 
     //__internal_usage__

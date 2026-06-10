@@ -283,6 +283,8 @@ namespace concurrency_base::worker_controller
         }
     };
 
+    #ifdef __linux__
+
     static void dg_legacy_cpuset_free(cpu_set_t * cpu_set) noexcept
     {
         CPU_FREE(cpu_set);
@@ -319,7 +321,7 @@ namespace concurrency_base::worker_controller
         }
     };
 
-    struct StdThreadFactory
+    struct LinuxThreadFactory
     {
         template <class T>
         static void internal_pthread_setaffinity_np(T&& thr_handle, NonLegacyPosixCpuSet * cpusetp)
@@ -384,7 +386,12 @@ namespace concurrency_base::worker_controller
                 std::abort();
             }
         }
+    };
 
+    #endif
+
+    struct StdThreadFactory
+    {
         static auto spawn_thread(std::shared_ptr<StdDaemonRunnableInterface> runnable) -> std::unique_ptr<std::thread>
         {
             if (runnable == nullptr)
@@ -405,25 +412,34 @@ namespace concurrency_base::worker_controller
     {
         static auto spawn_std_daemon_affined_runner(std::vector<int> cpu_set) -> std::unique_ptr<DaemonDedicatedRunnerInterface>
         {
-            using namespace std::chrono_literals;
-
-            const size_t LOOPCHK_SZ = 64u;
-
-            auto rescheduler    = ReschedulerFactory::spawn_sleepy_rescheduler(10ms);
-            auto mtx            = std::make_unique<fair_mutex::fair_atomic_flag>();
-            fair_mutex::inplace_make_fair_atomic_flag(*mtx);
-            auto poison_pill    = std::make_unique<std::atomic<bool>>();
-            auto daemon_runner  = std::make_shared<StdDaemonRunner>(std::move(poison_pill), std::move(mtx), nullptr, std::move(rescheduler), LOOPCHK_SZ);
-            auto thr_instance   = StdThreadFactory::spawn_thread(daemon_runner, cpu_set); 
-
-            try
+            #ifdef __linux__
             {
-                return std::make_unique<StdRaiiDaemonRunner>(daemon_runner, std::move(thr_instance));
+                using namespace std::chrono_literals;
+
+                const size_t LOOPCHK_SZ = 64u;
+
+                auto rescheduler    = ReschedulerFactory::spawn_sleepy_rescheduler(10ms);
+                auto mtx            = std::make_unique<fair_mutex::fair_atomic_flag>();
+                fair_mutex::inplace_make_fair_atomic_flag(*mtx);
+                auto poison_pill    = std::make_unique<std::atomic<bool>>();
+                auto daemon_runner  = std::make_shared<StdDaemonRunner>(std::move(poison_pill), std::move(mtx), nullptr, std::move(rescheduler), LOOPCHK_SZ);
+                auto thr_instance   = LinuxThreadFactory::spawn_thread(daemon_runner, cpu_set); 
+
+                try
+                {
+                    return std::make_unique<StdRaiiDaemonRunner>(daemon_runner, std::move(thr_instance));
+                }
+                catch (...)
+                {
+                    std::abort();
+                }
             }
-            catch (...)
+            #else
             {
-                std::abort();
+                common_exception::throw_exception(common_exception::INVALID_ARGUMENT);
+                return {};
             }
+            #endif
         }
 
         static auto spawn_std_daemon_runner() -> std::unique_ptr<DaemonDedicatedRunnerInterface>

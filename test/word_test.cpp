@@ -101,7 +101,7 @@ auto window_tokenize(const std::string& s, const size_t WINDOW_SZ) -> std::vecto
 {
     std::vector<Token> rs   = {};
 
-    for (size_t i = 0u; i < s.size(); ++i)
+    for (size_t i = WINDOW_SZ; i < s.size(); ++i)
     {
         intmax_t cand   = static_cast<intmax_t>(i) - WINDOW_SZ;
         cand            = std::max(cand, intmax_t{0});
@@ -200,7 +200,55 @@ auto token_to_input_binary(const Token& tok) -> std::vector<bool>
 
 auto token_to_output_binary(const Token& tok) -> std::vector<bool>
 {
-    return ff_punch(tok.c);
+    return match_window(hex_punch(tok.c), 256);
+}
+
+auto guess_word(const std::shared_ptr<tensor_model::Matrix>& matrix) -> char
+{
+    std::vector<tensor_std_float_t> flat_matrix{};
+    tensor_factory::flatten(matrix, flat_matrix);
+
+    if (flat_matrix.size() < 256)
+    {
+        std::abort();
+    }
+
+    flat_matrix.resize(256);
+
+    std::vector<tensor_std_float_t> reduced_matrix{};
+
+    for (size_t i = 0u; i < 32u; ++i)
+    {   
+        tensor_std_float_t total = flat_matrix[i];
+
+        for (size_t j = 0u; j < 8u; ++j)
+        {
+            total += flat_matrix[j * 32 + i];
+        }
+
+        reduced_matrix.push_back(total);
+    }
+
+    size_t max_lo_idx   = 0u;
+    size_t max_hi_idx   = 16u;
+
+    for (size_t i = 0u; i < 16u; ++i)
+    {
+        if (flat_matrix[i] > flat_matrix[max_lo_idx])
+        {
+            max_lo_idx = i;
+        }
+    }
+
+    for (size_t i = 16u; i < 32u; ++i)
+    {
+        if (flat_matrix[i] > flat_matrix[max_hi_idx])
+        {
+            max_hi_idx = i;
+        }
+    }
+
+    return std::bit_cast<char>(static_cast<uint8_t>((max_hi_idx << 4) | max_lo_idx));
 }
 
 auto binary_to_matrix_dispatchable(const std::vector<bool>& binary,
@@ -215,7 +263,14 @@ auto binary_to_matrix_dispatchable(const std::vector<bool>& binary,
 
     for (size_t i = 0u; i < binary.size(); ++i)
     {
-        flat_matrix[i] = binary[i];
+        if (binary[i])
+        {
+            flat_matrix[i] = 2;
+        }
+        else
+        {
+            flat_matrix[i] = 0;
+        }
     }
 
     return tensor_factory::make_matrix_from_flat_vec(matrix_shape, flat_matrix);
@@ -229,8 +284,8 @@ auto get_random_coordinated_search_optimizer_engine() -> std::unique_ptr<matrix_
         {
             .matrix_cache_map_cap                       = randomize_optional_int<uint64_t>(0, size_t{1} << 4),
             .time_machine_cache_map_cap                 = randomize_optional_int<uint64_t>(0, size_t{1} << 4),
-            .optimization_epoch_sz                      = 2ULL,
-            .optimization_step_sz                       = 2ULL,
+            .optimization_epoch_sz                      = 16ULL,
+            .optimization_step_sz                       = 4ULL,
             .optimization_loop_sz                       = 2ULL
         }
     );
@@ -248,26 +303,33 @@ class PointPullMatrixEvaluator: public virtual matrix_evaluator::MatrixEvaluator
 
         auto get_deviation(the_matrix::MatrixInterface& matrix) -> eval_float_t
         {
-            std::vector<std::vector<tensor_std_float_t>> expected_output_vec{};
-            std::vector<std::vector<tensor_std_float_t>> projected_output_vec{};
+            std::vector<std::shared_ptr<tensor_model::Matrix>> inp_vec      = {};
+            std::vector<std::shared_ptr<tensor_model::Matrix>> out_vec_0    = {};
 
             for (const auto& [inp, out]: this->training_pair_vec)
             {
-                std::shared_ptr<tensor_model::Matrix> projected_matrix  = matrix.project({inp})[0];
-                
-                std::vector<tensor_std_float_t> expected_output{};
-                std::vector<tensor_std_float_t> projected_output{};
-
-                tensor_factory::flatten(out, expected_output);
-                tensor_factory::flatten(projected_matrix, projected_output);
-
-
-
-                expected_output_vec.push_back(std::move(expected_output));
-                projected_output_vec.push_back(std::move(projected_output));
+                inp_vec.push_back(inp);
+                out_vec_0.push_back(out);
             }
 
-            return mean_square_root(expected_output_vec, projected_output_vec);
+            std::vector<std::shared_ptr<tensor_model::Matrix>> out_vec      = matrix.project(inp_vec);
+
+            std::vector<std::vector<tensor_std_float_t>> flat_out_vec_0{};
+            std::vector<std::vector<tensor_std_float_t>> flat_out_vec{};
+
+            for (const auto [out, expected_out]: stdx::zip(out_vec, out_vec_0))
+            {
+                std::vector<tensor_std_float_t> flat_out    = {};
+                std::vector<tensor_std_float_t> flat_out_0  = {};
+
+                tensor_factory::flatten(out, flat_out);
+                tensor_factory::flatten(expected_out, flat_out_0);
+
+                flat_out_vec.push_back(std::move(flat_out));
+                flat_out_vec_0.push_back(std::move(flat_out_0));
+            }
+
+            return mean_square_root(flat_out_vec, flat_out_vec_0);
         }
 
     private:
@@ -288,7 +350,7 @@ class PointPullMatrixEvaluator: public virtual matrix_evaluator::MatrixEvaluator
 
                 for (size_t i = 0u; i < e_lhs.size(); ++i)
                 {
-                    tmp += std::pow(e_lhs[i] - e_rhs[i], 2);
+                    tmp += std::pow(e_lhs[i] - e_rhs[i], 8);
                 }
 
                 if (e_lhs.size() != 0)
@@ -304,7 +366,7 @@ class PointPullMatrixEvaluator: public virtual matrix_evaluator::MatrixEvaluator
                 rs /= lhs.size();
             }
 
-            return std::sqrt(rs);
+            return rs;
         }
 };
 
@@ -313,13 +375,70 @@ auto get_matrix_evaluator(const std::vector<std::pair<std::shared_ptr<tensor_mod
     return std::make_unique<PointPullMatrixEvaluator>(point_vec);
 }
 
+auto get_loss(the_matrix::MatrixInterface& matrix,
+              const std::vector<std::pair<std::shared_ptr<tensor_model::Matrix>, char>>& training_pair_vec) -> double
+{
+    std::vector<std::shared_ptr<tensor_model::Matrix>> inp_vec{};
+    std::vector<char> char_vec{};
+
+    for (const auto& [mtrx, c]: training_pair_vec)
+    {
+        inp_vec.push_back(mtrx);
+        char_vec.push_back(c);
+    }
+
+    std::vector<std::shared_ptr<tensor_model::Matrix>> out_vec = matrix.project(inp_vec);
+    size_t correct_word = 0u;
+
+    for (size_t i = 0u; i < out_vec.size(); ++i)
+    {
+        char predicted_word = guess_word(out_vec[i]);
+
+        if (predicted_word == char_vec[i])
+        {
+            std::cout << "predicted word > " << std::bit_cast<uint8_t>(predicted_word) << "<> correct word > " << std::bit_cast<uint8_t>(char_vec[i]) << "\n";
+            correct_word += 1;
+        }
+    }
+
+    if (out_vec.size() == 0u)
+    {
+        std::abort();
+    }
+
+    return static_cast<float>(correct_word) / out_vec.size();
+}
+
+void initialize_concurrency_base()
+{
+    using namespace concurrency_base;
+
+    std::cout << "initializing concurrency base\n";
+    std::vector<WorkerInformation> worker_info_vec{};
+
+    for (size_t i = 0u; i < 8u; ++i)
+    {
+        worker_info_vec.push_back(WorkerInformation
+        {
+            .cpu_id = std::nullopt,
+            .daemon = ASYNC_SEQPAR_DAEMON
+        });
+    }
+
+    init(Config{worker_info_vec});
+    async_x::init(8u, 32u);
+}
+
 int main()
 {
-    const size_t OPTIMIZATION_SZ                = size_t{1} << 4;
-    const size_t TRAINING_DATA_SZ               = size_t{1} << 7;
+    initialize_concurrency_base();
+
+    const size_t OPTIMIZATION_SZ                = size_t{1} << 10;
+    const size_t TRAINING_DATA_SZ               = size_t{1} << 5;
     const size_t WINDOW_SZ                      = size_t{1} << 4;
 
     std::vector<Token> token_vec                = window_tokenize(read_training_data(TRAINING_DATA_SZ), WINDOW_SZ);
+
     std::vector<std::pair<std::vector<bool>, std::vector<bool>>> training_pair_vec{};
 
     for (const auto& token: token_vec)
@@ -329,7 +448,7 @@ int main()
             std::make_pair
             (
                 token_to_input_binary(token),
-                match_window(token_to_output_binary(token), token_to_input_binary(token).size())
+                token_to_output_binary(token)
             )
         );
     }
@@ -354,6 +473,20 @@ int main()
         );
     }
 
+    std::vector<std::pair<std::shared_ptr<tensor_model::Matrix>, char>> matrix_char_pair_vec{};
+
+    for (size_t i = 0u; i < token_vec.size(); ++i)
+    {
+        matrix_char_pair_vec.push_back
+        (
+            std::make_pair
+            (
+                training_pair_matrix_vec[i].first,
+                token_vec[i].c
+            )
+        );
+    }
+
     std::unique_ptr<matrix_evaluator::MatrixEvaluatorInterface> evaluator   = get_matrix_evaluator(training_pair_matrix_vec);
 
     common_exception::CancellationToken cancellation_token{};
@@ -364,9 +497,15 @@ int main()
 
     std::cout << "initial deviation > " << initial_deviation << "\n";
 
-    matrix->set_coefficient_vector(std::vector<tensor_std_float_t>(matrix->get_coefficient_vector().size(), 0.1));
+    // for (size_t i = 0u; i < matrix-)
+    // {
 
-    std::cout << "post deviation > " << evaluator->get_deviation(*matrix) << "\n";
+    // }
+
+    // matrix->set_coefficient_vector(std::vector<tensor_std_float_t>(random_vec));
+    // std::cout << "post deviation > " << evaluator->get_deviation(*matrix) << "\n";
+
+    std::cout << "loss > " << get_loss(*matrix, matrix_char_pair_vec) << "\n";
 
     // std::abort();
 
@@ -378,6 +517,7 @@ int main()
         std::string str_max = std::format("{:.{}g}", optimized_deviation, std::numeric_limits<double>::max_digits10);
 
         std::cout << "optimized deviation > " << str_max << "\n";
+        std::cout << "loss > " << get_loss(*matrix, matrix_char_pair_vec) << "\n";
     }
 
     std::cout << "__END_OPTIMIZATION_TEST__\n";

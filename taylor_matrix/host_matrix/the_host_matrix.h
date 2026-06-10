@@ -3,7 +3,7 @@
 #ifndef __TAYLOR_MATRIX_HOST_MATRIX_THE_HOST_MATRIX_H__
 #define __TAYLOR_MATRIX_HOST_MATRIX_THE_HOST_MATRIX_H__
 
-// #include <seqpar_async/async_x.h>
+#include <seqpar_async/async_x.h>
 #include <matrix/the_matrix_interface.h>
 #include "tensor_matrix_operation.h"
 #include "shape_projection.h"
@@ -178,7 +178,7 @@ namespace taylor_matrix::host_matrix::the_host_matrix
 
                 if (this->project_concurrent_sz.has_value())
                 {
-                    // async_x::sequential_parallel_group_launch_2(enumerated_matrix_vec.begin(), enumerated_matrix_vec.end(), par_func, this->project_concurrent_sz.value());
+                    async_x::sequential_parallel_group_launch_2(enumerated_matrix_vec.begin(), enumerated_matrix_vec.end(), par_func, this->project_concurrent_sz.value());
                 }
                 else
                 {
@@ -642,8 +642,8 @@ namespace taylor_matrix::host_matrix::the_host_matrix
             static inline const double PE_AMPLITUDE_DISCRETE_UNIT   = 0.1;
             static inline const size_t TENTATIVE_PE_SZ              = 4;
 
-            static inline const size_t LOW_ENTROPY_HASH_TABLE_SZ    = 8u;
-            static inline const size_t MID_ENTROPY_HASH_TABLE_SZ    = 16u;
+            static inline const size_t LOW_ENTROPY_HASH_TABLE_SZ    = 32u;
+            static inline const size_t MID_ENTROPY_HASH_TABLE_SZ    = 32u;
             static inline const size_t HIGH_ENTROPY_HASH_TABLE_SZ   = 32u;
 
             static inline const std::unordered_map<uint8_t, std::optional<size_t>> CONCURRENT_WORKER_MAP =

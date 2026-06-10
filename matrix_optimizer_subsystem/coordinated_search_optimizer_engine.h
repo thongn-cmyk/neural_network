@@ -113,7 +113,7 @@ namespace matrix_optimizer_subsystem
             static inline constexpr size_t DEFAULT_TIME_MACHINE_OPTIMIZER_FLOAT_BYTE_WIDTH  = size_t{1} << 3;
 
             static inline constexpr size_t DEFAULT_TIME_MACHINE_GENERATOR_CAPACITY          = size_t{1} << 10;
-            static inline constexpr size_t DEFAULT_PROJECTOR_GENERATOR_CAPACITY             = size_t{1} << 4;
+            static inline constexpr size_t DEFAULT_PROJECTOR_GENERATOR_CAPACITY             = size_t{1} << 1;
 
         public:
 
@@ -361,7 +361,7 @@ namespace matrix_optimizer_subsystem
 
                         auto callback = [&]<class T>(T)
                         {
-                            rs = std::make_unique<HeuristicProjectorAsStatisticalMachine>(temporal_coefficient_projector_3::GeneratorFactory::get_best_generator<T>(this->projection_sz, 8u)); //memory (very important)
+                            rs = std::make_unique<HeuristicProjectorAsStatisticalMachine>(temporal_coefficient_projector_3::GeneratorFactory::get_best_generator<T>(this->projection_sz, 1u)); //memory (very important)
                         };
 
                         float_def::get_float_type_by_byte_width(callback, this->float_byte_width);
