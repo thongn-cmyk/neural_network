@@ -648,7 +648,7 @@ namespace taylor_matrix::host_matrix::the_host_matrix
 
             static inline const std::unordered_map<uint8_t, std::optional<size_t>> CONCURRENT_WORKER_MAP =
             {
-                {LOW_COMPUTE, std::optional<size_t>(std::nullopt)},
+                {LOW_COMPUTE, std::optional<size_t>(8)},
                 {MID_COMPUTE, std::optional<size_t>(std::nullopt)},
                 {HIGH_COMPUTE, std::optional<size_t>(std::nullopt)}
             };
@@ -1155,7 +1155,7 @@ namespace taylor_matrix::host_matrix::the_host_matrix
                 return {};
             }
 
-            auto get_shape_base_coefficient_size() -> std::integral_constant<size_t, 6u> //ideally, we'd want 16 for the spikyness of the chart, such is that we won't actually push the responsibility of transformation from the former layer to the latter layer
+            auto get_shape_base_coefficient_size() -> std::integral_constant<size_t, 4u> //ideally, we'd want 16 for the spikyness of the chart, such is that we won't actually push the responsibility of transformation from the former layer to the latter layer
             {                                                                            //the power series would be out of range after 1 or 2 transformation, which is precisely why we want to just change certain logits
                 return {};
             }

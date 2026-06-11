@@ -158,32 +158,32 @@ auto ff_punch(char c) -> std::vector<bool>
     return rs;
 }
 
-auto match_window(const std::vector<bool>& inp,
-                  size_t sz) -> std::vector<bool>
-{
-    if (inp.size() == 0u)
-    {
-        std::abort();
-    }
+// auto match_window(const std::vector<bool>& inp,
+//                   size_t sz) -> std::vector<bool>
+// {
+//     if (inp.size() == 0u)
+//     {
+//         std::abort();
+//     }
 
-    size_t multiplier       = sz / inp.size();
-    size_t full_sz          = inp.size() * multiplier;
-    size_t rem_sz           = sz - full_sz;
+//     size_t multiplier       = sz / inp.size();
+//     size_t full_sz          = inp.size() * multiplier;
+//     size_t rem_sz           = sz - full_sz;
 
-    std::vector<bool> rs    = {};
+//     std::vector<bool> rs    = {};
 
-    for (size_t i = 0u; i < multiplier; ++i)
-    {
-        rs.insert(rs.end(), inp.begin(), inp.end());
-    }
+//     for (size_t i = 0u; i < multiplier; ++i)
+//     {
+//         rs.insert(rs.end(), inp.begin(), inp.end());
+//     }
 
-    for (size_t i = 0u; i < rem_sz; ++i)
-    {
-        rs.push_back(false);
-    }
+//     for (size_t i = 0u; i < rem_sz; ++i)
+//     {
+//         rs.push_back(false);
+//     }
 
-    return rs;
-}
+//     return rs;
+// }
 
 auto token_to_input_binary(const Token& tok) -> std::vector<bool>
 {
@@ -200,55 +200,67 @@ auto token_to_input_binary(const Token& tok) -> std::vector<bool>
 
 auto token_to_output_binary(const Token& tok) -> std::vector<bool>
 {
-    return match_window(hex_punch(tok.c), 256);
+    std::vector<bool> bit_vec = hex_punch(tok.c);
+    std::vector<bool> bit_matrix(256);
+
+    assert(bit_vec.size() == 32u);
+
+    for (size_t i = 0u; i < 32u; ++i)
+    {
+        for (size_t j = 0u; j < 8u; ++j)
+        {
+            bit_matrix[i * 8 + j] = bit_vec[i];
+        }
+    }
+
+    return bit_matrix;
 }
 
 auto guess_word(const std::shared_ptr<tensor_model::Matrix>& matrix) -> char
 {
-    std::vector<tensor_std_float_t> flat_matrix{};
-    tensor_factory::flatten(matrix, flat_matrix);
+    std::vector<tensor_std_float_t> flat_tensor_vec{};
 
-    if (flat_matrix.size() < 256)
-    {
-        std::abort();
-    }
+    tensor_factory::flatten(matrix, flat_tensor_vec);
+    std::vector<tensor_std_float_t> accum_tensor_vec(32u);
 
-    flat_matrix.resize(256);
-
-    std::vector<tensor_std_float_t> reduced_matrix{};
+    assert(flat_tensor_vec.size() > 256u);
 
     for (size_t i = 0u; i < 32u; ++i)
-    {   
-        tensor_std_float_t total = flat_matrix[i];
+    {
+        tensor_std_float_t total = 0;
 
         for (size_t j = 0u; j < 8u; ++j)
         {
-            total += flat_matrix[j * 32 + i];
+            total += flat_tensor_vec[i * 8 + j];
         }
 
-        reduced_matrix.push_back(total);
+        accum_tensor_vec[i] = total;
     }
 
-    size_t max_lo_idx   = 0u;
-    size_t max_hi_idx   = 16u;
+    size_t lo_bit_idx   = 0u;
 
     for (size_t i = 0u; i < 16u; ++i)
     {
-        if (flat_matrix[i] > flat_matrix[max_lo_idx])
+        if (accum_tensor_vec[i] > accum_tensor_vec[lo_bit_idx])
         {
-            max_lo_idx = i;
+            lo_bit_idx = i;
         }
     }
+
+    size_t hi_bit_idx   = 16u;
 
     for (size_t i = 16u; i < 32u; ++i)
     {
-        if (flat_matrix[i] > flat_matrix[max_hi_idx])
+        if (accum_tensor_vec[i] > accum_tensor_vec[hi_bit_idx])
         {
-            max_hi_idx = i;
+            hi_bit_idx = i;
         }
     }
+    
+    uint8_t lo_bit  = lo_bit_idx;
+    uint8_t hi_bit  = hi_bit_idx - 16;
 
-    return std::bit_cast<char>(static_cast<uint8_t>((max_hi_idx << 4) | max_lo_idx));
+    return (hi_bit << 4) | lo_bit;
 }
 
 auto binary_to_matrix_dispatchable(const std::vector<bool>& binary,
@@ -265,7 +277,7 @@ auto binary_to_matrix_dispatchable(const std::vector<bool>& binary,
     {
         if (binary[i])
         {
-            flat_matrix[i] = 2;
+            flat_matrix[i] = 1;
         }
         else
         {
