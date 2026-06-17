@@ -16,6 +16,7 @@ namespace taylor_matrix::host_matrix::shape_projection
 
     static inline constexpr size_t MAX_BASE_COEFFICIENT = 20;
     static inline constexpr bool HAS_FAST_DIV           = true;
+    static inline constexpr double INITIAL_EXPONENT     = double{1} / 8;
 
     template <class LhsFloatType, class RhsFloatType>
     constexpr auto fast_div(LhsFloatType lhs, RhsFloatType rhs) -> decltype(lhs / rhs)
@@ -52,14 +53,16 @@ namespace taylor_matrix::host_matrix::shape_projection
 
         PromotedFloatType projected_result  = 0;
         PromotedFloatType x_multiplier      = 1;
+        PromotedFloatType x_scaler          = std::pow(x, static_cast<PromotedFloatType>(INITIAL_EXPONENT));
         size_t factorial_denum              = 1;
 
         for (size_t i = 0u; i < coeff_arr_sz_container.get(); ++i)
         {
             PromotedFloatType delta_result  = fast_div(static_cast<PromotedFloatType>(coeff_arr[i]), static_cast<PromotedFloatType>(factorial_denum)) * x_multiplier;
             projected_result                += delta_result;
-            x_multiplier                    *= x;
-            factorial_denum                 *= i + 2;
+            x_multiplier                    *= x_scaler;
+            x_scaler                        *= x_scaler;
+            factorial_denum                 *= i + 1;
         }
 
         return projected_result;
@@ -474,7 +477,7 @@ namespace taylor_matrix::host_matrix::shape_projection
                 x_multiplier_arr[j]             *= flat_x_arr_arr[j];
             }
 
-            factorial_denum *= i + 2;
+            factorial_denum *= i + 1;
         }
     }
 

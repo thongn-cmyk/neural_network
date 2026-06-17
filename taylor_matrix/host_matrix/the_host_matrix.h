@@ -614,37 +614,37 @@ namespace taylor_matrix::host_matrix::the_host_matrix
             static inline const std::vector<std::vector<size_t>> LOW_TRANSFORMATION_ROTATION_VEC = 
             {
                 {},
-                {4},
-                {4, 2},
-                {4, 2, 2},
-                {4, 2, 2, 2}
+                {2},
+                {2, 2},
+                {2, 2, 2},
+                {2, 2, 2, 2}
             };
 
             static inline const std::vector<std::vector<size_t>> MID_TRANSFORMATION_ROTATION_VEC = 
             {
                 {},
-                {4},
-                {4, 2},
-                {4, 2, 2},
-                {4, 2, 2, 2}
+                {2},
+                {2, 2},
+                {2, 2, 2},
+                {2, 2, 2, 2}
             };
 
             static inline const std::vector<std::vector<size_t>> HIGH_TRANSFORMATION_ROTATION_VEC = 
             {
                 {},
-                {4},
-                {4, 2},
-                {4, 2, 2},
-                {4, 2, 2, 2}
+                {2},
+                {2, 2},
+                {2, 2, 2},
+                {2, 2, 2, 2}
             };
 
             static inline const double PARAMETER_BOUND_RATIO        = 0.4;
             static inline const double PE_AMPLITUDE_DISCRETE_UNIT   = 0.1;
             static inline const size_t TENTATIVE_PE_SZ              = 4;
 
-            static inline const size_t LOW_ENTROPY_HASH_TABLE_SZ    = 32u;
-            static inline const size_t MID_ENTROPY_HASH_TABLE_SZ    = 32u;
-            static inline const size_t HIGH_ENTROPY_HASH_TABLE_SZ   = 32u;
+            static inline const size_t LOW_ENTROPY_HASH_TABLE_SZ    = 1;
+            static inline const size_t MID_ENTROPY_HASH_TABLE_SZ    = 1;
+            static inline const size_t HIGH_ENTROPY_HASH_TABLE_SZ   = 1;
 
             static inline const std::unordered_map<uint8_t, std::optional<size_t>> CONCURRENT_WORKER_MAP =
             {
@@ -1155,7 +1155,7 @@ namespace taylor_matrix::host_matrix::the_host_matrix
                 return {};
             }
 
-            auto get_shape_base_coefficient_size() -> std::integral_constant<size_t, 4u> //ideally, we'd want 16 for the spikyness of the chart, such is that we won't actually push the responsibility of transformation from the former layer to the latter layer
+            auto get_shape_base_coefficient_size() -> std::integral_constant<size_t, 5u> //ideally, we'd want 16 for the spikyness of the chart, such is that we won't actually push the responsibility of transformation from the former layer to the latter layer
             {                                                                            //the power series would be out of range after 1 or 2 transformation, which is precisely why we want to just change certain logits
                 return {};
             }
