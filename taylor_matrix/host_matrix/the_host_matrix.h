@@ -638,13 +638,22 @@ namespace taylor_matrix::host_matrix::the_host_matrix
                 {2, 2, 2, 2}
             };
 
-            static inline const double PARAMETER_BOUND_RATIO        = 0.4;
+            static inline const double PARAMETER_BOUND_RATIO        = 0.2;
             static inline const double PE_AMPLITUDE_DISCRETE_UNIT   = 0.1;
             static inline const size_t TENTATIVE_PE_SZ              = 4;
 
-            static inline const size_t LOW_ENTROPY_HASH_TABLE_SZ    = 1;
-            static inline const size_t MID_ENTROPY_HASH_TABLE_SZ    = 1;
-            static inline const size_t HIGH_ENTROPY_HASH_TABLE_SZ   = 1;
+            //we'd need to carefully consider these parameters, it seems to me that spline interpolation is our only true North
+            //I have been testing how the continuous string behaves under various circumstances
+
+            //good news is it's still pulling the deviation
+            //bad news is that without spline interpolation, we look crazy
+
+            //I've been bending the string to touch more than 4 points, and it already seems impossible
+            //so the only sentient thing to do now is to carry the context of the points, dragging it and continue to interpolate it
+
+            static inline const size_t LOW_ENTROPY_HASH_TABLE_SZ    = 128;
+            static inline const size_t MID_ENTROPY_HASH_TABLE_SZ    = 128;
+            static inline const size_t HIGH_ENTROPY_HASH_TABLE_SZ   = 128;
 
             static inline const std::unordered_map<uint8_t, std::optional<size_t>> CONCURRENT_WORKER_MAP =
             {
@@ -1155,7 +1164,7 @@ namespace taylor_matrix::host_matrix::the_host_matrix
                 return {};
             }
 
-            auto get_shape_base_coefficient_size() -> std::integral_constant<size_t, 5u> //ideally, we'd want 16 for the spikyness of the chart, such is that we won't actually push the responsibility of transformation from the former layer to the latter layer
+            auto get_shape_base_coefficient_size() -> std::integral_constant<size_t, 4u> //ideally, we'd want 16 for the spikyness of the chart, such is that we won't actually push the responsibility of transformation from the former layer to the latter layer
             {                                                                            //the power series would be out of range after 1 or 2 transformation, which is precisely why we want to just change certain logits
                 return {};
             }

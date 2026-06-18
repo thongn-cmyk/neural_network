@@ -11,12 +11,18 @@
 
 namespace taylor_matrix::host_matrix::shape_projection
 {
-    //the number one reason why we are copy and paste is because this continuous space is subjected to a lot of changes
+    //the number one reason why we are copying and pasting is because this continuous space is subjected to a lot of changes
     //we dont know if the radian space + cosine space is sufficient for complex shape projection
+
+    //what we reckoned is that spline interpolation is mandatory, and the fit 1-2 points happen almost immediately
+    //regardless of the number of points
+    //the larger powers is for the re-iteration of the region, such is to fit the curve into the projection space, by elaborating with other coefficients
+
+    //what we have been trying to do is to cap the transformation at x^1, such is linear, this is for the better of the transformation
+    //because we won't be exploding the powers of the transformation
 
     static inline constexpr size_t MAX_BASE_COEFFICIENT = 20;
     static inline constexpr bool HAS_FAST_DIV           = true;
-    static inline constexpr double INITIAL_EXPONENT     = double{1} / 8;
 
     template <class LhsFloatType, class RhsFloatType>
     constexpr auto fast_div(LhsFloatType lhs, RhsFloatType rhs) -> decltype(lhs / rhs)
@@ -52,17 +58,19 @@ namespace taylor_matrix::host_matrix::shape_projection
         }
 
         PromotedFloatType projected_result  = 0;
-        PromotedFloatType x_multiplier      = 1;
-        PromotedFloatType x_scaler          = std::pow(x, static_cast<PromotedFloatType>(INITIAL_EXPONENT));
-        size_t factorial_denum              = 1;
+        PromotedFloatType x_multiplier      = x;
 
         for (size_t i = 0u; i < coeff_arr_sz_container.get(); ++i)
         {
-            PromotedFloatType delta_result  = fast_div(static_cast<PromotedFloatType>(coeff_arr[i]), static_cast<PromotedFloatType>(factorial_denum)) * x_multiplier;
-            projected_result                += delta_result;
-            x_multiplier                    *= x_scaler;
-            x_scaler                        *= x_scaler;
-            factorial_denum                 *= i + 1;
+            if (i == 0u)
+            {
+                projected_result    += coeff_arr[i];
+            }
+            else
+            {
+                projected_result    += static_cast<PromotedFloatType>(coeff_arr[i]) * x_multiplier;
+                x_multiplier        = std::cbrt(x_multiplier) * std::cbrt(x_multiplier);
+            }
         }
 
         return projected_result;

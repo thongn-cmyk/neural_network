@@ -671,7 +671,7 @@ namespace taylor_matrix::host_matrix::tensor_matrix_operation
                         coeff_arr_offset        = saved_coeff_arr_offset_0;
                         shape_coeff_arr_offset  = saved_shape_coeff_arr_offset_0;
 
-                        std::shared_ptr<Matrix> transformed_focal = matrix_transform(positional_encode_current_position(focal, pe_frequency_multiplier, pe_amplitude_discrete_unit, positional_idx, pe_stack_offset, pe_dedicated_pe_sz, allocator), matrix_0,
+                        std::shared_ptr<Matrix> transformed_focal = matrix_transform(focal, matrix_0,
                                                                                      {std::next(focal_sz_vec.begin()), focal_sz_vec.end()},
                                                                                      focal_suffix_map,
                                                                                      accum_suffix_map,
@@ -719,7 +719,7 @@ namespace taylor_matrix::host_matrix::tensor_matrix_operation
                     coeff_arr_offset        = saved_coeff_arr_offset_1;
                     shape_coeff_arr_offset  = saved_shape_coeff_arr_offset_1;
 
-                    std::shared_ptr<Matrix> transformed_focal = matrix_transform(positional_encode_current_position(focal, pe_frequency_multiplier, pe_amplitude_discrete_unit, positional_idx, pe_stack_offset, pe_dedicated_pe_sz, allocator), matrix_0,
+                    std::shared_ptr<Matrix> transformed_focal = matrix_transform(focal, matrix_0,
                                                                                  {std::next(focal_sz_vec.begin()), focal_sz_vec.end()},
                                                                                  focal_suffix_map,
                                                                                  accum_suffix_map,

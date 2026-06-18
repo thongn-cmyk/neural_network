@@ -20,6 +20,7 @@
 #include <general_definition/float_def.h>
 #include <stl_extension/stdx.h>
 #include <matrix_steering_subsystem/score_context_optimizer.h>
+#include <score_normalizer/min_max_score_normalizer.h>
 
 namespace matrix_optimizer_subsystem
 {
@@ -161,6 +162,9 @@ namespace matrix_optimizer_subsystem
                           matrix_evaluator::MatrixEvaluatorInterface& matrix_evaluator,
                           common_exception::CancellationTokenInterface& cancellation_token) -> std::shared_ptr<the_matrix::MatrixInterface>
             {
+                score_normalizer::MinMaxScoreNormalizer<float_def::eval_float_t> score_normalizer_0{};
+                score_normalizer::MinMaxScoreNormalizer<float_def::eval_float_t> score_normalizer_1{};
+
                 std::unique_ptr<score_context_optimizer::IterationContextGeneratorInterface> iteration_projector_gen                = score_context_optimizer::ContextOptimizerFactory::get_best_binary_progress_context_optimizer(std::make_unique<IterationHeuristicProjectorGenerator>(this->get_projector_generator_pool(matrix.get_coefficient_vector().size())));
 
                 std::unique_ptr<score_context_optimizer::IterationContextGeneratorInterface> iteration_iteration_time_machine_gen   = score_context_optimizer::ContextOptimizerFactory::get_best_binary_progress_context_optimizer(std::make_unique<IterationIterationHeuristicTimeMachineGenerator>(this->get_time_machine_generator_pool()));
@@ -215,14 +219,15 @@ namespace matrix_optimizer_subsystem
 
                                 if (stdx::nan_cmp(matrix_evaluator.get_deviation(*test_matrix), matrix_evaluator.get_deviation(*tmp_matrix)) < 0)
                                 {
-                                    // double tentative_score  = std::abs(matrix_evaluator.get_deviation(*test_matrix) - matrix_evaluator.get_deviation(*tmp_matrix));
-                                    double tentative_score  = 1;
+                                    double tentative_score  = std::abs(matrix_evaluator.get_deviation(*test_matrix) - matrix_evaluator.get_deviation(*tmp_matrix));
+                                    // double tentative_score  = 1;
 
                                     if (std::isnan(tentative_score))
                                     {
                                         tentative_score = 1;
                                     }
 
+                                    tentative_score         = score_normalizer_0.normalize(tentative_score);
                                     tmp_matrix              = test_matrix;
                                     projection_score        = std::max(projection_score, tentative_score);
                                     time_machine_score      = std::max(projection_score, tentative_score);
@@ -245,15 +250,17 @@ namespace matrix_optimizer_subsystem
 
                     if (stdx::nan_cmp(matrix_evaluator.get_deviation(*tmp_matrix), matrix_evaluator.get_deviation(*best_matrix)) < 0)
                     {
-                        // double tentative_score  = std::abs(matrix_evaluator.get_deviation(*tmp_matrix) - matrix_evaluator.get_deviation(*best_matrix));
-                        double tentative_score  = 1;
+                        double tentative_score  = std::abs(matrix_evaluator.get_deviation(*tmp_matrix) - matrix_evaluator.get_deviation(*best_matrix));
+                        // double tentative_score  = 1;
 
                         if (std::isnan(tentative_score))
                         {
                             tentative_score = 1;
                         }
 
-                        best_matrix = tmp_matrix;
+                        tentative_score         = score_normalizer_1.normalize(tentative_score);
+                        best_matrix             = tmp_matrix;
+
                         outer_time_machine_iteration_ctx_wrapper->feedback(tentative_score);
                         projector_iteration_ctx_wrapper->feedback(tentative_score);
                     }

@@ -1003,6 +1003,26 @@ namespace temporal_coefficient_projector_2
                 return std::make_unique<temporal_coefficient_projector::LineTemporalCoefficientProjector<PromotedFloatType>>(std::move(line_vec));
             }
 
+            static auto get_line_scope_focal_exp_sorted_range(size_t coefficient_sz) -> std::unique_ptr<temporal_coefficient_projector::TemporalCoefficientProjectorInterface>
+            {
+                conventional_randomizer::ApplicationRandomizerObject app_randomizer{};
+                std::vector<std_float_t> line_vec(coefficient_sz);
+
+                for (size_t i = 0u; i < coefficient_sz; ++i)
+                {
+                    if (i == 0u)
+                    {
+                        line_vec[i] = app_randomizer.ld_randomize_focal();
+                    }
+                    else
+                    {
+                        line_vec[i] = line_vec[i - 1] * app_randomizer.ld_randomize_percentage_focal();
+                    }
+                }
+
+                return std::make_unique<temporal_coefficient_projector::LineTemporalCoefficientProjector<PromotedFloatType>>(std::move(line_vec));
+            }
+
             static auto get_preorder_tree_from_graph(const std::unordered_map<std::string, std::vector<std::string>>& graph,
                                                      const std::string& origin) -> std::vector<size_t>
             {
@@ -1034,8 +1054,7 @@ namespace temporal_coefficient_projector_2
 
                 {"const_scope_focal", {"const_scope_focal_xdcm_range", "const_scope_focal_dcm_range", "const_scope_focal_expdst_range", "const_scope_focal_noaction"}},
                 {"sin_scope_focal", {"sin_scope_focal_dcm_range", "sin_scope_focal_unfdst_range", "sin_scope_focal_expdst_range"}},
-                {"line_scope_focal", {"line_scope_focal_unfdst_range", "line_scope_focal_expdst_range"}}
-
+                {"line_scope_focal", {"line_scope_focal_unfdst_range", "line_scope_focal_expdst_range", "line_scope_focal_exp_sorted_range"}}
             };
 
             using factory_func_t = std::unique_ptr<temporal_coefficient_projector::TemporalCoefficientProjectorInterface> (*) (size_t);
@@ -1050,7 +1069,8 @@ namespace temporal_coefficient_projector_2
                 {"sin_scope_focal_unfdst_range", self::get_sin_scope_focal_unfdst_range},
                 {"sin_scope_focal_expdst_range", self::get_sin_scope_focal_expdst_range},
                 {"line_scope_focal_unfdst_range", self::get_line_scope_focal_unfdst_range},
-                {"line_scope_focal_expdst_range", self::get_line_scope_focal_expdst_range}
+                {"line_scope_focal_expdst_range", self::get_line_scope_focal_expdst_range},
+                {"line_scope_focal_exp_sorted_range", self::get_line_scope_focal_exp_sorted_range}
             };
 
             static inline const std::string ORIGIN = "origin";
