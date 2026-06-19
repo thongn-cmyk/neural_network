@@ -100,18 +100,21 @@ auto project(FloatType x,
              const stdx::Tag<PromotedFloatType>& promotion_tag = stdx::Tag<PromotedFloatType>{},
              const std::integral_constant<bool, HasBoundCheck>& bound_check = std::integral_constant<bool, HasBoundCheck>{}) -> PromotedFloatType
 {
+
     static_assert(std::is_floating_point_v<FloatType>);
     static_assert(std::is_floating_point_v<PromotedFloatType>);
 
     PromotedFloatType projected_result  = 0;
     PromotedFloatType x_multiplier      = 1;
+    PromotedFloatType x_scaler          = x;
     size_t factorial_denum              = 1;
 
     for (size_t i = 0u; i < coeff_arr_sz_container.get(); ++i)
     {
         PromotedFloatType delta_result  = static_cast<PromotedFloatType>(coeff_arr[i]) / static_cast<PromotedFloatType>(factorial_denum) * x_multiplier;
         projected_result                += delta_result;
-        x_multiplier                    *= x;
+        x_multiplier                    *= x_scaler;
+        x_scaler                        *= x_scaler;
         factorial_denum                 *= i + 1;
     }
 
@@ -205,9 +208,9 @@ auto get_random_coordinated_search_optimizer_engine() -> std::unique_ptr<matrix_
         {
             .matrix_cache_map_cap       = randomize_optional_int<uint64_t>(0, size_t{1} << 4),
             .time_machine_cache_map_cap = randomize_optional_int<uint64_t>(0, size_t{1} << 4),
-            .optimization_epoch_sz      = 256ULL,
+            .optimization_epoch_sz      = 1024ULL,
             .optimization_step_sz       = 32LL,
-            .optimization_loop_sz       = 4ULL
+            .optimization_loop_sz       = 8ULL
         }
     );
 }

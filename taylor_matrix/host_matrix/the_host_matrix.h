@@ -638,7 +638,7 @@ namespace taylor_matrix::host_matrix::the_host_matrix
                 {2, 2, 2, 2}
             };
 
-            static inline const double PARAMETER_BOUND_RATIO        = 0.2;
+            static inline const double PARAMETER_BOUND_RATIO        = 0.0;
             static inline const double PE_AMPLITUDE_DISCRETE_UNIT   = 0.1;
             static inline const size_t TENTATIVE_PE_SZ              = 4;
 
@@ -651,9 +651,13 @@ namespace taylor_matrix::host_matrix::the_host_matrix
             //I've been bending the string to touch more than 4 points, and it already seems impossible
             //so the only sentient thing to do now is to carry the context of the points, dragging it and continue to interpolate it
 
-            static inline const size_t LOW_ENTROPY_HASH_TABLE_SZ    = 128;
-            static inline const size_t MID_ENTROPY_HASH_TABLE_SZ    = 128;
-            static inline const size_t HIGH_ENTROPY_HASH_TABLE_SZ   = 128;
+            //I've been testing how much random, irrelevant data one string could withhold
+            //it seems to me that we'd need to reach the ideal number of "memorization" on a single string before we ever think about interpolation
+            //the problem is that relevant data is an extra from the dynamic programming, so we dont have to worry about that
+
+            static inline const size_t LOW_ENTROPY_HASH_TABLE_SZ    = 4;
+            static inline const size_t MID_ENTROPY_HASH_TABLE_SZ    = 4;
+            static inline const size_t HIGH_ENTROPY_HASH_TABLE_SZ   = 4;
 
             static inline const std::unordered_map<uint8_t, std::optional<size_t>> CONCURRENT_WORKER_MAP =
             {
@@ -752,7 +756,7 @@ namespace taylor_matrix::host_matrix::the_host_matrix
                     current_logit_vec_capacity *= ITERATION_MULTIPLIER;
                 }
             }
-            
+
         public:
 
             TheHostMatrixFactory(): compute_option(LOW_COMPUTE),

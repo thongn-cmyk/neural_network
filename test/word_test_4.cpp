@@ -156,6 +156,33 @@ auto window_tokenize(const std::string& s, const size_t WINDOW_SZ) -> std::vecto
     return rs;
 }
 
+auto mask_token_vector(const std::vector<Token>& token_vec) -> std::vector<Token>
+{
+    std::vector<Token> rs = token_vec;
+
+    for (const auto& token: token_vec)
+    {
+        std::vector<bool> inp_bool_vec  = str_to_bit_vector(token.context);
+
+        for (size_t i = 0u; i < inp_bool_vec.size(); ++i)
+        {
+            std::vector<bool> tmp_bool_vec  = inp_bool_vec;
+            tmp_bool_vec[i]                 = !tmp_bool_vec[i];
+
+            rs.push_back
+            (
+                Token
+                {
+                    .context    = bit_vector_to_str(tmp_bool_vec),
+                    .c          = (randomize_int(0, 2) == 0) ? false : true
+                }
+            );
+        }
+    }
+
+    return rs;
+}
+
 auto hex_punch(char c) -> std::vector<bool>
 {
     uint8_t uint_c  = std::bit_cast<uint8_t>(c);
@@ -378,7 +405,7 @@ class PointPullMatrixEvaluator: public virtual matrix_evaluator::MatrixEvaluator
                 flat_out_vec_0.push_back(std::move(flat_out_0));
             }
 
-            return parity_difference(flat_out_vec, flat_out_vec_0) + mean_square_root(flat_out_vec, flat_out_vec_0);
+            return parity_difference(flat_out_vec, flat_out_vec_0);
         }
 
     private:
@@ -516,10 +543,10 @@ int main()
     initialize_concurrency_base();
 
     const size_t OPTIMIZATION_SZ                = size_t{1} << 10;
-    const size_t TRAINING_DATA_SZ               = 18;
+    const size_t TRAINING_DATA_SZ               = 6;
     const size_t WINDOW_SZ                      = size_t{1} << 2;
 
-    std::vector<Token> token_vec                = window_tokenize(read_training_data(TRAINING_DATA_SZ), WINDOW_SZ);
+    std::vector<Token> token_vec                = mask_token_vector(window_tokenize(read_training_data(TRAINING_DATA_SZ), WINDOW_SZ));
 
     std::vector<std::pair<std::vector<bool>, std::vector<bool>>> training_pair_vec{};
 

@@ -122,7 +122,7 @@ auto project(FloatType x,
     static_assert(std::is_floating_point_v<PromotedFloatType>);
 
     PromotedFloatType projected_result  = 0;
-    PromotedFloatType x_multiplier      = x;
+    PromotedFloatType x_multiplier      = std::pow(x, 3);
 
     for (size_t i = 0u; i < coeff_arr_sz_container.get(); ++i)
     {
@@ -195,8 +195,8 @@ class PointPullMatrixEvaluator: public virtual matrix_evaluator::MatrixEvaluator
 
             for (const auto& [x, y]: this->point_vec)
             {
-                projected_vec.push_back(std::make_pair(x, shape_project(x,
-                                                                        coeff_vec.data(), stdx::to_size_container(coeff_vec.size())) * coeff_vec.back()));
+                projected_vec.push_back(std::make_pair(x, project(x,
+                                                                  coeff_vec.data(), stdx::to_size_container(coeff_vec.size())) * coeff_vec.back()));
             }
 
             return this->mean_square_root(projected_vec, this->point_vec);

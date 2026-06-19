@@ -656,6 +656,59 @@ namespace taylor_matrix::host_matrix::tensor_matrix_operation
 
             stdx::transparent_vector<std::shared_ptr<Matrix>, Allocator> up_to_point_incremental_matrix_vec(allocator);
 
+            if (i != 0u)
+            {
+                stdx::transparent_vector<std::shared_ptr<Matrix>, Allocator> focused_deparameterized_matrix_vec = matrix_to_focal(deparameterize(up_to_point_matrix, parameter_bound_ratio, allocator),
+                                                                                                                                i,
+                                                                                                                                accum_suffix_map,
+                                                                                                                                allocator);
+                stdx::transparent_vector<std::shared_ptr<Matrix>, Allocator> accum_matrix_vec(allocator);
+
+                for (const auto& focused_matrix: focused_deparameterized_matrix_vec)
+                {
+                    stdx::transparent_vector<std::shared_ptr<Matrix>, Allocator> focal_deparamed_matrix_vec = focal_split_matrix(focused_matrix, focal_sz, allocator);
+                    stdx::transparent_vector<std::shared_ptr<Matrix>, Allocator> incremental_vec(allocator);
+                    const size_t saved_coeff_arr_offset_1                                                   = coeff_arr_offset;
+                    const size_t saved_shape_coeff_arr_offset_1                                             = shape_coeff_arr_offset;
+                    size_t positional_idx                                                                   = 0u;
+
+                    for (const auto& focal: focal_deparamed_matrix_vec)
+                    {
+                        coeff_arr_offset        = saved_coeff_arr_offset_1;
+                        shape_coeff_arr_offset  = saved_shape_coeff_arr_offset_1;
+
+                        std::shared_ptr<Matrix> transformed_focal = matrix_transform(focal, matrix_0,
+                                                                                    {std::next(focal_sz_vec.begin()), focal_sz_vec.end()},
+                                                                                    focal_suffix_map,
+                                                                                    accum_suffix_map,
+                                                                                    {std::next(rotation_sz_vec.begin()), rotation_sz_vec.end()},
+                                                                                    {std::next(parameter_bound_ratio_vec.begin()), parameter_bound_ratio_vec.end()},
+                                                                                    base_coeff_sz_container,
+                                                                                    coeff_arr, coeff_arr_offset, coeff_arr_cap,
+                                                                                    base_shape_coeff_sz_container,
+                                                                                    shape_coeff_arr, shape_coeff_arr_offset, shape_coeff_arr_cap,
+                                                                                    pe_frequency_multiplier, pe_amplitude_discrete_unit, pe_stack_offset + 1, pe_dedicated_pe_sz,
+                                                                                    transformed_counter, hash_table_sz,
+                                                                                    taylor_base_promotion_tag,
+                                                                                    shape_base_promotion_tag,
+                                                                                    has_logit_unit_reuse_tag,
+                                                                                    has_logit_group_logit_reuse_tag,
+                                                                                    has_being_logit_reuse_tag,
+                                                                                    has_base_matrix_logit_reuse_tag,
+                                                                                    allocator);
+
+                        incremental_vec.push_back(transformed_focal);
+                        positional_idx += 1u;
+                    }
+
+                    std::shared_ptr<Matrix> transformed_focused_deparamed_matrix = focal_unsplit_matrix(incremental_vec, focal_sz, allocator);
+                    accum_matrix_vec.push_back(transformed_focused_deparamed_matrix);
+                }
+
+                std::shared_ptr<Matrix> incremental_result  = unfocal_matrix(accum_matrix_vec, i, accum_suffix_map, allocator);
+                incremental_matrix_vec.push_back(std::move(incremental_result));
+            }
+
             if (i + 1 != rotation_sz)
             {
                 for (const auto& focused_matrix: focused_matrix_vec)
@@ -697,65 +750,12 @@ namespace taylor_matrix::host_matrix::tensor_matrix_operation
 
                     std::shared_ptr<Matrix> transformed_focused_matrix = focal_unsplit_matrix(transformed_focal_vec, focal_sz, allocator);
                     up_to_point_incremental_matrix_vec.push_back(transformed_focused_matrix);
+
+                    std::shared_ptr<Matrix> incremental_up_to_point_matrix  = unfocal_matrix(up_to_point_incremental_matrix_vec, i, focal_suffix_map, allocator);
+                    auto avg_arr                                            = std::array<std::shared_ptr<Matrix>, 2u>{up_to_point_matrix, incremental_up_to_point_matrix};
+                    up_to_point_matrix                                      = avg(avg_arr.data(), avg_arr.size(), allocator);
                 }
             }
-
-            stdx::transparent_vector<std::shared_ptr<Matrix>, Allocator> focused_deparameterized_matrix_vec = matrix_to_focal(deparameterize(up_to_point_matrix, parameter_bound_ratio, allocator),
-                                                                                                                              i,
-                                                                                                                              accum_suffix_map,
-                                                                                                                              allocator);
-            stdx::transparent_vector<std::shared_ptr<Matrix>, Allocator> accum_matrix_vec(allocator);
-
-            for (const auto& focused_matrix: focused_deparameterized_matrix_vec)
-            {
-                stdx::transparent_vector<std::shared_ptr<Matrix>, Allocator> focal_deparamed_matrix_vec = focal_split_matrix(focused_matrix, focal_sz, allocator);
-                stdx::transparent_vector<std::shared_ptr<Matrix>, Allocator> incremental_vec(allocator);
-                const size_t saved_coeff_arr_offset_1                                                   = coeff_arr_offset;
-                const size_t saved_shape_coeff_arr_offset_1                                             = shape_coeff_arr_offset;
-                size_t positional_idx                                                                   = 0u;
-
-                for (const auto& focal: focal_deparamed_matrix_vec)
-                {
-                    coeff_arr_offset        = saved_coeff_arr_offset_1;
-                    shape_coeff_arr_offset  = saved_shape_coeff_arr_offset_1;
-
-                    std::shared_ptr<Matrix> transformed_focal = matrix_transform(focal, matrix_0,
-                                                                                 {std::next(focal_sz_vec.begin()), focal_sz_vec.end()},
-                                                                                 focal_suffix_map,
-                                                                                 accum_suffix_map,
-                                                                                 {std::next(rotation_sz_vec.begin()), rotation_sz_vec.end()},
-                                                                                 {std::next(parameter_bound_ratio_vec.begin()), parameter_bound_ratio_vec.end()},
-                                                                                 base_coeff_sz_container,
-                                                                                 coeff_arr, coeff_arr_offset, coeff_arr_cap,
-                                                                                 base_shape_coeff_sz_container,
-                                                                                 shape_coeff_arr, shape_coeff_arr_offset, shape_coeff_arr_cap,
-                                                                                 pe_frequency_multiplier, pe_amplitude_discrete_unit, pe_stack_offset + 1, pe_dedicated_pe_sz,
-                                                                                 transformed_counter, hash_table_sz,
-                                                                                 taylor_base_promotion_tag,
-                                                                                 shape_base_promotion_tag,
-                                                                                 has_logit_unit_reuse_tag,
-                                                                                 has_logit_group_logit_reuse_tag,
-                                                                                 has_being_logit_reuse_tag,
-                                                                                 has_base_matrix_logit_reuse_tag,
-                                                                                 allocator);
-
-                    incremental_vec.push_back(transformed_focal);
-                    positional_idx += 1u;
-                }
-
-                std::shared_ptr<Matrix> transformed_focused_deparamed_matrix = focal_unsplit_matrix(incremental_vec, focal_sz, allocator);
-                accum_matrix_vec.push_back(transformed_focused_deparamed_matrix);
-            }
-
-            if (i + 1 != rotation_sz)
-            {
-                std::shared_ptr<Matrix> incremental_up_to_point_matrix  = unfocal_matrix(up_to_point_incremental_matrix_vec, i, focal_suffix_map, allocator);
-                auto avg_arr                                            = std::array<std::shared_ptr<Matrix>, 2u>{up_to_point_matrix, incremental_up_to_point_matrix};
-                up_to_point_matrix                                      = avg(avg_arr.data(), avg_arr.size(), allocator);
-            }
-
-            std::shared_ptr<Matrix> incremental_result  = unfocal_matrix(accum_matrix_vec, i, accum_suffix_map, allocator);
-            incremental_matrix_vec.push_back(std::move(incremental_result));
         }
 
         size_t hash_idx                     = get_hash_index(matrix_0, transformed_counter, hash_table_sz);
