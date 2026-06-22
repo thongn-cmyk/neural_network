@@ -6,6 +6,7 @@
 #include "utility.h"
 #include "tensor_model.h"
 #include <stdexcept>
+#include "dispatch_code_generator.h"
 #include "tensor_being_unit_operation.h"
 #include <array>
 #include <cuda_management/scope_allocator.h>
@@ -16,6 +17,8 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_operation
     using namespace taylor_matrix::cuda_matrix::tensor_model;
     using namespace taylor_matrix::cuda_matrix::utility;
     using namespace taylor_matrix::cuda_matrix::local_exception;
+
+    using DispatchCodeGenerator = taylor_matrix::cuda_matrix::DispatchCodeGenerator;
 
     //--CREATE--
 
@@ -647,10 +650,78 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_operation
     //series_normalize normalize the powers with respect to the initial input Matrix *, so it makes sense that we recursively call series_normalize at the end of each function
     //because the initial Matrix * of each of the function is one power higher than the previous of it in the caller function
 
+    template <class AllocatorInterface,
+              class ShapeBasePromotedFloatType = tensor_model::tensor_std_float_t>
+    __device__ constexpr __attribute__((noinline)) auto mono_transform(Matrix * matrix,
+                                                                       ShapeBaseCoeffSizeContainer base_shape_coeff_sz_container,
+                                                                       const tensor_model::tensor_std_float_t * shape_coeff_arr, size_t& shape_coeff_arr_offset, size_t shape_coeff_arr_cap,
+                                                                       AllocatorInterface&& allocator,
+                                                                       const Tag<ShapeBasePromotedFloatType>& shape_base_promotion_tag = Tag<ShapeBasePromotedFloatType>{},
+                                                                       local_exception_t * err = nullptr) -> Matrix *
+    {
+        safe_ptr_access(matrix);
+
+        local_exception_t local_err = SUCCESS;
+
+        if (err == nullptr)
+        {
+            err = &local_err;
+        }
+
+        Matrix * rs = copy(matrix, allocator);
+
+        for (size_t i = 0u; i < matrix->being_vec_sz; ++i)
+        {
+            rs->being_vec[i]    = tensor_being_unit_operation::mono_transform(matrix->being_vec[i],
+                                                                              base_shape_coeff_sz_container,
+                                                                              shape_coeff_arr, shape_coeff_arr_offset, shape_coeff_arr_cap,
+                                                                              allocator,
+                                                                              shape_base_promotion_tag,
+                                                                              err);
+
+            if (*err !+ SUCCESS)
+            {
+                return {};
+            }
+        }
+
+        return rs;
+    }
+
+    template <class AllocatorInterface,
+              class ShapeBasePromotedFloatType = tensor_model::tensor_std_float_t>
+    __device__ constexpr __attribute__((noinline)) auto feed_forward_transform(Matrix * matrix,
+                                                                               ShapeBaseCoeffSizeContainer base_shape_coeff_sz_container,
+                                                                               const tensor_model::tensor_std_float_t * shape_coeff_arr, size_t& shape_coeff_arr_offset, size_t shape_coeff_arr_cap,
+                                                                               AllocatorInterface&& allocator,
+                                                                               const Tag<ShapeBasePromotedFloatType>& shape_base_promotion_tag = Tag<ShapeBasePromotedFloatType>{},
+                                                                               local_exception_t * err = nullptr) -> Matrix *
+    {
+        Matrix * mono_matrix    = mono_transform(matrix,
+                                                 base_shape_coeff_sz_container,
+                                                 shape_coeff_arr, shape_coeff_arr_offset, shape_coeff_arr_cap,
+                                                 allocator,
+                                                 shape_base_promotion_tag,
+                                                 err);
+
+        if (*err != SUCCESS)
+        {
+            return {};
+        }
+
+        Matrix ** tmp_rs_arr[]{matrix, mono_matrix};
+
+        return avg(tmp_rs_arr, 2u, allocator, err);
+    }
+
+    //this should suffice
+    //I know there are a lot of "assumptions" in the arguments that this function should not expose
+    //but these are the optimizables that are internally coupled with the factory decisions, in the sense, this is against the practice without the factory
+
     template <class FocalSizeVector, /*inplace_vector<size_t>*/
               class SuffixMap, /*inplace_unordered_map<size_t, inplace_unordered_map<size_t, inplace_vector<inplace_vector<size_t>>?*/
               class RotationSizeVector, /*inplace_vector<size_t>*/
-              class ParameterBoundRatioVector, /*inplace_vactor<double>*/
+              class ParameterBoundRatioVector, /*inplace_vector<double>*/
               class ShapeBaseCoeffSizeContainer,
               class AllocatorInterface,
               class ShapeBasePromotedFloatType = tensor_model::tensor_std_float_t>
@@ -663,8 +734,9 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_operation
                                                                          ParameterBoundRatioVector parameter_bound_ratio_vec, size_t parameter_bound_ratio_vec_offset,
 
                                                                          ShapeBaseCoeffSizeContainer base_shape_coeff_sz_container,
-                                                                         const tensor_model::tensor_std_float_t * shape_coeff_arr, size_t& shape_coeff_arr_offset, size_t shape_coeff_arr_cap,
+                                                                         const std::add_pointer_t<tensor_model::tensor_std_float_t> * shape_coeff_arr, size_t& shape_coeff_arr_offset, size_t shape_coeff_arr_cap,
 
+                                                                         DispatchCodeGenerator& dispatch_code_generator,
                                                                          AllocatorInterface&& allocator,
 
                                                                          local_exception_t * err = nullptr,
@@ -677,11 +749,11 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_operation
         using namespace cuda_management::scope_allocator;
         using namespace cuda_management::device_memory; 
 
-        local_exception_t tmp_err = SUCCESS;
+        local_exception_t local_err = SUCCESS;
 
         if (err == nullptr)
         {
-            err = &tmp_err;
+            err = &local_err;
         }
 
         Matrix * rs = copy(safe_ptr_access(matrix), allocator); //
@@ -690,7 +762,6 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_operation
         if (matrix->being_vec_sz == 0u)
         {
             *err = OTHER_INVALID_ARGUMENT_CODE;
-
             return {};
         }
 
@@ -706,15 +777,25 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_operation
             BeingUnit * lhs = tensor_being_unit_operation::two_to_one_project(matrix->being_vec[0],
                                                                               matrix->being_vec[1],
                                                                               base_shape_coeff_sz_container,
-                                                                              shape_coeff_arr, shape_coeff_arr_offset, shape_coeff_arr_cap,
+                                                                              shape_coeff_arr[dispatch_code_generator.get_dispatch_code()], shape_coeff_arr_offset, shape_coeff_arr_cap,
                                                                               allocator,
                                                                               shape_base_promotion_tag,
                                                                               has_logit_unit_reuse_tag,
                                                                               has_logit_group_logit_reuse_tag,
                                                                               has_being_logit_reuse_tag,
                                                                               err);
-
+            
             if (*err != SUCCESS)
+            {
+                return {};
+            }
+
+            BeingUnit * enhanced_lhs    = tensor_being_unit_operation::accumulate(lhs,
+                                                                                  matrix->being_vec[0],
+                                                                                  allocator,
+                                                                                  err);
+
+            if (*err !+ SUCCESS)
             {
                 return {};
             }
@@ -727,7 +808,7 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_operation
             BeingUnit * rhs = tensor_being_unit_operation::two_to_one_project(matrix->being_vec[1],
                                                                               matrix->being_vec[0],
                                                                               base_shape_coeff_sz_container,
-                                                                              shape_coeff_arr, shape_coeff_arr_offset, shape_coeff_arr_cap,
+                                                                              shape_coeff_arr[dispatch_code_generator.get_dispatch_code()], shape_coeff_arr_offset, shape_coeff_arr_cap,
                                                                               allocator,
                                                                               shape_base_promotion_tag,
                                                                               has_logit_unit_reuse_tag,
@@ -740,14 +821,32 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_operation
                 return {};
             }
 
-            std::add_pointer_t<BeingUnit> tmp_being_vec[2]{lhs, rhs};
+            BeingUnit * enhanced_rhs    = tensor_being_unit_operation::accumulate(rhs,
+                                                                                  matrix->being_vec[1],
+                                                                                  allocator,
+                                                                                  err);
+
+            if (*err != SUCCESS)
+            {
+                return {};
+            }
+
+            std::add_pointer_t<BeingUnit> tmp_being_vec[]{enhanced_lhs, enhanced_rhs};
+
             Matrix tmp_matrix
             {
                 .being_vec      = tmp_being_vec,
                 .being_vec_sz   = static_cast<uint64_t>(2)
             };
 
-            copy_to(rs, &tmp_matrix, err);
+            Matrix * final_rs    = feed_forward_transform(&tmp_matrix,
+                                                          base_shape_coeff_sz_container,
+                                                          shape_coeff_arr[dispatch_code_generator.get_dispatch_code()], shape_coeff_arr_offset, shape_coeff_arr_cap,
+                                                          allocator,
+                                                          shape_base_promotion_tag,
+                                                          err);
+        
+            copy_to(rs, final_rs, err);
 
             return rs;
         }
@@ -772,10 +871,11 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_operation
 
         const size_t focal_sz                       = focal_sz_vec[focal_sz_vec_offset];
         const size_t rotation_sz                    = rotation_sz_vec[rotation_sz_vec_offset];
+        const size_t INCREMENTAL_MATRIX_VEC_OFFSET  = 1u;
         const double parameter_bound_ratio          = parameter_bound_ratio_vec[parameter_bound_ratio_vec_offset];
 
         Matrix * up_to_point_matrix                 = copy(matrix, allocator);
-        size_t incremental_matrix_vec_sz            = rotation_sz + 1u;
+        size_t incremental_matrix_vec_sz            = rotation_sz;
         Matrix ** incremental_matrix_vec            = std_new_array<std::add_pointer_t<Matrix>>(allocator, incremental_matrix_vec_sz);
 
         for (size_t i = 0u; i < incremental_matrix_vec_sz; ++i)
@@ -785,29 +885,29 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_operation
 
         for (size_t i = 0u; i < rotation_sz; ++i)
         {
-            scope_guard scope_grd(&allocator); //
+            scope_guard scope_grd(&allocator);
 
-            Matrix ** focused_matrix_arr    = {};
-            size_t focused_matrix_vec_sz    = {};
-
-            std::tie(focused_matrix_arr, focused_matrix_vec_sz) = matrix_to_focal(up_to_point_matrix,
-                                                                                  i,
-                                                                                  focal_suffix_map,
-                                                                                  allocator,
-                                                                                  err);
-
-            if (*err != SUCCESS)
+            if (i != 0u)
             {
-                return {};
-            }
+                Matrix ** focused_matrix_arr_1      = {};
+                size_t focused_matrix_vec_sz_1      = {};
 
-            Matrix ** up_to_point_incremental_matrix_vec        = std_new_array<std::add_pointer_t<Matrix>>(allocator, focused_matrix_vec_sz);
+                std::tie(focused_matrix_arr_1, focused_matrix_vec_sz_1) = matrix_to_focal(deparameterize(up_to_point_matrix, parameter_bound_ratio, allocator),
+                                                                                          i,
+                                                                                          focal_suffix_map,
+                                                                                          allocator,
+                                                                                          err);
 
-            if (i + 1 != rotation_sz)
-            {
-                for (size_t j = 0u; j < focused_matrix_vec_sz; ++j)
+                if (*err != SUCCESS)
                 {
-                    auto& focused_matrix                        = focused_matrix_arr[j];
+                    return {};
+                }
+
+                Matrix ** accum_incremental_matrix_vec                  = std_new_array<std::add_pointer_t<Matrix>>(allocator, focused_matrix_vec_sz_1);
+
+                for (size_t j = 0u; j < focused_matrix_vec_sz_1; ++j)
+                {
+                    Matrix * focused_matrix                     = focused_matrix_arr_1[j];
                     Matrix ** focal_matrix_vec                  = focal_split_matrix(focused_matrix, focal_sz, allocator, err);
 
                     if (*err != SUCCESS)
@@ -815,13 +915,13 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_operation
                         return {};
                     }
 
-                    Matrix ** transformed_focal_vec             = std_new_array<std::add_pointer_t<Matrix>>(allocator, focal_sz); //
+                    Matrix ** transformed_focal_vec             = std_new_array<std::add_pointer_t<Matrix>>(allocator, focal_sz);
                     const size_t saved_shape_coeff_arr_offset_0 = shape_coeff_arr_offset;
 
                     for (size_t focal_idx = 0u; focal_idx < focal_sz; ++focal_idx)
                     {
                         shape_coeff_arr_offset      = saved_shape_coeff_arr_offset_0;
-                        auto& focal                 = focal_matrix_vec[focal_idx];
+                        Matrix * focal              = focal_matrix_vec[focal_idx];
 
                         Matrix * transformed_focal  = matrix_transform(focal,
                                                                        focal_sz_vec, focal_sz_vec_offset + 1,
@@ -830,6 +930,7 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_operation
                                                                        parameter_bound_ratio_vec, parameter_bound_ratio_vec_offset + 1,
                                                                        base_shape_coeff_sz_container,
                                                                        shape_coeff_arr, shape_coeff_arr_offset, shape_coeff_arr_cap,
+                                                                       dispatch_code_generator,
                                                                        allocator,
                                                                        err,
                                                                        shape_base_promotion_tag,
@@ -843,77 +944,96 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_operation
                             return {};
                         }
 
-                        transformed_focal_vec[focal_idx] = transformed_focal; 
+                        transformed_focal_vec[focal_idx] = transformed_focal;
                     }
 
-                    Matrix * transformed_focused_matrix     = focal_unsplit_matrix(transformed_focal_vec, focal_sz, allocator);
-                    up_to_point_incremental_matrix_vec[j]   = transformed_focused_matrix;
+                    Matrix * transformed_focused_matrix = focal_unsplit_matrix(transformed_focal_vec, focal_sz, allocator);
+                    accum_incremental_matrix_vec[j]     = transformed_focused_matrix;
                 }
-            }
-            
-            Matrix ** focused_matrix_arr_1      = {};
-            size_t focused_matrix_vec_sz_1      = {};
 
-            std::tie(focused_matrix_arr_1, focused_matrix_vec_sz_1) = matrix_to_focal(deparameterize(up_to_point_matrix, parameter_bound_ratio, allocator),
-                                                                                      i,
-                                                                                      focal_suffix_map,
-                                                                                      allocator,
-                                                                                      err);
-
-            if (*err != SUCCESS)
-            {
-                return {};
-            }
-
-            Matrix ** accum_incremental_matrix_vec                  = std_new_array<std::add_pointer_t<Matrix>>(allocator, focused_matrix_vec_sz_1);
-
-            for (size_t j = 0u; j < focused_matrix_vec_sz_1; ++j)
-            {
-                auto& focused_matrix                        = focused_matrix_arr_1[j];
-                Matrix ** focal_matrix_vec                  = focal_split_matrix(focused_matrix, focal_sz, allocator, err);
+                Matrix * incremental_result = unfocal_matrix(accum_incremental_matrix_vec, focused_matrix_vec_sz_1,
+                                                             i,
+                                                             focal_suffix_map,
+                                                             allocator,
+                                                             err);
 
                 if (*err != SUCCESS)
                 {
                     return {};
                 }
 
-                Matrix ** transformed_focal_vec             = std_new_array<std::add_pointer_t<Matrix>>(allocator, focal_sz); //
-                const size_t saved_shape_coeff_arr_offset_0 = shape_coeff_arr_offset;
+                copy_to(incremental_matrix_vec[i + INCREMENTAL_MATRIX_VEC_OFFSET], incremental_result, err);
 
-                for (size_t focal_idx = 0u; focal_idx < focal_sz; ++focal_idx)
+                if (*err != SUCCESS)
                 {
-                    shape_coeff_arr_offset      = saved_shape_coeff_arr_offset_0;
-                    auto& focal                 = focal_matrix_vec[focal_idx];
+                    return {};
+                }
+            }
 
-                    Matrix * transformed_focal  = matrix_transform(focal,
-                                                                   focal_sz_vec, focal_sz_vec_offset + 1,
-                                                                   focal_suffix_map,
-                                                                   rotation_sz_vec, rotation_sz_vec_offset + 1,
-                                                                   parameter_bound_ratio_vec, parameter_bound_ratio_vec_offset + 1,
-                                                                   base_shape_coeff_sz_container,
-                                                                   shape_coeff_arr, shape_coeff_arr_offset, shape_coeff_arr_cap,
-                                                                   allocator,
-                                                                   err,
-                                                                   shape_base_promotion_tag,
-                                                                   has_logit_unit_reuse_tag,
-                                                                   has_logit_group_logit_reuse_tag,
-                                                                   has_being_logit_reuse_tag,
-                                                                   has_base_matrix_logit_reuse_tag);
+            if (i + 1 != rotation_sz)
+            {
+                Matrix ** focused_matrix_arr    = {};
+                size_t focused_matrix_vec_sz    = {};
+
+                std::tie(focused_matrix_arr, focused_matrix_vec_sz) = matrix_to_focal(up_to_point_matrix,
+                                                                                      i,
+                                                                                      focal_suffix_map,
+                                                                                      allocator,
+                                                                                      err);
+
+                if (*err != SUCCESS)
+                {
+                    return {};
+                }
+
+                Matrix ** up_to_point_incremental_matrix_vec        = std_new_array<std::add_pointer_t<Matrix>>(allocator, focused_matrix_vec_sz);
+
+                for (size_t j = 0u; j < focused_matrix_vec_sz; ++j)
+                {
+                    Matrix * focused_matrix                     = focused_matrix_arr[j];
+                    Matrix ** focal_matrix_vec                  = focal_split_matrix(focused_matrix, focal_sz, allocator, err);
 
                     if (*err != SUCCESS)
                     {
                         return {};
                     }
 
-                    transformed_focal_vec[focal_idx] = transformed_focal;
+                    Matrix ** transformed_focal_vec             = std_new_array<std::add_pointer_t<Matrix>>(allocator, focal_sz);
+                    const size_t saved_shape_coeff_arr_offset_0 = shape_coeff_arr_offset;
+
+                    for (size_t focal_idx = 0u; focal_idx < focal_sz; ++focal_idx)
+                    {
+                        shape_coeff_arr_offset      = saved_shape_coeff_arr_offset_0;
+                        Matrix * focal              = focal_matrix_vec[focal_idx];
+
+                        Matrix * transformed_focal  = matrix_transform(focal,
+                                                                       focal_sz_vec, focal_sz_vec_offset + 1,
+                                                                       focal_suffix_map,
+                                                                       rotation_sz_vec, rotation_sz_vec_offset + 1,
+                                                                       parameter_bound_ratio_vec, parameter_bound_ratio_vec_offset + 1,
+                                                                       base_shape_coeff_sz_container,
+                                                                       shape_coeff_arr, shape_coeff_arr_offset, shape_coeff_arr_cap,
+                                                                       dispatch_code_generator,
+                                                                       allocator,
+                                                                       err,
+                                                                       shape_base_promotion_tag,
+                                                                       has_logit_unit_reuse_tag,
+                                                                       has_logit_group_logit_reuse_tag,
+                                                                       has_being_logit_reuse_tag,
+                                                                       has_base_matrix_logit_reuse_tag);
+
+                        if (*err != SUCCESS)
+                        {
+                            return {};
+                        }
+
+                        transformed_focal_vec[focal_idx] = transformed_focal;
+                    }
+
+                    Matrix * transformed_focused_matrix     = focal_unsplit_matrix(transformed_focal_vec, focal_sz, allocator);
+                    up_to_point_incremental_matrix_vec[j]   = transformed_focused_matrix;
                 }
 
-                Matrix * transformed_focused_matrix = focal_unsplit_matrix(transformed_focal_vec, focal_sz, allocator);
-                accum_incremental_matrix_vec[j]     = transformed_focused_matrix;
-            }
-
-            if (i + 1 != rotation_sz)
-            {
                 Matrix * incremental_up_to_point_matrix = unfocal_matrix(up_to_point_incremental_matrix_vec, focused_matrix_vec_sz,
                                                                          i,
                                                                          focal_suffix_map,
@@ -926,7 +1046,7 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_operation
                 }
 
                 auto avg_arr                            = std::array<std::add_pointer_t<Matrix>, 2u>{up_to_point_matrix, incremental_up_to_point_matrix};
-                auto tmp_result                         = avg(avg_arr.data(), avg_arr.size(), allocator, err);
+                Matrix * tmp_result                     = avg(avg_arr.data(), avg_arr.size(), allocator, err);
 
                 if (*err != SUCCESS)
                 {
@@ -940,34 +1060,28 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_operation
                     return {};
                 }
             }
-
-            Matrix * incremental_result = unfocal_matrix(accum_incremental_matrix_vec, focused_matrix_vec_sz_1,
-                                                         i,
-                                                         focal_suffix_map,
-                                                         allocator,
-                                                         err);
-
-            if (*err != SUCCESS)
-            {
-                return {};
-            }
-
-            copy_to(incremental_matrix_vec[i + 1], incremental_result, err);
-
-            if (*err != SUCCESS)
-            {
-                return {};
-            }
         }
 
-        Matrix * tmp_rs = series_normalize(incremental_matrix_vec, incremental_matrix_vec_sz, allocator, err); //we are misisng a scaling factor
+        Matrix * tmp_rs         = series_normalize(incremental_matrix_vec, incremental_matrix_vec_sz, allocator, err); //we are misisng a scaling factor
 
         if (*err != SUCCESS)
         {
             return {};
         }
 
-        copy_to(rs, tmp_rs, err);
+        Matrix * final_rs       = feed_forward_transform(tmp_rs,
+                                                         base_shape_coeff_sz_container,
+                                                         shape_coeff_arr[dispatch_code_generator.get_dispatch_code()], shape_coeff_arr_offset, shape_coeff_arr_cap,
+                                                         allocator,
+                                                         shape_base_promotion_tag,
+                                                         err);
+
+        if (*err != SUCCESS)
+        {
+            return {};
+        }
+
+        copy_to(rs, final_rs, err);
 
         if (*err != SUCCESS)
         {

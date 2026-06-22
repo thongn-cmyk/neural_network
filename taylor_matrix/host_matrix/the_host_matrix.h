@@ -614,28 +614,28 @@ namespace taylor_matrix::host_matrix::the_host_matrix
             static inline const std::vector<std::vector<size_t>> LOW_TRANSFORMATION_ROTATION_VEC = 
             {
                 {},
-                {2},
-                {2, 2},
-                {2, 2, 2},
-                {2, 2, 2, 2}
+                {4},
+                {4, 2},
+                {4, 2, 2},
+                {4, 2, 2, 2}
             };
 
             static inline const std::vector<std::vector<size_t>> MID_TRANSFORMATION_ROTATION_VEC = 
             {
                 {},
-                {2},
-                {2, 2},
-                {2, 2, 2},
-                {2, 2, 2, 2}
+                {4},
+                {4, 2},
+                {4, 2, 2},
+                {4, 2, 2, 2}
             };
 
             static inline const std::vector<std::vector<size_t>> HIGH_TRANSFORMATION_ROTATION_VEC = 
             {
                 {},
-                {2},
-                {2, 2},
-                {2, 2, 2},
-                {2, 2, 2, 2}
+                {4},
+                {4, 2},
+                {4, 2, 2},
+                {4, 2, 2, 2}
             };
 
             static inline const double PARAMETER_BOUND_RATIO        = 0.0;

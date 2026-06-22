@@ -94,6 +94,16 @@ class TaylorMatrix: public virtual the_matrix::MatrixInterface
         }
 };
 
+auto three_fourth_exp(float x) -> float
+{
+    float abs_x     = std::abs(x);
+    float sqrt_x    = std::sqrt(abs_x);
+    float sqrt2_x   = std::sqrt(sqrt_x);
+    float rs        = sqrt_x * sqrt2_x;
+
+    return std::copysign(rs, x);
+}
+
 template <class FloatType, class SzContainer, class PromotedFloatType = FloatType, bool HasBoundCheck = true>
 auto project(FloatType x,
              const FloatType * coeff_arr, SzContainer coeff_arr_sz_container,
@@ -115,7 +125,7 @@ auto project(FloatType x,
         else
         {
             projected_result    += static_cast<PromotedFloatType>(coeff_arr[i]) * x_multiplier;
-            x_multiplier        = std::cbrt(x_multiplier) * std::cbrt(x_multiplier);
+            x_multiplier        = three_fourth_exp(x_multiplier);
         }
     }
 
@@ -133,7 +143,7 @@ auto get_random_point_bag(size_t sz) -> std::vector<std::pair<tensor_std_float_t
 
     for (size_t i = 0u; i < sz; ++i)
     {
-        rs.push_back(std::make_pair(randomize_double(0, 2), randomize_double(0, 2)));
+        rs.push_back(std::make_pair(randomize_double(-2, 2), randomize_double(-2, 2)));
     }
 
     return rs;

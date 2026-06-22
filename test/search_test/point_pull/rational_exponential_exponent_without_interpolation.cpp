@@ -112,6 +112,25 @@ constexpr void taylor_radian_to_euclidean_space(const FloatType * radian_coeff_a
     }
 }
 
+inline float fast_approx_three_quarters(float x) 
+{
+    float abs_x     = std::abs(x);
+    uint32_t u_val  = std::bit_cast<uint32_t>(abs_x);
+    u_val           = u_val - (u_val >> 2) + 0x0FE00000;
+
+    return std::copysign(std::bit_cast<float>(i), x);
+}
+
+auto three_fourth_exp(float x) -> float
+{
+    float abs_x     = std::abs(x);
+    float sqrt_x    = std::sqrt(abs_x);
+    float sqrt2_x   = std::sqrt(sqrt_x);
+    float rs        = sqrt_x * sqrt2_x;
+
+    return std::copysign(rs, x);
+}
+
 template <class FloatType, class SzContainer, class PromotedFloatType = FloatType, bool HasBoundCheck = true>
 auto project(FloatType x,
              const FloatType * coeff_arr, SzContainer coeff_arr_sz_container,
@@ -122,7 +141,7 @@ auto project(FloatType x,
     static_assert(std::is_floating_point_v<PromotedFloatType>);
 
     PromotedFloatType projected_result  = 0;
-    PromotedFloatType x_multiplier      = std::pow(x, 3);
+    PromotedFloatType x_multiplier      = x;
 
     for (size_t i = 0u; i < coeff_arr_sz_container.get(); ++i)
     {
@@ -133,7 +152,7 @@ auto project(FloatType x,
         else
         {
             projected_result    += static_cast<PromotedFloatType>(coeff_arr[i]) * x_multiplier;
-            x_multiplier        = std::cbrt(x_multiplier) * std::cbrt(x_multiplier);
+            x_multiplier        = fast_approx_three_quarters(x_multiplier);
         }
     }
 

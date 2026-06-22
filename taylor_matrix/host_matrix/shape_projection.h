@@ -8,6 +8,7 @@
 #include <cmath>
 #include <numbers>
 #include <stdexcept>
+#include <bit>
 
 namespace taylor_matrix::host_matrix::shape_projection
 {
@@ -40,6 +41,15 @@ namespace taylor_matrix::host_matrix::shape_projection
         }
     }
 
+    constexpr auto fast_approx_three_quarters(float x) -> float
+    {
+        float abs_x     = std::abs(x);
+        uint32_t u_val  = std::bit_cast<uint32_t>(abs_x);
+        u_val           = u_val - (u_val >> 2) + 0x0FE00000;
+
+        return std::copysign(std::bit_cast<float>(u_val), x);
+    }
+
     template <class FloatType, class SzContainer, class PromotedFloatType = FloatType, bool HasBoundCheck = true>
     constexpr auto base_taylor_raw_shape_project(FloatType x,
                                                  const FloatType * coeff_arr, SzContainer coeff_arr_sz_container,
@@ -69,7 +79,7 @@ namespace taylor_matrix::host_matrix::shape_projection
             else
             {
                 projected_result    += static_cast<PromotedFloatType>(coeff_arr[i]) * x_multiplier;
-                x_multiplier        = std::cbrt(x_multiplier) * std::cbrt(x_multiplier);
+                x_multiplier        = fast_approx_three_quarters(x_multiplier);
             }
         }
 
@@ -118,13 +128,18 @@ namespace taylor_matrix::host_matrix::shape_projection
         static_assert(std::is_floating_point_v<FloatType>);
         static_assert(std::is_floating_point_v<PromotedFloatType>);
 
-        PromotedFloatType carry_multiplier = 1u;
-
         for (size_t i = 0u; i < coeff_arr_sz_container.get(); ++i)
         {
-            euclid_coeff_arr[i] = carry_multiplier * std::sin(static_cast<PromotedFloatType>(radian_coeff_arr[i]));
-            carry_multiplier    *= std::cos(static_cast<PromotedFloatType>(radian_coeff_arr[i]));
+            euclid_coeff_arr[i] = radian_coeff_arr[i];
         }
+
+        // PromotedFloatType carry_multiplier = 1u;
+
+        // for (size_t i = 0u; i < coeff_arr_sz_container.get(); ++i)
+        // {
+        //     euclid_coeff_arr[i] = carry_multiplier * std::sin(static_cast<PromotedFloatType>(radian_coeff_arr[i]));
+        //     carry_multiplier    *= std::cos(static_cast<PromotedFloatType>(radian_coeff_arr[i]));
+        // }
     }
 
     template <class FloatType, class SzContainer, class PromotedFloatType = FloatType, bool HasBoundCheck = true>

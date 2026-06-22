@@ -159,6 +159,43 @@ namespace taylor_matrix::cuda_matrix::tensor_process_unit_operation
         }
     }
 
+    template <class ShapeBaseCoeffSizeContainer,
+              class ShapeBasePromotedFloatType = tensor_model::tensor_std_float_t>
+    constexpr auto mono_transform(const ProcessUnit& process_unit,
+                                  ShapeBaseCoeffSizeContainer base_shape_coeff_sz_container,
+                                  const tensor_model::tensor_std_float_t * shape_coeff_arr, size_t& shape_coeff_arr_offset, size_t shape_coeff_arr_cap,
+                                  Tag<ShapeBasePromotedFloatType> shape_base_promotion_tag = Tag<ShapeBasePromotedFloatType>{},
+                                  local_exception_t * err = nullptr) -> ProcessUnit
+    {
+        local_exception_t local_err = SUCCESS;
+
+        if (err == nullptr)
+        {
+            err = &local_err;
+        }
+
+        tensor_model::ProcessUnit rs{};
+
+        for (size_t i = 0u; i < PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ; ++i)
+        {
+            size_t required_sz      = shape_coeff_arr_offset + base_shape_coeff_sz_container.get();
+
+            if (required_sz > shape_coeff_arr_cap)
+            {
+                *err = OTHER_INVALID_ARGUMENT_CODE;
+                return {};
+            }
+
+            rs.logit_vec[i]         = shape_projection::taylor_shape_project(process_unit.logit_vec[i],
+                                                                             std::next(shape_coeff_arr, shape_coeff_arr_offset), base_shape_coeff_sz_container,
+                                                                             shape_base_promotion_tag);
+
+            shape_coeff_arr_offset  = required_sz;
+        }
+
+        return rs;
+    }
+
     __device__ constexpr auto deparameterize(const ProcessUnit& process_unit,
                                              double perc) -> ProcessUnit
     {

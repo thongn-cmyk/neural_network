@@ -649,13 +649,6 @@ namespace taylor_matrix::host_matrix::tensor_matrix_operation
 
         for (size_t i = 0u; i < rotation_sz; ++i)
         {
-            stdx::transparent_vector<std::shared_ptr<Matrix>, Allocator> focused_matrix_vec = matrix_to_focal(up_to_point_matrix,
-                                                                                                              i,
-                                                                                                              focal_suffix_map,
-                                                                                                              allocator);
-
-            stdx::transparent_vector<std::shared_ptr<Matrix>, Allocator> up_to_point_incremental_matrix_vec(allocator);
-
             if (i != 0u)
             {
                 stdx::transparent_vector<std::shared_ptr<Matrix>, Allocator> focused_deparameterized_matrix_vec = matrix_to_focal(deparameterize(up_to_point_matrix, parameter_bound_ratio, allocator),
@@ -711,6 +704,13 @@ namespace taylor_matrix::host_matrix::tensor_matrix_operation
 
             if (i + 1 != rotation_sz)
             {
+                stdx::transparent_vector<std::shared_ptr<Matrix>, Allocator> up_to_point_incremental_matrix_vec(allocator);
+
+                stdx::transparent_vector<std::shared_ptr<Matrix>, Allocator> focused_matrix_vec = matrix_to_focal(up_to_point_matrix,
+                                                                                                                  i,
+                                                                                                                  focal_suffix_map,
+                                                                                                                  allocator);
+
                 for (const auto& focused_matrix: focused_matrix_vec)
                 {
                     stdx::transparent_vector<std::shared_ptr<Matrix>, Allocator> focal_matrix_vec       = focal_split_matrix(focused_matrix, focal_sz, allocator);

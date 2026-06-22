@@ -146,6 +146,40 @@ namespace taylor_matrix::cuda_matrix::tensor_process_group_operation
         return rs;
     }
 
+    template <class ShapeBaseCoeffSizeContainer,
+              class ShapeBasePromotedFloatType = tensor_model::tensor_std_float_t>
+    __device__ constexpr auto mono_transform(const ProcessGroup& process_group,
+                                             ShapeBaseCoeffSizeContainer base_shape_coeff_sz_container,
+                                             const tensor_model::tensor_std_float_t * shape_coeff_arr, size_t& shape_coeff_arr_offset, size_t shape_coeff_arr_cap,
+                                             const Tag<ShapeBasePromotedFloatType> shape_base_promotion_tag = Tag<ShapeBasePromotedFloatType>{},
+                                             local_exception_t * err = nullptr) -> ProcessGroup
+    {
+        local_exception_t local_err = SUCCESS;
+
+        if (err == nullptr)
+        {
+            err = &local_err;
+        }
+
+        tensor_model::ProcessGroup rs{};
+
+        for (size_t i = 0u; i < tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ; ++i)
+        {
+            rs.process_vec[i]   = tensor_process_unit_operation::mono_transform(process_group.process_vec[i],
+                                                                                base_shape_coeff_sz_container,
+                                                                                shape_coeff_arr, shape_coeff_arr_offset, shape_coeff_arr_cap,
+                                                                                shape_base_promotion_tag,
+                                                                                err);
+
+            if (*err != SUCCESS)
+            {
+                return {};
+            }
+        }
+
+        return rs;
+    }
+
     __device__ constexpr auto deparameterize(const ProcessGroup& process_group,
                                              double perc) -> ProcessGroup
     {

@@ -183,6 +183,15 @@ auto mask_token_vector(const std::vector<Token>& token_vec) -> std::vector<Token
     return rs;
 }
 
+template <class T>
+auto slice_vector(const std::vector<T>& vec, size_t first, size_t sz) -> std::vector<T>
+{
+    first       = std::min(first, vec.size());
+    size_t last = std::min(first + sz, vec.size());
+
+    return std::vector<T>(std::next(vec.begin(), first), std::next(vec.begin(), last));
+}
+
 auto hex_punch(char c) -> std::vector<bool>
 {
     uint8_t uint_c  = std::bit_cast<uint8_t>(c);
@@ -538,15 +547,28 @@ void initialize_concurrency_base()
     async_x::init(8u, 32u);
 }
 
+//today we'd work on compile-time optimizables (tomorrow)
+//I strongly believe that models are compile-time optimizables, and there is a program to tune the parameters, we have successfully proved that these logit paths could be punched through
+
+//what I want today tomorrow is we could run the Reddit PoC on cuda, on a hex vocabulary, or even a char vocabulary, but I doubt that would be an issue, for the reason being predicting the next bool is just as hard as predicting the next char
+//what we'd need is random sampling, a context window, and an exponential prediction for the exponential property is the word count in the input field
+
+//I have intel saying that 8192 hash_table_sz and <4, 2, 2, 2, ...> should suffice for super intelligent and super intelligence
+//that would still be well under < 128MB, so I don't think there will be transportation issues (there would be)
+//so I can say that memory sync is mandatory even though we break immutability
+
+//we'd need to tune the static_fields by analyzing the convergence and the training rate
+//we'd most likely focus on convergence
+
 int main()
 {
     initialize_concurrency_base();
 
     const size_t OPTIMIZATION_SZ                = size_t{1} << 10;
-    const size_t TRAINING_DATA_SZ               = 6;
+    const size_t TRAINING_DATA_SZ               = 10;
     const size_t WINDOW_SZ                      = size_t{1} << 2;
 
-    std::vector<Token> token_vec                = mask_token_vector(window_tokenize(read_training_data(TRAINING_DATA_SZ), WINDOW_SZ));
+    std::vector<Token> token_vec                = slice_vector(mask_token_vector(window_tokenize(read_training_data(TRAINING_DATA_SZ), WINDOW_SZ)), 0, 400);
 
     std::vector<std::pair<std::vector<bool>, std::vector<bool>>> training_pair_vec{};
 

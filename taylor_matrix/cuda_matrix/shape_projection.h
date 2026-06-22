@@ -78,18 +78,23 @@ namespace taylor_matrix::cuda_matrix::shape_projection
         static_assert(std::is_floating_point_v<FloatType>);
         static_assert(std::is_floating_point_v<PromotedFloatType>);
 
-        PromotedFloatType carry_multiplier = 1u;
-
         for (size_t i = 0u; i < coeff_arr_sz_container.get(); ++i)
         {
-            euclid_coeff_arr[i] = carry_multiplier * std::cos(static_cast<PromotedFloatType>(radian_coeff_arr[i]));
-            carry_multiplier    *= std::sin(static_cast<PromotedFloatType>(radian_coeff_arr[i]));
+            euclid_coeff_arr[i] = radian_coeff_arr[i];
         }
 
-        for (size_t i = 0u; i < coeff_arr_sz_container.get(); ++i)
-        {
-            euclid_coeff_arr[i] *= (radian_coeff_arr[coeff_arr_sz_container.get() - 1u] + 1);
-        }
+    //     PromotedFloatType carry_multiplier = 1u;
+
+    //     for (size_t i = 0u; i < coeff_arr_sz_container.get(); ++i)
+    //     {
+    //         euclid_coeff_arr[i] = carry_multiplier * std::cos(static_cast<PromotedFloatType>(radian_coeff_arr[i]));
+    //         carry_multiplier    *= std::sin(static_cast<PromotedFloatType>(radian_coeff_arr[i]));
+    //     }
+
+    //     for (size_t i = 0u; i < coeff_arr_sz_container.get(); ++i)
+    //     {
+    //         euclid_coeff_arr[i] *= (radian_coeff_arr[coeff_arr_sz_container.get() - 1u] + 1);
+    //     }
     }
 
     //------------------------ Raw Taylor Projection -----------------------

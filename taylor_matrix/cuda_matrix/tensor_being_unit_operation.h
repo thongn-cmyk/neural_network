@@ -148,6 +148,7 @@ namespace taylor_matrix::cuda_matrix::tensor_being_unit_operation
 
         return src;
     }
+    
 
     template <class ShapeBaseCoeffSizeContainer,
               class ScopeAllocatorInterface,
@@ -221,6 +222,44 @@ namespace taylor_matrix::cuda_matrix::tensor_being_unit_operation
         }
 
         return output;
+    }
+
+    template <class AllocatorInterface,
+              class ShapeBaseCoeffSizeContainer,
+              class ShapeBasePromotedFloatType = tensor_model::tensor_std_float_t>
+    __device__ constexpr __attribute__((noinline)) auto mono_transform(const BeingUnit * arg,
+                                                                       ShapeBaseCoeffSizeContainer base_shape_coeff_sz_container,
+                                                                       const tensor_model::tensor_std_float_t * shape_coeff_arr, size_t& shape_coeff_arr_offset, size_t shape_coeff_arr_cap,
+                                                                       AllocatorInterface& allocator,
+                                                                       const Tag<ShapeBasePromotedFloatType>& shape_base_promotion_tag = Tag<ShapeBasePromotedFloatType>{},
+                                                                       local_exception_t * err = nullptr) -> BeingUnit *
+    {
+        safe_ptr_access(arg);
+
+        local_exception_t local_err = SUCCESS;
+
+        if (err == nullptr)
+        {
+            err = &local_err;
+        }
+
+        BeingUnit * rs = copy(arg, allocator);
+
+        for (size_t i = 0u; i < arg->process_group_vec_sz; ++i)
+        {
+            rs->process_group_vec[i]    = tensor_process_group_operation::mono_transform(arg->process_group_vec[i],
+                                                                                         base_shape_coeff_sz_container,
+                                                                                         shape_coeff_arr, shape_coeff_arr_offset, shape_coeff_arr_cap,
+                                                                                         shape_base_promotion_tag,
+                                                                                         err);
+
+            if (*err != SUCCESS)
+            {
+                return {};
+            }
+        }
+
+        return rs;
     }
 
     template <class AllocatorInterface>
