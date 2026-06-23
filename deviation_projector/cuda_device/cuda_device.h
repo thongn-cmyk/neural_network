@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <matrix/device_tensor/model.h>
 #include "mean_square.h"
+#include "parity_distance.h"
 
 namespace deviation_projector::cuda_device
 {
@@ -13,14 +14,16 @@ namespace deviation_projector::cuda_device
 
     using deviation_calculator_function = double (*)(Matrix *, Matrix *, local_exception_t *);
 
-    __device__ static constexpr inline size_t DEVIATION_CALCULATOR_FUNCTION_TABLE_SZ  = 1u;
+    __device__ static constexpr inline size_t DEVIATION_CALCULATOR_FUNCTION_TABLE_SZ  = 2u;
 
     __device__ static deviation_calculator_function deviation_calculation_table[DEVIATION_CALCULATOR_FUNCTION_TABLE_SZ]
     {
-        deviation_projector::cuda_device::mean_square::mean_square
+        deviation_projector::cuda_device::mean_square::mean_square,
+        deviation_projector::cuda_device::parity_distance::parity_distance
     };
 
-    __device__ static inline uint8_t MEAN_SQUARE_DEVICE = 0u;
+    __device__ static inline uint8_t MEAN_SQUARE_DEVICE     = 0u;
+    __device__ static inline uint8_t PARITY_DISTANCE_DEVICE = 1u;
 
     __device__ double get_deviation(uint8_t calculator_id,
                                     Matrix * lhs,

@@ -568,7 +568,7 @@ int main()
     const size_t TRAINING_DATA_SZ               = 10;
     const size_t WINDOW_SZ                      = size_t{1} << 2;
 
-    std::vector<Token> token_vec                = slice_vector(mask_token_vector(window_tokenize(read_training_data(TRAINING_DATA_SZ), WINDOW_SZ)), 0, 400);
+    std::vector<Token> token_vec                = slice_vector(mask_token_vector(window_tokenize(read_training_data(TRAINING_DATA_SZ), WINDOW_SZ)), 0, 300);
 
     std::vector<std::pair<std::vector<bool>, std::vector<bool>>> training_pair_vec{};
 

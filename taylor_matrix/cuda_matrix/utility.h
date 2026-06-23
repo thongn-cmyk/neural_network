@@ -173,6 +173,30 @@ namespace taylor_matrix::cuda_matrix::utility
             }
         }
     }
+
+    template <class T, std::enable_if_t<std::is_same_v<T, float>, bool> = true>
+    __device__ constexpr auto abs(T x) -> T
+    {
+        return fabsf(x);
+    }
+
+    template <class T, std::enable_if_t<std::is_same_v<T, double>, bool> = true>
+    __device__ constexpr auto abs(T x) -> T
+    {
+        return fabs(x);
+    }
+
+    template <class T, std::enable_if_t<std::is_same_v<T, float>, bool> = true>
+    __device__ constexpr auto dg_copysign(T x, T sign) -> T
+    {
+        return copysignf(x, sign);
+    }
+
+    template <class T, std::enable_if_t<std::is_same_v<T, double>, bool> = true>
+    __device__ constexpr auto dg_copysign(T x, T sign) -> T
+    {
+        return copysign(x, sign);
+    }
 }
 
 #endif

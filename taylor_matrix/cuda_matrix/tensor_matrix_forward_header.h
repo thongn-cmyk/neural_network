@@ -40,14 +40,17 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_forward
                                  ParameterBoundRatioVector parameter_bound_ratio_vec,
 
                                  size_t base_shape_coeff_sz,
-                                 const tensor_model::tensor_std_float_t * shape_coeff_arr, size_t * shape_coeff_arr_offset, size_t shape_coeff_arr_cap);
+                                 const std::add_pointer_t<tensor_model::tensor_std_float_t> * shape_coeff_arr, size_t * shape_coeff_arr_offset, size_t shape_coeff_arr_cap,
+
+                                 size_t hash_table_sz);
 
     extern auto matrix_transform_size(MatrixShapeVector matrix_shape_vec,
                                       FocalSizeVector focal_sz_vec,
                                       SuffixMap focal_suffix_map,
                                       RotationSizeVector rotation_sz_vec,
                                       ParameterBoundRatioVector parameter_bound_ratio_vec,
-                                      size_t base_shape_coeff_sz) -> uint64_t;
+                                      size_t base_shape_coeff_sz,
+                                      size_t hash_table_sz) -> uint64_t;
 }
 
 #endif

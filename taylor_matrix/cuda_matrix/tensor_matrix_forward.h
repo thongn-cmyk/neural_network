@@ -22,29 +22,12 @@
 #include "utility.h"
 #include "tensor_matrix_operation.h"
 #include <cuda_management/kernel_dispatch.h>
+#include "dispatch_code_generator.h"
 
 #endif
 
-
 namespace taylor_matrix::cuda_matrix::tensor_matrix_forward
 {
-    //I just dont understand how people would use extern or separate header, .cpp files in modern C++
-    //it just seems to me that 99% of the new features involve templates
-
-    //I was working on the improvement of the formula
-    //especially related to ReLU, SeLU, activations and deparameterization
-
-    //look at the deparameterization, we'd need to prove that the context is uniformly distributed across all the parameters
-    //then we can prove that the logits do not short-circuit and the "scope-in" or focal-in really takes effect as an effective continuous activations
-
-    //so if we look at the ten logits [logit0, .. logit9]
-    //we'd need to prove that pairing logit0 to a random logit is almost as training-equivalence as pairing logit9 to a random logit
-
-    //I am still kind of trying to see if there are improvements in terms of scope-in
-    //Exactly how we use radian coordinate to tune down the higher powers, maybe we can actually reduce the operating matrix content (2 being units) and assign the radian coordinate trick? I dont know
-
-    //I dont think for a very very long time that doing right in programming will be out of business
-
     #ifdef __CUDACC__
 
     __device__ static constexpr inline size_t MIN_BASE_SHAPE_COEFF_SZ   = 1u;
@@ -61,7 +44,9 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_forward
                                             ParameterBoundRatioVector parameter_bound_ratio_vec,
 
                                             size_t base_shape_coeff_sz,
-                                            const tensor_model::tensor_std_float_t * shape_coeff_arr, size_t * shape_coeff_arr_offset, size_t shape_coeff_arr_cap,
+                                            const std::add_pointer_t<tensor_model::tensor_std_float_t> * shape_coeff_arr, size_t * shape_coeff_arr_offset, size_t shape_coeff_arr_cap,
+
+                                            size_t hash_table_sz,
 
                                             local_exception_t * err,
                                             uint32_t * success_launch_counter)
@@ -70,6 +55,8 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_forward
         using namespace cuda_management::device_memory;
         using namespace device_tensor::model;
         using namespace local_exception;
+
+        using DispatchCodeGenerator = taylor_matrix::cuda_matrix::dispatch_code_generator::DispatchCodeGenerator;
 
         size_t offset = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -111,12 +98,18 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_forward
                     return;
                 }
 
+                if (hash_table_sz == 0u)
+                {
+                    atomicExch(err, OTHER_INVALID_ARGUMENT_CODE);
+                    return;
+                }
+
                 if (matrix_shape_vec.size() < 2u)
                 {
                     assert(false);
                 }
                 
-                size_t local_shape_coeff_arr_offset{};
+                size_t local_shape_coeff_arr_offset = {};
 
                 if (shape_coeff_arr_offset == nullptr)
                 {
@@ -130,7 +123,8 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_forward
                                                                                                 allocator);
 
                 taylor_matrix::cuda_matrix::tensor_matrix_operation::unflatten_to(arg, matrix_arr[offset]);
-                
+                DispatchCodeGenerator dispatch_code_generator(arg, hash_table_sz);
+
                 Matrix * rs     = taylor_matrix::cuda_matrix::tensor_matrix_operation::matrix_transform(arg,
                                                                                                         focal_sz_vec, 0u,
                                                                                                         focal_suffix_map,
@@ -138,6 +132,7 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_forward
                                                                                                         parameter_bound_ratio_vec, 0u,
                                                                                                         utility::to_size_container(base_sz_ic),
                                                                                                         shape_coeff_arr, *shape_coeff_arr_offset, shape_coeff_arr_cap,
+                                                                                                        dispatch_code_generator,
                                                                                                         allocator,
                                                                                                         &local_err);
 
@@ -173,6 +168,7 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_forward
                                                  ParameterBoundRatioVector parameter_bound_ratio_vec,
 
                                                  size_t base_shape_coeff_sz,
+                                                 size_t hash_table_sz,
 
                                                  local_exception_t * err,
                                                  size_t * result,
@@ -201,6 +197,7 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_forward
                                                                                                  rotation_sz_vec,
                                                                                                  parameter_bound_ratio_vec,
                                                                                                  utility::to_size_container(base_sz_ic),
+                                                                                                 hash_table_sz,
                                                                                                  err);
         };
 
@@ -215,6 +212,9 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_forward
 
     #endif
 
+    //I think that matrix_arr_sz should be compromised at this site, I'm unsure
+    //this is runtime-deterministic at the function
+
     extern void matrix_transform(tensor_model::tensor_std_float_t ** matrix_arr, size_t matrix_arr_sz,
                                  MatrixShapeVector matrix_shape_vec,
 
@@ -226,7 +226,9 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_forward
                                  ParameterBoundRatioVector parameter_bound_ratio_vec,
 
                                  size_t base_shape_coeff_sz,
-                                 const tensor_model::tensor_std_float_t * shape_coeff_arr, size_t * shape_coeff_arr_offset, size_t shape_coeff_arr_cap)
+                                 const std::add_pointer_t<tensor_model::tensor_std_float_t> * shape_coeff_arr, size_t * shape_coeff_arr_offset, size_t shape_coeff_arr_cap,
+
+                                 size_t hash_table_sz)
     {
         #ifdef __CUDACC__
         {
@@ -253,6 +255,8 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_forward
 
                                                                             base_shape_coeff_sz,
                                                                             shape_coeff_arr, shape_coeff_arr_offset, shape_coeff_arr_cap,
+
+                                                                            hash_table_sz,
 
                                                                             cuda_err.get(),
                                                                             cuda_success_counter.get());
@@ -286,7 +290,8 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_forward
                                       SuffixMap focal_suffix_map,
                                       RotationSizeVector rotation_sz_vec,
                                       ParameterBoundRatioVector parameter_bound_ratio_vec,
-                                      size_t base_shape_coeff_sz) -> uint64_t
+                                      size_t base_shape_coeff_sz,
+                                      size_t hash_table_sz) -> uint64_t
     {
         #ifdef __CUDACC__
         {
@@ -304,6 +309,7 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_forward
                                                    rotation_sz_vec,
                                                    parameter_bound_ratio_vec,
                                                    base_shape_coeff_sz,
+                                                   hash_table_sz,
                                                    cuda_err.get(),
                                                    cuda_result.get(),
                                                    cuda_kernel_call_flag.get());

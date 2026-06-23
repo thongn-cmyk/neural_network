@@ -46,7 +46,9 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_forward_to_deviation
                                                          ParameterBoundRatioVector parameter_bound_ratio_vec,
 
                                                          size_t base_shape_coeff_sz,
-                                                         const tensor_model::tensor_std_float_t * shape_coeff_arr, size_t * shape_coeff_arr_offset, size_t shape_coeff_arr_cap,
+                                                         const std::add_pointer_t<tensor_model::tensor_std_float_t> * shape_coeff_arr, size_t * shape_coeff_arr_offset, size_t shape_coeff_arr_cap,
+                                                         
+                                                         size_t hash_table_sz,
 
                                                          local_exception_t * err,
                                                          uint32_t * success_launch_counter)
@@ -96,6 +98,12 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_forward_to_deviation
                     return;
                 }
 
+                if (hash_table_sz == 0u)
+                {
+                    atomicExch(err, OTHER_INVALID_ARGUMENT_CODE);
+                    return;
+                }
+
                 if (matrix_shape_vec.size() < 2u)
                 {
                     assert(false);
@@ -120,6 +128,7 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_forward_to_deviation
 
                 taylor_matrix::cuda_matrix::tensor_matrix_operation::unflatten_to(arg, inp_matrix[offset]);
                 taylor_matrix::cuda_matrix::tensor_matrix_operation::unflatten_to(expected, expected_matrix[offset]);
+                DispatchCodeGenerator dispatch_code_generator(arg, hash_table_sz);
 
                 Matrix * rs         = taylor_matrix::cuda_matrix::tensor_matrix_operation::matrix_transform(arg,
                                                                                                             focal_sz_vec, 0u,
@@ -128,6 +137,7 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_forward_to_deviation
                                                                                                             parameter_bound_ratio_vec, 0u,
                                                                                                             utility::to_size_container(base_sz_ic),
                                                                                                             shape_coeff_arr, *shape_coeff_arr_offset, shape_coeff_arr_cap,
+                                                                                                            dispatch_code_generator,
                                                                                                             allocator,
                                                                                                             &local_err);
 
@@ -171,6 +181,9 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_forward_to_deviation
 
     #endif
 
+    //I think that matrix_arr_sz should be compromised at this site, I'm unsure
+    //this is runtime-deterministic at the function
+
     extern void matrix_transform_to_deviation(tensor_model::tensor_std_float_t ** inp_matrix,
                                               tensor_model::tensor_std_float_t ** expected_matrix, size_t matrix_arr_sz,
 
@@ -185,7 +198,9 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_forward_to_deviation
                                               ParameterBoundRatioVector parameter_bound_ratio_vec,
 
                                               size_t base_shape_coeff_sz,
-                                              const tensor_model::tensor_std_float_t * shape_coeff_arr, size_t * shape_coeff_arr_offset, size_t shape_coeff_arr_cap)
+                                              const std::add_pointer_t<tensor_model::tensor_std_float_t> * shape_coeff_arr, size_t * shape_coeff_arr_offset, size_t shape_coeff_arr_cap,
+
+                                              size_t hash_table_sz)
     {
         #ifdef __CUDACC__
         {
@@ -214,6 +229,8 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_forward_to_deviation
 
                                                                                          base_shape_coeff_sz,
                                                                                          shape_coeff_arr, shape_coeff_arr_offset, shape_coeff_arr_cap,
+
+                                                                                         hash_table_sz,
 
                                                                                          cuda_err.get(),
                                                                                          cuda_success_counter.get());

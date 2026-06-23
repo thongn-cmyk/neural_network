@@ -41,13 +41,24 @@ namespace taylor_matrix::host_matrix::shape_projection
         }
     }
 
-    constexpr auto fast_approx_three_quarters(float x) -> float
+    template <class T, std::enable_if_t<std::is_same_v<T, float>, bool> = true>
+    constexpr auto fast_approx_three_quarters(T x) -> T
     {
         float abs_x     = std::abs(x);
         uint32_t u_val  = std::bit_cast<uint32_t>(abs_x);
         u_val           = u_val - (u_val >> 2) + 0x0FE00000;
 
         return std::copysign(std::bit_cast<float>(u_val), x);
+    }
+
+    template <class T, std::enable_if_t<std::is_same_v<T, double>, bool> = true>
+    constexpr auto fast_approx_three_quarters(T x) -> T
+    {
+        double abs_x    = std::abs(x);
+        uint64_t u_val  = std::bit_cast<uint64_t>(abs_x);
+        u_val           = u_val - (u_val >> 2) + 0x0FFC000000000000ULL;
+
+        return std::copysign(std::bit_cast<double>(u_val), x);
     }
 
     template <class FloatType, class SzContainer, class PromotedFloatType = FloatType, bool HasBoundCheck = true>

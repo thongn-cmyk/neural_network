@@ -57,7 +57,7 @@ namespace taylor_matrix::cuda_matrix::the_cuda_matrix
                 std::shared_ptr<RotationSizeVector> rotation_sz_vec;
                 std::shared_ptr<ParameterBoundRatioVector> parameter_bound_ratio_vec;
 
-                std::shared_ptr<tensor_std_float_t[]> logit_cuda_arr;
+                std::shared_ptr<std::add_pointer_t<tensor_std_float_t>[]> logit_cuda_arr;
             };
 
             struct CudaDispatchables
@@ -78,8 +78,10 @@ namespace taylor_matrix::cuda_matrix::the_cuda_matrix
             std::vector<size_t> rotation_sz_vec;
             std::vector<double> parameter_bound_ratio_vec;
 
-            std::vector<tensor_std_float_t> shape_coeff_vec;
+            std::vector<std::vector<tensor_std_float_t>> shape_coeff_vec;
+
             size_t base_shape_coeff_sz;
+            size_t hash_table_sz;
 
             std::optional<size_t> operation_window;
             std::optional<CudaResource> cuda_resource;
@@ -98,8 +100,9 @@ namespace taylor_matrix::cuda_matrix::the_cuda_matrix
                           std::unordered_map<size_t, std::unordered_map<size_t, std::vector<std::vector<size_t>>>> focal_suffix_map,
                           std::vector<size_t> rotation_sz_vec,
                           std::vector<double> parameter_bound_ratio_vec,
-                          std::vector<tensor_std_float_t> shape_coeff_vec,
+                          std::vector<std::vector<tensor_std_float_t>> shape_coeff_vec, //
                           size_t base_shape_coeff_sz,
+                          size_t hash_table_sz,
                           std::optional<size_t> operation_window): shape_vec(std::move(shape_vec)),
                                                                    focal_sz_vec(std::move(focal_sz_vec)),
                                                                    focal_suffix_map(std::move(focal_suffix_map)),
@@ -107,6 +110,7 @@ namespace taylor_matrix::cuda_matrix::the_cuda_matrix
                                                                    parameter_bound_ratio_vec(std::move(parameter_bound_ratio_vec)),
                                                                    shape_coeff_vec(std::move(shape_coeff_vec)),
                                                                    base_shape_coeff_sz(base_shape_coeff_sz),
+                                                                   hash_table_sz(hash_table_sz),
                                                                    operation_window(operation_window),
                                                                    cuda_resource(std::nullopt),
                                                                    is_set_update_available(false),
@@ -145,29 +149,42 @@ namespace taylor_matrix::cuda_matrix::the_cuda_matrix
 
             auto get_coefficient_vector() -> std::vector<tensor_std_float_t>
             {
-                return this->shape_coeff_vec;
+                std::vector<tensor_std_float_t> rs{};
+
+                for (const std::vector<tensor_std_float_t>& e_vec: this->shape_coeff_vec)
+                {
+                    rs.insert(rs.end(), e_vec.begin(), e_vec.end());
+                }
+
+                return rs;
             }
 
             void set_coefficient_vector(const std::vector<tensor_std_float_t>& new_coeff_vec)
             {
-                if (this->shape_coeff_vec.size() != new_coeff_vec.size())
+                if (new_coeff_vec.size() != this->get_coefficient_vector().size())
                 {
                     throw std::runtime_error("invalid new_coeff_vec shape");
                 }
 
-                std::vector<tensor_std_float_t> shadow_shape_coeff_vec(this->shape_coeff_vec.size());
-
-                for (size_t i = 0u; i < shadow_shape_coeff_vec.size(); ++i)
+                for (size_t i = 0u; i < new_coeff_vec.size(); ++i)
                 {
-                    shadow_shape_coeff_vec[i]   = this->radian_normalize(new_coeff_vec[i]);
-
-                    if (std::isnan(shadow_shape_coeff_vec[i]))
+                    if (std::isnan(new_coeff_vec[i]))
                     {
-                        throw std::runtime_error("invalid new_coeff_vec shape");
+                        throw std::invalid_argument("bad coefficient, NaN");
                     }
                 }
 
-                this->shape_coeff_vec           = std::move(shadow_shape_coeff_vec);
+                size_t offset = 0u;
+
+                for (std::vector<tensor_std_float_t>& e_vec: this->shape_coeff_vec)
+                {
+                    std::copy(std::next(new_coeff_vec.begin(), offset),
+                              std::next(new_coeff_vec.begin(), offset + e_vec.size()),
+                              e_vec.begin());
+
+                    offset += e_vec.size();
+                }
+
                 this->is_set_update_available   = true;
             }
 
@@ -177,14 +194,6 @@ namespace taylor_matrix::cuda_matrix::the_cuda_matrix
             }
 
         private:
-
-            auto radian_normalize(tensor_std_float_t value) -> tensor_std_float_t
-            {
-                const tensor_std_float_t norm_value = static_cast<tensor_std_float_t>(LOGIT_NORMALIZATION_VALUE);
-
-                return std::remainder(std::remainder(value, norm_value) + norm_value,
-                                      norm_value);
-            }
 
             auto project_helper(const std::shared_ptr<tensor_model::Matrix> * matrix_arr, size_t matrix_arr_sz) -> std::vector<std::shared_ptr<tensor_model::Matrix>>
             {
@@ -207,13 +216,82 @@ namespace taylor_matrix::cuda_matrix::the_cuda_matrix
                                  *this->cuda_resource->focal_suffix_map,
                                  *this->cuda_resource->rotation_sz_vec,
                                  *this->cuda_resource->parameter_bound_ratio_vec,
-                                
+
                                  this->base_shape_coeff_sz,
-                                 this->cuda_resource->logit_cuda_arr.get(), nullptr, this->shape_coeff_vec.size());
+                                 this->cuda_resource->logit_cuda_arr.get(), nullptr, this->shape_coeff_vec.size(),
+                                 
+                                 this->hash_table_sz);
 
                 return this->cuda_dispatchables_item_to_matrix_vec(cuda_dispatchables->out_cuda_matrix_arr, matrix_arr_sz);
             }
 
+            auto get_cuda_matrix_shape_vec() -> std::shared_ptr<MatrixShapeVector>
+            {
+                return cuda_management::host_service::to_cuda_dgbuf(this->shape_vec);
+            }
+
+            auto get_cuda_focal_sz_vec() -> std::shared_ptr<FocalSizeVector>
+            {
+                return cuda_management::host_service::to_cuda_dgbuf(this->focal_sz_vec);
+            }
+
+            auto get_cuda_focal_suffix_map() -> std::shared_ptr<SuffixMap>
+            {
+                return cuda_management::host_service::to_cuda_dgbuf(this->focal_suffix_map);
+            }
+
+            auto get_cuda_rotation_sz_vec() -> std::shared_ptr<RotationSizeVector>
+            {
+                return cuda_management::host_service::to_cuda_dgbuf(this->rotation_sz_vec);
+            }
+
+            auto get_cuda_parameter_bound_ratio_vec() -> std::shared_ptr<ParameterBoundRatioVector>
+            {
+                return cuda_management::host_service::to_cuda_dgbuf(this->parameter_bound_ratio_vec);
+            }
+
+            auto get_cuda_shape_coeff_vec() -> std::shared_ptr<std::add_pointer_t<tensor_std_float_t>[]>
+            {
+                std::vector<std::shared_ptr<tensor_std_float_t[]>> cuda_2d_ptr_vec{};
+
+                for (const auto& e_vec: this->shape_coeff_vec)
+                {
+                    std::string_view logit_view                                     = std::string_view(static_cast<const char *>(static_cast<void *>(e_vec.data())),
+                                                                                                       e_vec.size() * sizeof(tensor_std_float_t));
+
+                    std::shared_ptr<char[]> cuda_logit_view                         = cuda_management::host_service::make_cuda_buffer_from_host_view(logit_view);
+                    std::shared_ptr<tensor_std_float_t[]> casted_cuda_logit_view    = std::static_pointer_cast<tensor_std_float_t[]>(std::static_pointer_cast<void>(cuda_logit_view));
+
+                    cuda_2d_ptr_vec.push_back(std::move(casted_cuda_logit_view));
+                }
+
+                std::vector<uintptr_t> addr_ptr_vec{};
+
+                for (const auto& e: cuda_2d_ptr_vec)
+                {
+                    addr_ptr_vec.push_back(reinterpret_cast<uintptr_t>(e.get()));
+                }
+
+                const char * addr_vec_src                       = static_cast<const char *>(static_cast<void *>(addr_ptr_vec.data())); //only works for cuda memcpy and extern immutable function
+                size_t addr_vec_byte_sz                         = addr_ptr_vec.size() * sizeof(uintptr_t);
+                std::string_view addr_vec_str_view              = std::string_view(addr_vec_src, addr_vec_byte_sz);
+
+                std::shared_ptr<char[]> cuda_2d_ptr_byte_arr    = cuda_management::host_service::make_cuda_buffer_from_host_view(addr_vec_str_view);
+                tensor_std_float_t ** result                    = static_cast<tensor_std_float_t **>(static_cast<void *>(cuda_2d_ptr_byte_arr.get()));
+
+                auto immutable_holder                           = std::make_unique<std::pair<decltype(cuda_2d_ptr_vec),
+                                                                                             decltype(cuda_2d_ptr_byte_arr)>>(std::make_pair(std::move(cuda_2d_ptr_vec),
+                                                                                                                                             std::move(cuda_2d_ptr_byte_arr)));
+
+                auto destructor                                 = [holder = std::move(immutable_holder)](std::add_pointer_t<tensor_std_float_t> * obj)
+                {
+                    *holder = {};
+                    (void) obj;
+                };
+
+                return std::unique_ptr<std::add_pointer_t<tensor_std_float_t>[], decltype(destructor)>(result, std::move(destructor));
+            }
+        
             void initialize_cuda_resource_if_null()
             {
                 static_assert(std::endian::native == std::endian::little);
@@ -225,21 +303,12 @@ namespace taylor_matrix::cuda_matrix::the_cuda_matrix
 
                 CudaResource tmp_cuda_resource              = {};
 
-                tmp_cuda_resource.matrix_shape_vec          = cuda_management::host_service::to_cuda_dgbuf(this->shape_vec);
-                tmp_cuda_resource.focal_sz_vec              = cuda_management::host_service::to_cuda_dgbuf(this->focal_sz_vec);
-                tmp_cuda_resource.focal_suffix_map          = cuda_management::host_service::to_cuda_dgbuf(this->focal_suffix_map);
-                tmp_cuda_resource.rotation_sz_vec           = cuda_management::host_service::to_cuda_dgbuf(this->rotation_sz_vec);
-                tmp_cuda_resource.parameter_bound_ratio_vec = cuda_management::host_service::to_cuda_dgbuf(this->parameter_bound_ratio_vec);
-
-                //this is UB, but we aren't accessing the data, and we aren't breaking pointer arithmetic, because we aren't touching the memory, we only pass the const char * which is guaranteed to be reinterpretcast_able
-                std::string_view logit_view                 = std::string_view(static_cast<const char *>(static_cast<void *>(this->shape_coeff_vec.data())),
-                                                                               this->shape_coeff_vec.size() * sizeof(tensor_std_float_t));
-
-                //we call an external function which is not inlined, so the memory as const char * with respect to the compiler is const access, and the logics following this point is FINE (read only), and the logics inside the function is also fine
-                std::shared_ptr<char[]> cuda_logit_view     = cuda_management::host_service::make_cuda_buffer_from_host_view(logit_view);
-
-                //we are casting device memory, same thing applied, so we aren't stepping in the UB territory, which is why I used static_pointer_cast and not reinterpret_pointer_cast to differentiate between what is considered UB and what is not
-                tmp_cuda_resource.logit_cuda_arr            = std::static_pointer_cast<tensor_std_float_t[]>(std::static_pointer_cast<void>(cuda_logit_view));
+                tmp_cuda_resource.matrix_shape_vec          = this->get_cuda_matrix_shape_vec();
+                tmp_cuda_resource.focal_sz_vec              = this->get_cuda_focal_sz_vec();
+                tmp_cuda_resource.focal_suffix_map          = this->get_cuda_focal_suffix_map();
+                tmp_cuda_resource.rotation_sz_vec           = this->get_cuda_rotation_sz_vec();
+                tmp_cuda_resource.parameter_bound_ratio_vec = this->get_cuda_parameter_bound_ratio_vec();
+                tmp_cuda_resource.logit_cuda_arr            = this->get_cuda_shape_coeff_vec();
 
                 this->cuda_resource                         = std::move(tmp_cuda_resource);
             }
@@ -260,12 +329,7 @@ namespace taylor_matrix::cuda_matrix::the_cuda_matrix
                     std::abort();
                 }
 
-                std::string_view logit_view             = std::string_view(static_cast<const char *>(static_cast<void *>(this->shape_coeff_vec.data())),
-                                                                           this->shape_coeff_vec.size() * sizeof(tensor_std_float_t));
-
-                std::shared_ptr<char[]> cuda_logit_view = cuda_management::host_service::make_cuda_buffer_from_host_view(logit_view);
-                this->cuda_resource->logit_cuda_arr     = std::static_pointer_cast<tensor_std_float_t[]>(std::static_pointer_cast<void>(cuda_logit_view));
-
+                this->cuda_resource->logit_cuda_arr     = this->get_cuda_shape_coeff_vec();
                 this->is_set_update_available           = false;
             }
 
@@ -541,33 +605,37 @@ namespace taylor_matrix::cuda_matrix::the_cuda_matrix
                 {LOW_ENTROPY,
                 {
                     {},
-                    {0},
-                    {4, 0},
-                    {4, 2, 0},
-                    {4, 2, 2, 0}
+                    {4},
+                    {4, 2},
+                    {4, 2, 2},
+                    {4, 2, 2, 2}
                 }},
 
                 {MID_ENTROPY,
                 {
                     {},
-                    {0},
-                    {4, 0},
-                    {4, 2, 0},
-                    {4, 2, 2, 0}
+                    {4},
+                    {4, 2},
+                    {4, 2, 2},
+                    {4, 2, 2, 2}
                 }},
 
                 {HIGH_ENTROPY,
                 {
                     {},
-                    {0},
-                    {4, 0},
-                    {4, 2, 0},
-                    {4, 2, 2, 0}
+                    {4},
+                    {4, 2},
+                    {4, 2, 2},
+                    {4, 2, 2, 2}
                 }}
             };
 
-            static inline const double PARAMETER_BOUND_RATIO                = 0.4;
+            static inline const double PARAMETER_BOUND_RATIO                = 0.0;
             static inline const size_t DEFAULT_BASE_SHAPE_COEFFICIENT_SZ    = 4u;
+
+            static inline const size_t LOW_ENTROPY_HASH_TABLE_SZ            = 4;
+            static inline const size_t MID_ENTROPY_HASH_TABLE_SZ            = 4;
+            static inline const size_t HIGH_ENTROPY_HASH_TABLE_SZ           = 4;
 
             static inline const std::unordered_map<uint8_t, std::optional<size_t>> CONCURRENT_WORKER_MAP =
             {
@@ -674,6 +742,7 @@ namespace taylor_matrix::cuda_matrix::the_cuda_matrix
                                                        this->get_parameter_bound_ratio_vector(),
                                                        this->get_shape_coefficient_vector(),
                                                        this->get_base_shape_coefficient_size(),
+                                                       this->get_hash_table_size(),
                                                        this->get_operation_window());
             }
 
@@ -703,6 +772,29 @@ namespace taylor_matrix::cuda_matrix::the_cuda_matrix
                 }
 
                 throw std::invalid_argument("bad configuration, vector size out of range");
+            }
+
+            auto get_hash_table_size() -> size_t
+            {
+                switch (this->entropy_option)
+                {
+                    case LOW_ENTROPY:
+                    {
+                        return LOW_ENTROPY_HASH_TABLE_SZ;
+                    }
+                    case MID_ENTROPY:
+                    {
+                        return MID_ENTROPY_HASH_TABLE_SZ;
+                    }
+                    case HIGH_ENTROPY:
+                    {
+                        return HIGH_ENTROPY_HASH_TABLE_SZ;
+                    }
+                    default:
+                    {
+                        std::unreachable();
+                    }
+                }
             }
 
             auto get_entropy_index() -> size_t
@@ -873,7 +965,7 @@ namespace taylor_matrix::cuda_matrix::the_cuda_matrix
                 return cuda_management::host_service::to_cuda_dgbuf(this->get_parameter_bound_ratio_vector());
             }
 
-            auto get_shape_coefficient_vector() -> std::vector<tensor_std_float_t>
+            auto get_shape_coefficient_vector() -> std::vector<std::vector<tensor_std_float_t>>
             {
                 auto shape              = this->get_cuda_matrix_shape();
                 auto focal_vec          = this->get_cuda_focal_size_vector();
@@ -881,13 +973,16 @@ namespace taylor_matrix::cuda_matrix::the_cuda_matrix
                 auto rotation_vec       = this->get_cuda_rotation_size_vector();
                 auto param_bound_vec    = this->get_cuda_parameter_bound_ratio_vector();
 
-                return std::vector<tensor_std_float_t>(taylor_matrix::cuda_matrix::tensor_matrix_forward::matrix_transform_size(*shape,
-                                                                                                                                *focal_vec,
-                                                                                                                                *suffix_map,
-                                                                                                                                *rotation_vec,
-                                                                                                                                *param_bound_vec,
-                                                                                                                                this->get_base_shape_coefficient_size()),
-                                                       0);
+                size_t sz_0             = this->get_hash_table_size();
+                size_t sz_1             = taylor_matrix::cuda_matrix::tensor_matrix_forward::matrix_transform_size(*shape,
+                                                                                                                   *focal_vec,
+                                                                                                                   *suffix_map,
+                                                                                                                   *rotation_vec,
+                                                                                                                   *param_bound_vec,
+                                                                                                                   this->get_base_shape_coefficient_size(),
+                                                                                                                   this->get_hash_table_size());
+
+                return stdx::make_2d_vector<tensor_std_float_t>(sz_0, sz_1, 0);
             }
 
             auto get_base_shape_coefficient_size() -> size_t

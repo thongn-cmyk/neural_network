@@ -6,7 +6,8 @@
 
 namespace deviation_projector::cuda_device::host_code
 {
-    static inline constexpr uint8_t MEAN_SQUARE_DEVICE  = 0u;
+    static inline constexpr uint8_t MEAN_SQUARE_DEVICE      = 0u;
+    static inline constexpr uint8_t PARITY_DISTANCE_DEVICE  = 1u;
 }
 
 #endif

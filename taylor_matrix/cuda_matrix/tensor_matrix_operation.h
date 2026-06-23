@@ -651,10 +651,10 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_operation
     //because the initial Matrix * of each of the function is one power higher than the previous of it in the caller function
 
     template <class AllocatorInterface,
-              class ShapeBasePromotedFloatType = tensor_model::tensor_std_float_t>
+              class ShapeBasePromotedFloatType = tensor_std_float_t>
     __device__ constexpr __attribute__((noinline)) auto mono_transform(Matrix * matrix,
                                                                        ShapeBaseCoeffSizeContainer base_shape_coeff_sz_container,
-                                                                       const tensor_model::tensor_std_float_t * shape_coeff_arr, size_t& shape_coeff_arr_offset, size_t shape_coeff_arr_cap,
+                                                                       const tensor_std_float_t * shape_coeff_arr, size_t& shape_coeff_arr_offset, size_t shape_coeff_arr_cap,
                                                                        AllocatorInterface&& allocator,
                                                                        const Tag<ShapeBasePromotedFloatType>& shape_base_promotion_tag = Tag<ShapeBasePromotedFloatType>{},
                                                                        local_exception_t * err = nullptr) -> Matrix *
@@ -689,10 +689,10 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_operation
     }
 
     template <class AllocatorInterface,
-              class ShapeBasePromotedFloatType = tensor_model::tensor_std_float_t>
+              class ShapeBasePromotedFloatType = tensor_std_float_t>
     __device__ constexpr __attribute__((noinline)) auto feed_forward_transform(Matrix * matrix,
                                                                                ShapeBaseCoeffSizeContainer base_shape_coeff_sz_container,
-                                                                               const tensor_model::tensor_std_float_t * shape_coeff_arr, size_t& shape_coeff_arr_offset, size_t shape_coeff_arr_cap,
+                                                                               const tensor_std_float_t * shape_coeff_arr, size_t& shape_coeff_arr_offset, size_t shape_coeff_arr_cap,
                                                                                AllocatorInterface&& allocator,
                                                                                const Tag<ShapeBasePromotedFloatType>& shape_base_promotion_tag = Tag<ShapeBasePromotedFloatType>{},
                                                                                local_exception_t * err = nullptr) -> Matrix *
@@ -724,7 +724,7 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_operation
               class ParameterBoundRatioVector, /*inplace_vector<double>*/
               class ShapeBaseCoeffSizeContainer,
               class AllocatorInterface,
-              class ShapeBasePromotedFloatType = tensor_model::tensor_std_float_t>
+              class ShapeBasePromotedFloatType = tensor_std_float_t>
     __device__ constexpr __attribute__((noinline)) auto matrix_transform(Matrix * matrix,
 
                                                                          FocalSizeVector focal_sz_vec, size_t focal_sz_vec_offset,
@@ -734,7 +734,7 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_operation
                                                                          ParameterBoundRatioVector parameter_bound_ratio_vec, size_t parameter_bound_ratio_vec_offset,
 
                                                                          ShapeBaseCoeffSizeContainer base_shape_coeff_sz_container,
-                                                                         const std::add_pointer_t<tensor_model::tensor_std_float_t> * shape_coeff_arr, size_t& shape_coeff_arr_offset, size_t shape_coeff_arr_cap,
+                                                                         const std::add_pointer_t<tensor_std_float_t> * shape_coeff_arr, size_t& shape_coeff_arr_offset, size_t shape_coeff_arr_cap,
 
                                                                          DispatchCodeGenerator& dispatch_code_generator,
                                                                          AllocatorInterface&& allocator,
@@ -845,7 +845,7 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_operation
                                                           allocator,
                                                           shape_base_promotion_tag,
                                                           err);
-        
+
             copy_to(rs, final_rs, err);
 
             return rs;
@@ -1062,7 +1062,10 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_operation
             }
         }
 
-        Matrix * tmp_rs         = series_normalize(incremental_matrix_vec, incremental_matrix_vec_sz, allocator, err); //we are misisng a scaling factor
+        Matrix * tmp_rs         = series_normalize(incremental_matrix_vec,
+                                                   incremental_matrix_vec_sz,
+                                                   allocator,
+                                                   err);
 
         if (*err != SUCCESS)
         {
@@ -1091,11 +1094,11 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_operation
         return rs;
     }
 
-    template <class MatrixShapeVector,
-              class FocalSizeVector,
-              class SuffixMap,
-              class RotationSizeVector,
-              class ParameterBoundRatioVector,
+    template <class MatrixShapeVector, /*inplace_vector<size_t>*/
+              class FocalSizeVector, /*inplace_vector<size_t>*/
+              class SuffixMap, /*inplace_unordered_map<size_t, inplace_unordered_map<size_t, inplace_vector<inplace_vector<size_t>>?*/
+              class RotationSizeVector, /*inplace_vector<size_t>*/
+              class ParameterBoundRatioVector, /*inplace_vector<double>*/
               class ShapeBaseCoeffSizeContainer>
     __device__ constexpr  __attribute__((noinline)) auto matrix_transform_size(MatrixShapeVector matrix_shape_vec,
 
@@ -1106,6 +1109,7 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_operation
                                                                                ParameterBoundRatioVector parameter_bound_ratio_vec,
 
                                                                                ShapeBaseCoeffSizeContainer base_shape_coeff_sz_container,
+                                                                               size_t hash_table_sz,
 
                                                                                local_exception_t * err = nullptr, //this is the "new invention" for concurrent error write, last write last win, it's complicated but we now follow a write on error only
                                                                                const Tag<ShapeBasePromotedFloatType>& shape_base_promotion_tag = Tag<ShapeBasePromotedFloatType>()
@@ -1146,16 +1150,29 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_operation
             return {};
         }
 
+        if (hash_table_sz == 0u)
+        {
+            *err = OTHER_INVALID_ARGUMENT_CODE;
+            return {};
+        }
+
         for (size_t i = 0u; i < EXPONENTIAL_RANGE; ++i)
         {
             scope_guard allocator_grd(&stack_allocator);
 
             uint64_t tentative_logit_sz                     = INITIAL_LOGIT_SZ * cuda_matrix::utility::unsigned_pow(MULTIPLIER_BASE, i);
-            tensor_model::tensor_std_float_t * tensor_arr   = std_new_array<tensor_model::tensor_std_float_t>(stack_allocator, tentative_logit_sz);
+            tensor_std_float_t ** tensor_2d_arr             = std_new_array<tensor_std_float_t[]>(stack_allocator, hash_table_sz);
+
+            for (size_t j = 0u; j < hash_table_sz; ++j)
+            {
+                tensor_2d_arr[j]    = std_new_array<tensor_std_float_t>(stack_allocator, tentative_logit_sz);
+            }
+
             Matrix * tmp_matrix                             = allocate(matrix_shape_vec[0], matrix_shape_vec[1], stack_allocator);
             size_t tensor_arr_sz                            = 0u;
-
             local_exception_t tmp_err                       = SUCCESS;
+
+            DispatchCodeGenerator dispatch_code_gen(tmp_matrix, hash_table_sz);
 
             matrix_transform(tmp_matrix,
                              
@@ -1166,13 +1183,13 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_operation
                              parameter_bound_ratio_vec, 0u,
                              
                              base_shape_coeff_sz_container,
-                             tensor_arr, tensor_arr_sz, tentative_logit_sz,
-                             
+                             tensor_2d_arr, tensor_arr_sz, tentative_logit_sz,
+
+                             dispatch_code_gen,
                              stack_allocator,
-                            
+
                              &tmp_err,
-                             shape_base_promotion_tag,
-                             
+                             shape_base_promotion_tag,  
                              has_logit_unit_reuse_tag,
                              has_logit_group_logit_reuse_tag,
                              has_being_logit_reuse_tag,
