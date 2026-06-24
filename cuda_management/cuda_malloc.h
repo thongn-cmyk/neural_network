@@ -17,7 +17,7 @@
 #include <variant>
 #include <stl_extension/stdx.h>
 #include <mutex_extension/fair_mutex.h>
-#include <stl_extension/datastructure.h>
+#include <stl_extension/unordered_node_map.h>
 
 namespace cuda_management::cuda_malloc
 {
@@ -125,7 +125,7 @@ namespace cuda_management::cuda_malloc
             std::unique_ptr<BaseAllocatorType> allocator;
             std::shared_ptr<char[]> cu_mem;
             size_t leaf_sz;
-            datastructure::unordered_map_variants::unordered_node_map<uintptr_t, AllocationMetadata> allocation_map;
+            unordered_map_variants::unordered_node_map<uintptr_t, AllocationMetadata> allocation_map;
             std::unique_ptr<fair_mutex::fair_atomic_flag> mtx;
 
             static auto get_tree_height_from_leaf_count(size_t leaf_count) -> size_t

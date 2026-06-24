@@ -1,5 +1,5 @@
-#ifndef __DEVIATION_PROJECTOR_GENERIC_HOST_WRAPPER_H__
-#define __DEVIATION_PROJECTOR_GENERIC_HOST_WRAPPER_H__
+#ifndef __DEVIATION_PROJECTOR_MATRIX_RESOURCE_AS_DEVIATION_PROJECTOR_HOST_WRAPPER_HOST_WRAPPER_H__
+#define __DEVIATION_PROJECTOR_MATRIX_RESOURCE_AS_DEVIATION_PROJECTOR_HOST_WRAPPER_HOST_WRAPPER_H__
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -7,7 +7,7 @@
 #include <serializer/compact_serializer.h>
 #include <matrix/generic_matrix_factory.h>
 #include <matrix/tensor_model.h>
-#include <deviation_projector/matrix_deviation_calculator_factory.h>
+#include <deviation_projector/host_device/generic_device.h>
 #include <deviation_projector/generic_matrix_deviation_calculator_interface.h>
 #include <stl_extension/stdx.h>
 #include <global_string_encoder/generic_encoder.h>
@@ -15,26 +15,34 @@
 #include <immutable_memory/immutable_memory.h>
 #include <deviation_projector/training_token_factory.h>
 
-namespace deviation_projector::host_wrapper
+namespace deviation_projector::matrix_resource_as_deviation_projector::host_wrapper
 {
     using tensor_std_float_t = tensor_model::tensor_std_float_t;
+
+    //I understand that you want "model" "interface" "implementation" structures
+    //let you know that we will do that but that is not our job, it's AI job
+    //the codebase is too complex for me to jump around, I can't speed up the development
 
     struct GenericHostMatrixDeviationCalculatorResource
     {
         global_string_encoder::StringTransformationRule str_transformation_rule;
-        deviation_projector::NoTransformDeviationCalculatorResource deviation_resource;
+        deviation_projector::host_device::HostMatrixDeviationCalculatorResource deviation_resource;
         generic_matrix_factory::ExternalGenericMatrixResource matrix_resource;
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector) const
         {
-            reflector(str_transformation_rule, deviation_resource, matrix_resource);
+            reflector(str_transformation_rule,
+                      deviation_resource,
+                      matrix_resource);
         }
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector)
         {
-            reflector(str_transformation_rule, deviation_resource, matrix_resource);
+            reflector(str_transformation_rule,
+                      deviation_resource,
+                      matrix_resource);
         }
     };
 
@@ -103,7 +111,7 @@ namespace deviation_projector::host_wrapper
         public:
 
             GenericHostMatrixDeviationCalculator(const GenericHostMatrixDeviationCalculatorResource& arg): GenericHostMatrixDeviationCalculator(std::make_unique<global_string_encoder::GenericEncoder>(arg.str_transformation_rule),
-                                                                                                                                                deviation_projector::NoTransformDeviationCalculatorLoader{}.load(arg.deviation_resource),
+                                                                                                                                                deviation_projector::host_device::HostMatrixDeviationCalculatorLoader{}.load(arg.deviation_resource),
                                                                                                                                                 generic_matrix_factory::GenericMatrixLoader{}.load_resource(generic_matrix_factory::GenericMatrixExternalizer{}.to_internal(arg.matrix_resource))){}
 
             GenericHostMatrixDeviationCalculator(const ExternalGenericHostMatrixDeviationCalculatorResource& arg): GenericHostMatrixDeviationCalculator(to_internal_generic_host_matrix_deviation_calculator_resource(arg)){}

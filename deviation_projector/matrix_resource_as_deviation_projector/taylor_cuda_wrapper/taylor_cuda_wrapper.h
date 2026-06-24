@@ -13,7 +13,7 @@
 #include <taylor_matrix/cuda_matrix/the_cuda_matrix_deviation_calculator.h>
 #include <immutable_memory/immutable_memory.h>
 
-namespace deviation_projector::taylor_cuda_wrapper
+namespace deviation_projector::matrix_resource_as_deviation_projector::taylor_cuda_wrapper
 {
     using tensor_std_float_t = tensor_model::tensor_std_float_t;
 
@@ -26,13 +26,17 @@ namespace deviation_projector::taylor_cuda_wrapper
         template <class Reflector>
         void dg_reflect(const Reflector& reflector) const
         {
-            reflector(str_transformation_rule, deviation_calculator_device, matrix_resource);
+            reflector(str_transformation_rule,
+                      deviation_calculator_device,
+                      matrix_resource);
         }
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector)
         {
-            reflector(str_transformation_rule, deviation_calculator_device, matrix_resource);
+            reflector(str_transformation_rule,
+                      deviation_calculator_device,
+                      matrix_resource);
         }
     };
 

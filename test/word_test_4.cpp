@@ -560,6 +560,34 @@ void initialize_concurrency_base()
 //we'd need to tune the static_fields by analyzing the convergence and the training rate
 //we'd most likely focus on convergence
 
+//today I'd focus on flops
+
+//cuda memory allocations have to be on device, I have tried to think of different scenerios, but it's bad practice
+//we'd go through the implementation one more time, optimize host flops -> x2, x3, x4
+//we'll talk next steps
+
+//7/8 seems to be "the edge" of context diffraction, in the sense of I mean A, you mean B, we mean C
+//and 7/8 can drag the lowest "exponent" 10-12 transformation hops, the highest "exponent" 20 transformation hops
+
+//I have concluded that 3/4 7/8 is optimal in this sense, and does not converge to "the one" too fast
+//it means that we can train the initial layer logits without worrying about "nasal demons" or "disappearance" of final computation results
+//I mean disappearance is a feature, but not in the sense of feature that 1/2 ** 10 hops == 1 means that x ** (1/2 ** 10) cannot be trained
+
+//we chose 3/4 7/8 purely because it is computational efficient, it introduces entropy to the continuous projection, and it can drag to the final layer
+//we have anticipated for "disappearance" being the feature, by using y = y + x
+
+//we simply incorporated the implicit brain growth without ever blocking it, WOW!
+//maybe not, we'd still need training blockages
+
+//I have actually run some numbers about entropy / logit unit
+//it seems like one of the solution to the continuous projection scheme is to make the operating matrix bigger (in conjunction with the interpolation)
+
+//and if we can't "mean C," we'd have to increase the number of being_unit. Base LOGIT_SZ or PROCESS_GROUP_SZ are purely for crunching flops
+//and we have crunched all the possible flops (we just need better allocation patterns)
+//it's in the continuous equation term
+
+//the interpolations are probably not "part of the continuous" equation, but works in conjunction with the continuous equation if correct configurations (and synchronization points)
+
 int main()
 {
     initialize_concurrency_base();
@@ -568,7 +596,7 @@ int main()
     const size_t TRAINING_DATA_SZ               = 10;
     const size_t WINDOW_SZ                      = size_t{1} << 2;
 
-    std::vector<Token> token_vec                = slice_vector(mask_token_vector(window_tokenize(read_training_data(TRAINING_DATA_SZ), WINDOW_SZ)), 0, 300);
+    std::vector<Token> token_vec                = slice_vector(mask_token_vector(window_tokenize(read_training_data(TRAINING_DATA_SZ), WINDOW_SZ)), 0, 1000);
 
     std::vector<std::pair<std::vector<bool>, std::vector<bool>>> training_pair_vec{};
 

@@ -174,7 +174,6 @@ namespace deviation_projector
                 }
             }
     };
-    
 }
 
 #endif

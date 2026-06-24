@@ -18,7 +18,7 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_operation
     using namespace taylor_matrix::cuda_matrix::utility;
     using namespace taylor_matrix::cuda_matrix::local_exception;
 
-    using DispatchCodeGenerator = taylor_matrix::cuda_matrix::DispatchCodeGenerator;
+    using DispatchCodeGenerator = taylor_matrix::cuda_matrix::dispatch_code_generator::DispatchCodeGenerator;
 
     //--CREATE--
 
@@ -643,14 +643,8 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_operation
         return avg(result_vec, focal_sz, allocator, err);
     }
 
-    //I have thought very hard about what that means
-    //the series_normalize(...) is a power_series normalization method to increase search speed, and it only works for same entropy transformation. In this sense, the final output
-    //why can't we do series_normalize(...) for the immediate layer, but avg was used instead?
-    //it's because the previous transformations aren't of the same entropy, we are "moving" one step to another layer of neural network, so we are operating on the neural network layer, the previous results are NOT to accumulate
-    //series_normalize normalize the powers with respect to the initial input Matrix *, so it makes sense that we recursively call series_normalize at the end of each function
-    //because the initial Matrix * of each of the function is one power higher than the previous of it in the caller function
-
     template <class AllocatorInterface,
+              class ShapeBaseCoeffSizeContainer,
               class ShapeBasePromotedFloatType = tensor_std_float_t>
     __device__ constexpr __attribute__((noinline)) auto mono_transform(Matrix * matrix,
                                                                        ShapeBaseCoeffSizeContainer base_shape_coeff_sz_container,
@@ -689,6 +683,7 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_operation
     }
 
     template <class AllocatorInterface,
+              class ShapeBaseCoeffSizeContainer,
               class ShapeBasePromotedFloatType = tensor_std_float_t>
     __device__ constexpr __attribute__((noinline)) auto feed_forward_transform(Matrix * matrix,
                                                                                ShapeBaseCoeffSizeContainer base_shape_coeff_sz_container,
@@ -1099,7 +1094,8 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_operation
               class SuffixMap, /*inplace_unordered_map<size_t, inplace_unordered_map<size_t, inplace_vector<inplace_vector<size_t>>?*/
               class RotationSizeVector, /*inplace_vector<size_t>*/
               class ParameterBoundRatioVector, /*inplace_vector<double>*/
-              class ShapeBaseCoeffSizeContainer>
+              class ShapeBaseCoeffSizeContainer,
+              class ShapeBasePromotedFloatType = tensor_std_float_t>
     __device__ constexpr  __attribute__((noinline)) auto matrix_transform_size(MatrixShapeVector matrix_shape_vec,
 
                                                                                FocalSizeVector focal_sz_vec,
@@ -1112,7 +1108,7 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_operation
                                                                                size_t hash_table_sz,
 
                                                                                local_exception_t * err = nullptr, //this is the "new invention" for concurrent error write, last write last win, it's complicated but we now follow a write on error only
-                                                                               const Tag<ShapeBasePromotedFloatType>& shape_base_promotion_tag = Tag<ShapeBasePromotedFloatType>()
+                                                                               const Tag<ShapeBasePromotedFloatType>& shape_base_promotion_tag = Tag<ShapeBasePromotedFloatType>(),
 
                                                                                bool has_logit_unit_reuse_tag = true,
                                                                                bool has_logit_group_logit_reuse_tag = true,

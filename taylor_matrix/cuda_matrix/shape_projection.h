@@ -119,6 +119,26 @@ namespace taylor_matrix::cuda_matrix::shape_projection
         return dg_copysign(std::bit_cast<double>(u_val), x);
     }
 
+    template <class T, std::enable_if_t<std::is_same_v<T, float>, bool> = true>
+    constexpr auto fast_approx_power_7_8(T x) -> T
+    {
+        float abs_x    = abs(x);
+        uint32_t u_val = std::bit_cast<uint32_t>(abs_x);
+        u_val          = u_val - (u_val >> 3) + 0x07F00000;
+
+        return dg_copysign(std::bit_cast<float>(u_val), x);
+    }
+
+    template <class T, std::enable_if_t<std::is_same_v<T, double>, bool> = true>
+    constexpr auto fast_approx_power_7_8(T x) -> T
+    {
+        double abs_x   = abs(x);
+        uint64_t u_val = std::bit_cast<uint64_t>(abs_x);
+        u_val          = u_val - (u_val >> 3) + 0x07FE000000000000ULL;
+
+        return dg_copysign(std::bit_cast<double>(u_val), x);
+    }
+
     template <class FloatType, class SzContainer, class PromotedFloatType = FloatType, bool HasBoundCheck = true>
     __device__ static constexpr auto base_taylor_raw_shape_project(FloatType x,
                                                                    const FloatType * coeff_arr, SzContainer coeff_arr_sz_container,
@@ -148,7 +168,7 @@ namespace taylor_matrix::cuda_matrix::shape_projection
             else
             {
                 projected_result    += static_cast<PromotedFloatType>(coeff_arr[i]) * x_multiplier;
-                x_multiplier        = fast_approx_three_quarters(x_multiplier);
+                x_multiplier        = fast_approx_power_7_8(x_multiplier);
             }
         }
 

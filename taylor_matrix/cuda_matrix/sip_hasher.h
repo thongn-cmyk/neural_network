@@ -93,7 +93,7 @@ namespace taylor_matrix::cuda_matrix::sip_hasher
             template <class T>
             __device__ constexpr void update(const T& data)
             {
-                constexpr size_t DATA_BYTE_SZ    = trivial_serializer::size(data);
+                constexpr size_t DATA_BYTE_SZ    = trivial_serializer::size(T{});
                 std::array<char, DATA_BYTE_SZ> data_byte_arr{};
 
                 trivial_serializer::serialize_into(data_byte_arr.data(), data);

@@ -96,12 +96,14 @@ class TaylorMatrix: public virtual the_matrix::MatrixInterface
 
 auto three_fourth_exp(float x) -> float
 {
-    float abs_x     = std::abs(x);
-    float sqrt_x    = std::sqrt(abs_x);
-    float sqrt2_x   = std::sqrt(sqrt_x);
-    float rs        = sqrt_x * sqrt2_x;
+    float abs_x    = std::abs(x);
+    uint32_t u_val = std::bit_cast<uint32_t>(abs_x);
 
-    return std::copysign(rs, x);
+    // Scale exponent by 11/16 using shifts: 1 - 1/4 - 1/16
+    // Add the newly calculated 32-bit magic constant
+    u_val          = u_val - (u_val >> 2) - (u_val >> 4) + 0x13D80000;
+
+    return std::copysign(std::bit_cast<float>(u_val), x);
 }
 
 template <class FloatType, class SzContainer, class PromotedFloatType = FloatType, bool HasBoundCheck = true>

@@ -61,6 +61,52 @@ namespace taylor_matrix::host_matrix::shape_projection
         return std::copysign(std::bit_cast<double>(u_val), x);
     }
 
+    template <class T, std::enable_if_t<std::is_same_v<T, float>, bool> = true>
+    constexpr auto fast_approx_power_7_8(T x) -> T
+    {
+        float abs_x    = std::abs(x);
+        uint32_t u_val = std::bit_cast<uint32_t>(abs_x);
+        u_val          = u_val - (u_val >> 3) + 0x07F00000;
+
+        return std::copysign(std::bit_cast<float>(u_val), x);
+    }
+
+    template <class T, std::enable_if_t<std::is_same_v<T, double>, bool> = true>
+    constexpr auto fast_approx_power_7_8(T x) -> T
+    {
+        double abs_x   = std::abs(x);
+        uint64_t u_val = std::bit_cast<uint64_t>(abs_x);
+        u_val          = u_val - (u_val >> 3) + 0x07FE000000000000ULL;
+
+        return std::copysign(std::bit_cast<double>(u_val), x);
+    }
+
+    template <class T, std::enable_if_t<std::is_same_v<T, float>, bool> = true>
+    constexpr auto fast_approx_power_15_16(T x) -> T
+    {
+        float abs_x    = std::abs(x);
+        uint32_t u_val = std::bit_cast<uint32_t>(abs_x);
+        
+        // Scale exponent by 15/16 using shifts: 1 - 1/16
+        // Add the strictly calculated 32-bit magic constant
+        u_val          = u_val - (u_val >> 4) + 0x03F80000;
+
+        return std::copysign(std::bit_cast<float>(u_val), x);
+    }
+
+    template <class T, std::enable_if_t<std::is_same_v<T, double>, bool> = true>
+    constexpr auto fast_approx_power_15_16(T x) -> T
+    {
+        double abs_x   = std::abs(x);
+        uint64_t u_val = std::bit_cast<uint64_t>(abs_x);
+        
+        // Scale exponent by 15/16 using shifts: 1 - 1/16
+        // Add the strictly calculated 64-bit magic constant
+        u_val          = u_val - (u_val >> 4) + 0x03FF000000000000ULL;
+
+        return std::copysign(std::bit_cast<double>(u_val), x);
+    }
+
     template <class FloatType, class SzContainer, class PromotedFloatType = FloatType, bool HasBoundCheck = true>
     constexpr auto base_taylor_raw_shape_project(FloatType x,
                                                  const FloatType * coeff_arr, SzContainer coeff_arr_sz_container,
@@ -90,7 +136,7 @@ namespace taylor_matrix::host_matrix::shape_projection
             else
             {
                 projected_result    += static_cast<PromotedFloatType>(coeff_arr[i]) * x_multiplier;
-                x_multiplier        = fast_approx_three_quarters(x_multiplier);
+                x_multiplier        = fast_approx_power_7_8(x_multiplier);
             }
         }
 
@@ -139,18 +185,13 @@ namespace taylor_matrix::host_matrix::shape_projection
         static_assert(std::is_floating_point_v<FloatType>);
         static_assert(std::is_floating_point_v<PromotedFloatType>);
 
+        PromotedFloatType carry_multiplier = 1u;
+
         for (size_t i = 0u; i < coeff_arr_sz_container.get(); ++i)
         {
-            euclid_coeff_arr[i] = radian_coeff_arr[i];
+            euclid_coeff_arr[i] = carry_multiplier * std::sin(static_cast<PromotedFloatType>(radian_coeff_arr[i]));
+            carry_multiplier    *= std::cos(static_cast<PromotedFloatType>(radian_coeff_arr[i]));
         }
-
-        // PromotedFloatType carry_multiplier = 1u;
-
-        // for (size_t i = 0u; i < coeff_arr_sz_container.get(); ++i)
-        // {
-        //     euclid_coeff_arr[i] = carry_multiplier * std::sin(static_cast<PromotedFloatType>(radian_coeff_arr[i]));
-        //     carry_multiplier    *= std::cos(static_cast<PromotedFloatType>(radian_coeff_arr[i]));
-        // }
     }
 
     template <class FloatType, class SzContainer, class PromotedFloatType = FloatType, bool HasBoundCheck = true>
@@ -174,11 +215,11 @@ namespace taylor_matrix::host_matrix::shape_projection
             }
         }
 
-        FloatType euclidean_coeff_space[MAX_BASE_COEFFICIENT];
-        taylor_radian_to_euclidean_space(radian_coeff_arr, coeff_arr_sz_container, euclidean_coeff_space, promotion_tag);
+        // FloatType euclidean_coeff_space[MAX_BASE_COEFFICIENT];
+        // taylor_radian_to_euclidean_space(radian_coeff_arr, coeff_arr_sz_container, euclidean_coeff_space, promotion_tag);
 
         return base_taylor_raw_shape_project(x,
-                                             euclidean_coeff_space, coeff_arr_sz_container,
+                                             radian_coeff_arr, coeff_arr_sz_container,
                                              promotion_tag,
                                              bound_check);
     }
@@ -207,11 +248,11 @@ namespace taylor_matrix::host_matrix::shape_projection
             }
         }
 
-        FloatType euclidean_coeff_space[MAX_BASE_COEFFICIENT];
-        taylor_radian_to_euclidean_space(radian_coeff_arr, coeff_arr_sz_container, euclidean_coeff_space, stdx::Tag<PromotedFloatType>{});
+        // FloatType euclidean_coeff_space[MAX_BASE_COEFFICIENT];
+        // taylor_radian_to_euclidean_space(radian_coeff_arr, coeff_arr_sz_container, euclidean_coeff_space, stdx::Tag<PromotedFloatType>{});
 
         base_batch_taylor_raw_shape_project(x_arr, x_arr_sz_container,
-                                            euclidean_coeff_space, coeff_arr_sz_container,
+                                            radian_coeff_arr, coeff_arr_sz_container,
                                             y_arr,
                                             bound_check);
     }
@@ -307,8 +348,7 @@ namespace taylor_matrix::host_matrix::shape_projection
         }
 
         PromotedFloatType projected_result  = 0;
-        PromotedFloatType x_multiplier      = 1;
-        size_t factorial_denorm             = 1u;
+        PromotedFloatType x_multiplier      = x_arr[0];
 
         for (size_t i = 0u; i < base_coeff_sz_container.get(); ++i)
         {
@@ -318,10 +358,15 @@ namespace taylor_matrix::host_matrix::shape_projection
                                                                                      promotion_tag,
                                                                                      bound_check);
 
-            PromotedFloatType delta_result  = coeff / factorial_denorm * x_multiplier;
-            projected_result                += delta_result;
-            x_multiplier                    *= x_arr[0];
-            factorial_denorm                *= i + 1;
+            if (i == 0u)
+            {
+                projected_result    += coeff;
+            }
+            else
+            {
+                projected_result    += coeff * x_multiplier;
+                x_multiplier        = fast_approx_power_7_8(x_multiplier);
+            }
         }
 
         return projected_result;
@@ -487,12 +532,10 @@ namespace taylor_matrix::host_matrix::shape_projection
             return;
         }
 
-        size_t factorial_denum  = 1u;
-
         alignas(alignof(std::max_align_t)) PromotedFloatType projected_arr[batch_sz_container.get()];
         alignas(alignof(std::max_align_t)) PromotedFloatType x_multiplier_arr[batch_sz_container.get()];
 
-        std::fill(x_multiplier_arr, std::next(x_multiplier_arr, batch_sz_container.get()), 1);
+        std::copy(flat_x_arr_arr, std::next(flat_x_arr_arr, batch_sz_container.get()), x_multiplier_arr);
         std::fill(y_arr, std::next(y_arr, batch_sz_container.get()), 0);
 
         for (size_t i = 0u; i < base_coeff_sz_container.get(); ++i)
@@ -503,15 +546,21 @@ namespace taylor_matrix::host_matrix::shape_projection
                                                          projected_arr,
                                                          bound_check);
 
-            for (size_t j = 0u; j < batch_sz_container.get(); ++j)
+            if (i == 0)
             {
-                PromotedFloatType coeff         = projected_arr[j];
-                PromotedFloatType delta_result  = fast_div(coeff, static_cast<PromotedFloatType>(factorial_denum)) * x_multiplier_arr[j];
-                y_arr[j]                        += delta_result;
-                x_multiplier_arr[j]             *= flat_x_arr_arr[j];
+                for (size_t j = 0u; j < batch_sz_container.get(); ++j)
+                {
+                    y_arr[j]   += projected_arr[j];
+                }
             }
-
-            factorial_denum *= i + 1;
+            else
+            {
+                for (size_t j = 0u; j < batch_sz_container.get(); ++j)
+                {
+                    y_arr[j]            += projected_arr[j] * x_multiplier_arr[j];
+                    x_multiplier_arr[j] = fast_approx_power_7_8(x_multiplier_arr[j]);
+                }
+            }
         }
     }
 

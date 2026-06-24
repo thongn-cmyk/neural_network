@@ -114,11 +114,14 @@ constexpr void taylor_radian_to_euclidean_space(const FloatType * radian_coeff_a
 
 inline float fast_approx_three_quarters(float x) 
 {
-    float abs_x     = std::abs(x);
-    uint32_t u_val  = std::bit_cast<uint32_t>(abs_x);
-    u_val           = u_val - (u_val >> 2) + 0x0FE00000;
+    float abs_x    = std::abs(x);
+    uint32_t u_val = std::bit_cast<uint32_t>(abs_x);
 
-    return std::copysign(std::bit_cast<float>(i), x);
+    // Scale exponent by 11/16 using shifts: 1 - 1/4 - 1/16
+    // Add the newly calculated 32-bit magic constant
+    u_val          = u_val - (u_val >> 2) - (u_val >> 4) + 0x13D80000;
+
+    return std::copysign(std::bit_cast<float>(u_val), x);
 }
 
 auto three_fourth_exp(float x) -> float
@@ -191,7 +194,7 @@ auto get_random_point_bag(size_t sz) -> std::vector<std::pair<tensor_std_float_t
 
     for (size_t i = 0u; i < sz; ++i)
     {
-        rs.push_back(std::make_pair(randomize_double(0, 2), randomize_double(0, 2)));
+        rs.push_back(std::make_pair(randomize_double(-1, 1), randomize_double(-1, 1)));
     }
 
     return rs;
