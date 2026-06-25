@@ -11,18 +11,43 @@
 
 //ok I admit that the naming conventions are too confusing
 
+//we have decided to use a special representation for matrix (for ease of transformation) instead of compromising interfaces
+
+//so essentially that we have two ways of doing this:
+//one is to add mutability to deviation_projector + everything that is cross-region memory related
+//second is to use a global unified memory, and actually notify mutability (only to host, then to worker nodes or to all the nodes)
+
+//the <hinge> of all of these to happen is synchronizability
+
+//right, so we have a <global_unified_memory> hub, we have "writer" and "reader"
+//we have locks, we have memory orderings
+
+//so we'd just do the exact same thing
+
+//for the interface, we have:
+
+//Segment = std::pair<size_t, size_t>
+
+//read(Segment) -> std::unique_ptr<char[]>
+//write(Segment, void *)
+//size() -> size_t
+//get_read_orders_for_subscriber(size_t) -> std::vector<Segment>
+//clear_read_orders_for_subscriber(size_t)
+//subscribe() -> size_t
+//unsubscribe(size_t)
+
 namespace deviation_projector::matrix_resource_as_deviation_projector
 {
-    class MatrixAsDeviationWrapperInterface
+    class MatrixResourceAsDeviationCalculatorWrapperInterface
     {
         public:
 
-            virtual ~MatrixAsDeviationWrapperInterface() noexcept = default;
+            virtual ~MatrixResourceAsDeviationCalculatorWrapperInterface() noexcept = default;
 
-            virtual auto wrap(const generic_matrix_factory::ExternalGenericMatrixResource& resource) -> ExternalGenericMatrixDeviationCalculatorResource = 0;
+            virtual auto wrap(const generic_matrix_factory::ExternalGenericMatrixResource& resource) -> ExternalGenericMatrixResourceAsDeviationCalculatorResource = 0;
     };
 
-    struct HostMatrixAsDeviationWrapperConfig
+    struct HostMatrixResourceAsDeviationCalculatorWrapperConfig
     {
         global_string_encoder::StringTransformationRule str_transformation_rule;
         deviation_projector::host_device::HostMatrixDeviationCalculatorResource deviation_resource;
@@ -42,7 +67,7 @@ namespace deviation_projector::matrix_resource_as_deviation_projector
         }
     };
 
-    struct ExternalHostMatrixAsDeviationWrapperConfig
+    struct ExternalHostMatrixResourceAsDeviationCalculatorWrapperConfig
     {
         std::string config_bytestream;
 
@@ -59,34 +84,34 @@ namespace deviation_projector::matrix_resource_as_deviation_projector
         }
     };
 
-    auto to_external_host_matrix_as_deviation_wrapper_config(const HostMatrixAsDeviationWrapperConfig& config) -> ExternalHostMatrixAsDeviationWrapperConfig
+    auto to_external_host_matrix_resource_as_deviation_calculator_wrapper_config(const HostMatrixResourceAsDeviationCalculatorWrapperConfig& config) -> ExternalHostMatrixResourceAsDeviationCalculatorWrapperConfig
     {
-        return ExternalHostMatrixAsDeviationWrapperConfig
+        return ExternalHostMatrixResourceAsDeviationCalculatorWrapperConfig
         {
             .config_bytestream = dg::network_compact_serializer::dgstd_serialize<std::string>(config)
         };
     }
 
-    auto to_internal_host_matrix_as_deviation_wrapper_config(const ExternalHostMatrixAsDeviationWrapperConfig& config) -> HostMatrixAsDeviationWrapperConfig
+    auto to_internal_host_matrix_resource_as_deviation_calculator_wrapper_config(const ExternalHostMatrixResourceAsDeviationCalculatorWrapperConfig& config) -> HostMatrixResourceAsDeviationCalculatorWrapperConfig
     {
-        return dg::network_compact_serializer::dgstd_deserialize<HostMatrixAsDeviationWrapperConfig>(config.config_bytestream);
+        return dg::network_compact_serializer::dgstd_deserialize<HostMatrixResourceAsDeviationCalculatorWrapperConfig>(config.config_bytestream);
     }
 
-    class HostMatrixAsDeviationWrapper: public virtual MatrixAsDeviationWrapperInterface
+    class HostMatrixResourceAsDeviationCalculatorWrapper: public virtual MatrixResourceAsDeviationCalculatorWrapperInterface
     {
         private:
 
             global_string_encoder::StringTransformationRule str_transformation_rule;
             deviation_projector::host_device::HostMatrixDeviationCalculatorResource deviation_resource;
-        
+
         public:
 
-            HostMatrixAsDeviationWrapper(const HostMatrixAsDeviationWrapperConfig& config): str_transformation_rule(config.str_transformation_rule),
-                                                                                            deviation_resource(config.deviation_resource){}
+            HostMatrixResourceAsDeviationCalculatorWrapper(const HostMatrixResourceAsDeviationCalculatorWrapperConfig& config): str_transformation_rule(config.str_transformation_rule),
+                                                                                                                                deviation_resource(config.deviation_resource){}
 
-            HostMatrixAsDeviationWrapper(const ExternalHostMatrixAsDeviationWrapperConfig& config): HostMatrixAsDeviationWrapper(to_internal_host_matrix_as_deviation_wrapper_config(config)){}
+            HostMatrixResourceAsDeviationCalculatorWrapper(const ExternalHostMatrixResourceAsDeviationCalculatorWrapperConfig& config): HostMatrixResourceAsDeviationCalculatorWrapper(to_internal_host_matrix_resource_as_deviation_calculator_wrapper_config(config)){}
 
-            auto wrap(const generic_matrix_factory::ExternalGenericMatrixResource& arg) -> ExternalGenericMatrixDeviationCalculatorResource
+            auto wrap(const generic_matrix_factory::ExternalGenericMatrixResource& arg) -> ExternalGenericMatrixResourceAsDeviationCalculatorResource
             {
                 auto resource           = host_wrapper::GenericHostMatrixDeviationCalculatorResource
                 {
@@ -96,16 +121,18 @@ namespace deviation_projector::matrix_resource_as_deviation_projector
                 };
 
                 auto external_resource  = host_wrapper::to_external_generic_host_matrix_deviation_calculator_resource(resource);
-                auto generic_resource   = GenericMatrixDeviationCalculatorResource
+                auto generic_resource   = GenericMatrixResourceAsDeviationCalculatorResource
                 {
                     .resource = external_resource
                 };
 
-                return to_external_generic_matrix_deviation_calculator_resource(generic_resource);
+                return to_external_generic_matrix_resource_as_deviation_calculator_resource(generic_resource);
             }
     };
 
-    struct CudaMatrixAsDeviationWrapperConfig
+    //refactor
+
+    struct CudaMatrixResourceAsDeviationCalculatorWrapperConfig
     {
         global_string_encoder::StringTransformationRule str_transformation_rule;
         uint8_t cuda_deviation_calculator_device;
@@ -125,7 +152,7 @@ namespace deviation_projector::matrix_resource_as_deviation_projector
         }
     };
 
-    struct ExternalCudaMatrixAsDeviationWrapperConfig
+    struct ExternalCudaMatrixResourceAsDeviationCalculatorWrapperConfig
     {
         std::string config_bytestream;
 
@@ -142,20 +169,20 @@ namespace deviation_projector::matrix_resource_as_deviation_projector
         }
     };
 
-    auto to_external_cuda_matrix_as_deviation_wrapper_config(const CudaMatrixAsDeviationWrapperConfig& config) -> ExternalCudaMatrixAsDeviationWrapperConfig
+    auto to_external_cuda_matrix_resource_as_deviation_calculator_wrapper_config(const CudaMatrixResourceAsDeviationCalculatorWrapperConfig& config) -> ExternalCudaMatrixResourceAsDeviationCalculatorWrapperConfig
     {
-        return ExternalCudaMatrixAsDeviationWrapperConfig
+        return ExternalCudaMatrixResourceAsDeviationCalculatorWrapperConfig
         {
             .config_bytestream = dg::network_compact_serializer::dgstd_serialize<std::string>(config)
         };
     }
 
-    auto to_internal_cuda_matrix_as_deviation_wrapper_config(const ExternalCudaMatrixAsDeviationWrapperConfig& config) -> CudaMatrixAsDeviationWrapperConfig
+    auto to_internal_cuda_matrix_resource_as_deviation_calculator_wrapper_config(const ExternalCudaMatrixResourceAsDeviationCalculatorWrapperConfig& config) -> CudaMatrixResourceAsDeviationCalculatorWrapperConfig
     {
-        return dg::network_compact_serializer::dgstd_deserialize<CudaMatrixAsDeviationWrapperConfig>(config.config_bytestream);
+        return dg::network_compact_serializer::dgstd_deserialize<CudaMatrixResourceAsDeviationCalculatorWrapperConfig>(config.config_bytestream);
     }
 
-    class CudaMatrixAsDeviationWrapper: public virtual MatrixAsDeviationWrapperInterface
+    class CudaMatrixResourceAsDeviationCalculatorWrapper: public virtual MatrixResourceAsDeviationCalculatorWrapperInterface
     {
         private:
 
@@ -164,12 +191,12 @@ namespace deviation_projector::matrix_resource_as_deviation_projector
 
         public:
 
-            CudaMatrixAsDeviationWrapper(const CudaMatrixAsDeviationWrapperConfig& config): str_transformation_rule(config.str_transformation_rule),
-                                                                                            cuda_deviation_calculator_device(config.cuda_deviation_calculator_device){}
+            CudaMatrixResourceAsDeviationCalculatorWrapper(const CudaMatrixResourceAsDeviationCalculatorWrapperConfig& config): str_transformation_rule(config.str_transformation_rule),
+                                                                                                                                cuda_deviation_calculator_device(config.cuda_deviation_calculator_device){}
 
-            CudaMatrixAsDeviationWrapper(const ExternalCudaMatrixAsDeviationWrapperConfig& config): CudaMatrixAsDeviationWrapper(to_internal_cuda_matrix_as_deviation_wrapper_config(config)){}
+            CudaMatrixResourceAsDeviationCalculatorWrapper(const ExternalCudaMatrixResourceAsDeviationCalculatorWrapperConfig& config): CudaMatrixResourceAsDeviationCalculatorWrapper(to_internal_cuda_matrix_resource_as_deviation_calculator_wrapper_config(config)){}
 
-            auto wrap(const generic_matrix_factory::ExternalGenericMatrixResource& arg) -> ExternalGenericMatrixDeviationCalculatorResource
+            auto wrap(const generic_matrix_factory::ExternalGenericMatrixResource& arg) -> ExternalGenericMatrixResourceAsDeviationCalculatorResource
             {
                 auto resource           = taylor_cuda_wrapper::TaylorCudaMatrixDeviationCalculatorResource
                 {
@@ -179,20 +206,20 @@ namespace deviation_projector::matrix_resource_as_deviation_projector
                 };
 
                 auto external_resource  = taylor_cuda_wrapper::to_external_taylor_cuda_matrix_deviation_calculator_resource(resource);
-                auto generic_resource   = GenericMatrixDeviationCalculatorResource
+                auto generic_resource   = GenericMatrixResourceAsDeviationCalculatorResource
                 {
                     .resource = external_resource
                 };
 
-                return to_external_generic_matrix_deviation_calculator_resource(generic_resource);
+                return to_external_generic_matrix_resource_as_deviation_calculator_resource(generic_resource);
             }
     };
 
-    struct GenericMatrixAsDeviationWrapperConfig
+    struct GenericMatrixResourceAsDeviationCalculatorWrapperConfig
     {
         std::variant<stdx::reflectible_monostate,
-                     ExternalHostMatrixAsDeviationWrapperConfig,
-                     ExternalCudaMatrixAsDeviationWrapperConfig> config;
+                     ExternalHostMatrixResourceAsDeviationCalculatorWrapperConfig,
+                     ExternalCudaMatrixResourceAsDeviationCalculatorWrapperConfig> config;
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector) const
@@ -207,7 +234,7 @@ namespace deviation_projector::matrix_resource_as_deviation_projector
         }
     };
 
-    struct ExternalGenericMatrixAsDeviationWrapperConfig
+    struct ExternalGenericMatrixResourceAsDeviationCalculatorWrapperConfig
     {
         std::string config_bytestream;
 
@@ -224,36 +251,36 @@ namespace deviation_projector::matrix_resource_as_deviation_projector
         }
     };
 
-    auto to_external_generic_matrix_as_deviation_wrapper_config(const GenericMatrixAsDeviationWrapperConfig& config) -> ExternalGenericMatrixAsDeviationWrapperConfig
+    auto to_external_generic_matrix_resource_as_deviation_calculator_wrapper_config(const GenericMatrixResourceAsDeviationCalculatorWrapperConfig& config) -> ExternalGenericMatrixResourceAsDeviationCalculatorWrapperConfig
     {
-        return ExternalGenericMatrixAsDeviationWrapperConfig
+        return ExternalGenericMatrixResourceAsDeviationCalculatorWrapperConfig
         {
             .config_bytestream = dg::network_compact_serializer::dgstd_serialize<std::string>(config)
         };
     }
 
-    auto to_internal_generic_matrix_as_deviation_wrapper_config(const ExternalGenericMatrixAsDeviationWrapperConfig& config) -> GenericMatrixAsDeviationWrapperConfig
+    auto to_internal_generic_matrix_resource_as_deviation_calculator_wrapper_config(const ExternalGenericMatrixResourceAsDeviationCalculatorWrapperConfig& config) -> GenericMatrixResourceAsDeviationCalculatorWrapperConfig
     {
-        return dg::network_compact_serializer::dgstd_deserialize<GenericMatrixAsDeviationWrapperConfig>(config.config_bytestream);
+        return dg::network_compact_serializer::dgstd_deserialize<GenericMatrixResourceAsDeviationCalculatorWrapperConfig>(config.config_bytestream);
     }
 
-    class GenericMatrixAsDeviationWrapper: public virtual MatrixAsDeviationWrapperInterface
+    class GenericMatrixResourceAsDeviationCalculatorWrapper: public virtual MatrixResourceAsDeviationCalculatorWrapperInterface
     {
         private:
 
-            std::unique_ptr<MatrixAsDeviationWrapperInterface> base;
+            std::unique_ptr<MatrixResourceAsDeviationCalculatorWrapperInterface> base;
 
         public:
 
-            GenericMatrixAsDeviationWrapper(const GenericMatrixAsDeviationWrapperConfig& config)
+            GenericMatrixResourceAsDeviationCalculatorWrapper(const GenericMatrixResourceAsDeviationCalculatorWrapperConfig& config)
             {
-                if (std::holds_alternative<ExternalHostMatrixAsDeviationWrapperConfig>(config.config))
+                if (std::holds_alternative<ExternalHostMatrixResourceAsDeviationCalculatorWrapperConfig>(config.config))
                 {
-                    this->base = std::make_unique<HostMatrixAsDeviationWrapper>(std::get<ExternalHostMatrixAsDeviationWrapperConfig>(config.config));
+                    this->base = std::make_unique<HostMatrixResourceAsDeviationCalculatorWrapper>(std::get<ExternalHostMatrixResourceAsDeviationCalculatorWrapperConfig>(config.config));
                 }
-                else if (std::holds_alternative<ExternalCudaMatrixAsDeviationWrapperConfig>(config.config))
+                else if (std::holds_alternative<ExternalCudaMatrixResourceAsDeviationCalculatorWrapperConfig>(config.config))
                 {
-                    this->base = std::make_unique<CudaMatrixAsDeviationWrapper>(std::get<ExternalCudaMatrixAsDeviationWrapperConfig>(config.config));
+                    this->base = std::make_unique<CudaMatrixResourceAsDeviationCalculatorWrapper>(std::get<ExternalCudaMatrixResourceAsDeviationCalculatorWrapperConfig>(config.config));
                 }
                 else
                 {
@@ -261,9 +288,9 @@ namespace deviation_projector::matrix_resource_as_deviation_projector
                 }
             }
 
-            GenericMatrixAsDeviationWrapper(const ExternalGenericMatrixAsDeviationWrapperConfig& config): GenericMatrixAsDeviationWrapper(to_internal_generic_matrix_as_deviation_wrapper_config(config)){}
+            GenericMatrixResourceAsDeviationCalculatorWrapper(const ExternalGenericMatrixResourceAsDeviationCalculatorWrapperConfig& config): GenericMatrixResourceAsDeviationCalculatorWrapper(to_internal_generic_matrix_resource_as_deviation_calculator_wrapper_config(config)){}
 
-            auto wrap(const generic_matrix_factory::ExternalGenericMatrixResource& matrix_resource) -> deviation_projector::ExternalGenericMatrixDeviationCalculatorResource
+            auto wrap(const generic_matrix_factory::ExternalGenericMatrixResource& matrix_resource) -> ExternalGenericMatrixResourceAsDeviationCalculatorResource
             {
                 return this->base->wrap(matrix_resource);
             }

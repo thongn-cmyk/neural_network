@@ -11,16 +11,13 @@
 #include <exception>
 #include <immutable_memory/immutable_memory.h>
 
-//ok I admit that the naming conventions are too confusing
-//I will fix it
-
 namespace deviation_projector::matrix_resource_as_deviation_projector
 {
-    struct GenericMatrixDeviationCalculatorResource
+    struct GenericMatrixResourceAsDeviationCalculatorResource
     {
         std::variant<stdx::reflectible_monostate,
-                     deviation_projector::host_wrapper::ExternalGenericHostMatrixDeviationCalculatorResource,
-                     deviation_projector::taylor_cuda_wrapper::ExternalTaylorCudaMatrixDeviationCalculatorResource> resource;
+                     host_wrapper::ExternalGenericHostMatrixDeviationCalculatorResource,
+                     taylor_cuda_wrapper::ExternalTaylorCudaMatrixDeviationCalculatorResource> resource;
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector) const
@@ -34,8 +31,8 @@ namespace deviation_projector::matrix_resource_as_deviation_projector
             reflector(resource);
         }
     };
-    
-    struct ExternalGenericMatrixDeviationCalculatorResource
+
+    struct ExternalGenericMatrixResourceAsDeviationCalculatorResource
     {
         std::string config_bytestream;
 
@@ -48,24 +45,24 @@ namespace deviation_projector::matrix_resource_as_deviation_projector
         template <class Reflector>
         void dg_reflect(const Reflector& reflector)
         {
-            reflector(config_bytestream);            
+            reflector(config_bytestream);
         }
     };
 
-    auto to_external_generic_matrix_deviation_calculator_resource(const GenericMatrixDeviationCalculatorResource& resource) -> ExternalGenericMatrixDeviationCalculatorResource
+    auto to_external_generic_matrix_resource_as_deviation_calculator_resource(const GenericMatrixResourceAsDeviationCalculatorResource& resource) -> ExternalGenericMatrixResourceAsDeviationCalculatorResource
     {
-        return ExternalGenericMatrixDeviationCalculatorResource
+        return ExternalGenericMatrixResourceAsDeviationCalculatorResource
         {
             .config_bytestream = dg::network_compact_serializer::dgstd_serialize<std::string>(resource)
         };
     }
 
-    auto to_internal_generic_matrix_deviation_calculator_resource(const ExternalGenericMatrixDeviationCalculatorResource& resource) -> GenericMatrixDeviationCalculatorResource
+    auto to_internal_generic_matrix_resource_as_deviation_calculator_resource(const ExternalGenericMatrixResourceAsDeviationCalculatorResource& resource) -> GenericMatrixResourceAsDeviationCalculatorResource
     {
-        return dg::network_compact_serializer::dgstd_deserialize<GenericMatrixDeviationCalculatorResource>(resource.config_bytestream);
+        return dg::network_compact_serializer::dgstd_deserialize<GenericMatrixResourceAsDeviationCalculatorResource>(resource.config_bytestream);
     }
 
-    class GenericMatrixDeviationCalculator: public virtual GenericMatrixDeviationCalculatorInterface
+    class GenericMatrixResourceAsDeviationCalculator: public virtual GenericMatrixDeviationCalculatorInterface
     {
         private:
 
@@ -73,15 +70,15 @@ namespace deviation_projector::matrix_resource_as_deviation_projector
 
         public:
 
-            GenericMatrixDeviationCalculator(const GenericMatrixDeviationCalculatorResource& arg)
+            GenericMatrixResourceAsDeviationCalculator(const GenericMatrixResourceAsDeviationCalculatorResource& arg)
             {
-                if (std::holds_alternative<deviation_projector::host_wrapper::ExternalGenericHostMatrixDeviationCalculatorResource>(arg.resource))
+                if (std::holds_alternative<host_wrapper::ExternalGenericHostMatrixDeviationCalculatorResource>(arg.resource))
                 {
-                    this->base  = std::make_unique<deviation_projector::host_wrapper::GenericHostMatrixDeviationCalculator>(std::get<deviation_projector::host_wrapper::ExternalGenericHostMatrixDeviationCalculatorResource>(arg.resource));
+                    this->base  = std::make_unique<host_wrapper::GenericHostMatrixDeviationCalculator>(std::get<host_wrapper::ExternalGenericHostMatrixDeviationCalculatorResource>(arg.resource));
                 }
-                else if (std::holds_alternative<deviation_projector::taylor_cuda_wrapper::ExternalTaylorCudaMatrixDeviationCalculatorResource>(arg.resource))
+                else if (std::holds_alternative<taylor_cuda_wrapper::ExternalTaylorCudaMatrixDeviationCalculatorResource>(arg.resource))
                 {
-                    this->base  = std::make_unique<deviation_projector::taylor_cuda_wrapper::TaylorCudaMatrixDeviationCalculator>(std::get<deviation_projector::taylor_cuda_wrapper::ExternalTaylorCudaMatrixDeviationCalculatorResource>(arg.resource));
+                    this->base  = std::make_unique<taylor_cuda_wrapper::TaylorCudaMatrixDeviationCalculator>(std::get<taylor_cuda_wrapper::ExternalTaylorCudaMatrixDeviationCalculatorResource>(arg.resource));
                 }
                 else
                 {
@@ -89,7 +86,7 @@ namespace deviation_projector::matrix_resource_as_deviation_projector
                 }
             }
 
-            GenericMatrixDeviationCalculator(const ExternalGenericMatrixDeviationCalculatorResource& arg): GenericMatrixDeviationCalculator(to_internal_generic_matrix_deviation_calculator_resource(arg)){}
+            GenericMatrixResourceAsDeviationCalculator(const ExternalGenericMatrixResourceAsDeviationCalculatorResource& arg): GenericMatrixResourceAsDeviationCalculator(to_internal_generic_matrix_resource_as_deviation_calculator_resource(arg)){}
 
             auto get_deviation(const std::vector<std::shared_ptr<immutable_memory::ImmutableMemoryInterface>>& training_token_vec) -> mdc_float_t
             {

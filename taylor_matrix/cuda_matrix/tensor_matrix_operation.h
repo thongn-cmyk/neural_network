@@ -1,3 +1,5 @@
+//__GIT_INTEGRATION_TAG__
+
 #ifndef __TAYLOR_MATRIX_CUDA_MATRIX_TENSOR_MATRIX_OPERATION_H__
 #define __TAYLOR_MATRIX_CUDA_MATRIX_TENSOR_MATRIX_OPERATION_H__
 
@@ -11,6 +13,7 @@
 #include <array>
 #include <cuda_management/scope_allocator.h>
 #include "local_exception.h"
+#include <taylor_matrix/cuda_matrix/dispatch_code_generator.h>
 
 namespace taylor_matrix::cuda_matrix::tensor_matrix_operation
 {
@@ -163,8 +166,7 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_operation
         if (dst->being_vec_sz != src->being_vec_sz)
         {
             *err = OTHER_INVALID_ARGUMENT_CODE;
-
-            return false;
+            return;
         }
 
         for (size_t i = 0u; i < src->being_vec_sz; ++i)
@@ -673,7 +675,7 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_operation
                                                                               shape_base_promotion_tag,
                                                                               err);
 
-            if (*err !+ SUCCESS)
+            if (*err != SUCCESS)
             {
                 return {};
             }
@@ -704,7 +706,7 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_operation
             return {};
         }
 
-        Matrix ** tmp_rs_arr[]{matrix, mono_matrix};
+        Matrix * tmp_rs_arr[]{matrix, mono_matrix};
 
         return avg(tmp_rs_arr, 2u, allocator, err);
     }
@@ -790,7 +792,7 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_operation
                                                                                   allocator,
                                                                                   err);
 
-            if (*err !+ SUCCESS)
+            if (*err != SUCCESS)
             {
                 return {};
             }
@@ -1157,7 +1159,7 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_operation
             scope_guard allocator_grd(&stack_allocator);
 
             uint64_t tentative_logit_sz                     = INITIAL_LOGIT_SZ * cuda_matrix::utility::unsigned_pow(MULTIPLIER_BASE, i);
-            tensor_std_float_t ** tensor_2d_arr             = std_new_array<tensor_std_float_t[]>(stack_allocator, hash_table_sz);
+            tensor_std_float_t ** tensor_2d_arr             = std_new_array<std::add_pointer_t<tensor_std_float_t>>(stack_allocator, hash_table_sz);
 
             for (size_t j = 0u; j < hash_table_sz; ++j)
             {

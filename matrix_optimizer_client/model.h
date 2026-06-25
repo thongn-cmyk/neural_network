@@ -7,12 +7,7 @@
 #include "local_exception.h"
 #include <string>
 #include <connectivity_subsystem/connectivity_subsystem.h>
-#include <data_loader/source_loader/multisource_loader.h>
-#include <matrix/generic_matrix_factory.h>
 #include <internal_rest/network_rest_frame.h>
-#include <deviation_projector/generic_matrix_as_deviation_wrapper.h>
-#include <matrix_optimizer_subsystem/generic_optimizer_engine.h>
-#include <fire_bandwidth_control/generic_firer.h>
 
 namespace matrix_optimizer_client
 {
@@ -22,6 +17,99 @@ namespace matrix_optimizer_client
     using Remote        = dg_sock::network_rest_frame::model::Remote;
     using Url           = dg_sock::network_rest_frame::model::Url;
     using ClientRequest = dg_sock::network_rest_frame::model::ClientRequest;
+
+    //it seems I introduce complexity that I'm unsure if I'm willing to handle the complexity
+    //I think it's fine to add an extra automap for every external resource, it's just some extra linking steps, it's complicated to include everything
+
+    //migrations
+    struct ExternalGenericMatrixResourceAsDeviationCalculatorWrapperConfig
+    {
+        std::string config_bytestream;
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector) const
+        {
+            reflector(config_bytestream);
+        }
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector)
+        {
+            reflector(config_bytestream);
+        }
+    };
+
+    //migrations
+    struct ExternalGenericOptimizerEngineConfig
+    {
+        std::string config_bytestream;
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector) const
+        {
+            reflector(config_bytestream);
+        }
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector)
+        {
+            reflector(config_bytestream);
+        }
+    };
+
+    //migrations
+    struct ExternalGenericMatrixResource
+    {
+        std::string config_bytestream;
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector) const
+        {
+            reflector(config_bytestream);
+        }
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector)
+        {
+            reflector(config_bytestream);
+        }
+    };
+
+    //migrations
+    struct ExternalMultisourceLoaderConfig
+    {
+        std::string config_bytestream;
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector) const
+        {
+            reflector(config_bytestream);
+        }
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector)
+        {
+            reflector(config_bytestream);
+        }
+    };
+
+    //migrations
+    struct ExternalGenericFirerConfig
+    {
+        std::string config_bytestream;
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector) const
+        {
+            reflector(config_bytestream);
+        }
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector)
+        {
+            reflector(config_bytestream);
+        }
+    };
 
     struct GetVersionRequest
     {
@@ -131,8 +219,8 @@ namespace matrix_optimizer_client
         Remote worker_remote;
         Remote dst_remote;
 
-        data_loader::source_loader::multisource_loader::ExternalMultisourceLoaderConfig data_loader_config;
-        fire_bandwidth_control::generic_firer::ExternalGenericFirerConfig firer_config;
+        ExternalMultisourceLoaderConfig data_loader_config;
+        ExternalGenericFirerConfig firer_config;
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector) const
@@ -155,10 +243,10 @@ namespace matrix_optimizer_client
 
     struct RunWorkOrder
     {
-        generic_matrix_factory::ExternalGenericMatrixResource matrix;
+        ExternalGenericMatrixResource matrix;
         std::vector<PullWorkOrder> pull_work_order_vec;
-        deviation_projector::ExternalGenericMatrixAsDeviationWrapperConfig deviation_config;
-        matrix_optimizer_subsystem::ExternalGenericOptimizerEngineConfig optimizer_config;
+        ExternalGenericMatrixResourceAsDeviationCalculatorWrapperConfig deviation_config;
+        ExternalGenericOptimizerEngineConfig optimizer_config;
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector) const
@@ -304,7 +392,7 @@ namespace matrix_optimizer_client
 
     struct GetResultResponse
     {
-        std::expected<generic_matrix_factory::ExternalGenericMatrixResource, matrix_optimizer_client::local_exception_t> result;
+        std::expected<ExternalGenericMatrixResource, matrix_optimizer_client::local_exception_t> result;
         std::string err_verbal_description;
 
         template <class Reflector>

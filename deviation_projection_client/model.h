@@ -7,7 +7,6 @@
 #include <expected>
 #include <string>
 #include <connectivity_subsystem/connectivity_subsystem.h>
-#include <deviation_projector/generic_matrix_deviation_calculator.h>
 
 namespace deviation_projection_client
 {

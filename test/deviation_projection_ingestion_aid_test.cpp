@@ -35,6 +35,7 @@
 #include <taylor_matrix/cuda_matrix/tensor_matrix_forward.h>
 #include <taylor_matrix/cuda_matrix/tensor_matrix_forward_to_deviation.h>
 #include <cuda_management/host_service.h>
+#include <stl_extension/semantic_mapper.h>
 
 static inline constexpr char DELIM_CHAR = ',';
 static inline constexpr char EOR_CHAR   = '\0';
@@ -760,16 +761,6 @@ auto get_local_remote() -> Remote
     };
 }
 
-auto get_random_ingestion_aid_run_payload(const std::string& fp, const deviation_projection_client::ClientRemote& client_remote) -> deviation_projection_ingestion_aid_client::RunPayload
-{
-    return
-    {
-        .data_loader_config = randomize_external_multisource_config(fp),
-        .server_sink_vec    = {deviation_projection_ingestion_aid_client::ServerSink{.remote = client_remote.remote, .client_id = client_remote.client_id}},
-        .token_firer_config = get_random_external_generic_firer_config()  
-    };
-}
-
 void wait_client(deviation_projection_ingestion_aid_client::APIClient * client)
 {
     while (true)
@@ -795,8 +786,8 @@ void test_ingestion_aid()
 
     PiecewiseArgument arg = PiecewiseBuilder{}.worker_remote(get_local_remote())
                                               .client_remote(client.get_client_remote().remote, client.get_client_remote().client_id)
-                                              .data_loader_config(randomize_external_multisource_config(fp))
-                                              .firer_config(get_random_external_generic_firer_config())
+                                              .data_loader_config(stdx::to_automap_object(randomize_external_multisource_config(fp)))
+                                              .firer_config(stdx::to_automap_object(get_random_external_generic_firer_config()))
                                               .build();
 
     auto cancellation_token = common_exception::CancellationToken();

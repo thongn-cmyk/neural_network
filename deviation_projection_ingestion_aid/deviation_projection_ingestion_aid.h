@@ -5,14 +5,12 @@
 #include <stdlib.h>
 #include <memory>
 #include <internal_rest/network_rest_frame.h>
-#include <deviation_projection_client/deviation_projection_client.h>
 #include "model.h"
 #include <stdexcept>
 #include <exception>
-#include <data_loader/source_loader/multisource_loader.h>
-#include <fire_bandwidth_control/generic_firer.h>
 #include <connectivity_subsystem/connectivity_subsystem.h>
 #include <deviation_projection_ingestion_aid_client/deviation_projection_ingestion_aid_client.h>
+#include <stl_extension/semantic_mapper.h>
 
 namespace deviation_projection_ingestion_aid
 {
@@ -22,8 +20,8 @@ namespace deviation_projection_ingestion_aid
 
             std::optional<Remote> _worker_remote;
             std::optional<ClientRemote> _client_remote;
-            std::optional<data_loader::source_loader::multisource_loader::ExternalMultisourceLoaderConfig> _data_loader_config;
-            std::optional<fire_bandwidth_control::generic_firer::ExternalGenericFirerConfig> _firer_config;
+            std::optional<ExternalMultisourceLoaderConfig> _data_loader_config;
+            std::optional<ExternalGenericFirerConfig> _firer_config;
             connectivity_subsystem::MasterConfiguration _connection_config;
 
             using self = PiecewiseBuilder;
@@ -59,14 +57,14 @@ namespace deviation_projection_ingestion_aid
                 return *this;
             }
 
-            auto data_loader_config(const data_loader::source_loader::multisource_loader::ExternalMultisourceLoaderConfig& arg) -> self&
+            auto data_loader_config(const ExternalMultisourceLoaderConfig& arg) -> self&
             {
                 this->_data_loader_config = arg;
 
                 return *this;
             }
 
-            auto firer_config(const fire_bandwidth_control::generic_firer::ExternalGenericFirerConfig& arg) -> self&
+            auto firer_config(const ExternalGenericFirerConfig& arg) -> self&
             {
                 this->_firer_config = arg;
 
@@ -235,9 +233,9 @@ namespace deviation_projection_ingestion_aid
             {
                 return
                 {
-                    .data_loader_config = arg.data_loader_config,
+                    .data_loader_config = stdx::to_automap_object(arg.data_loader_config),
                     .server_sink_vec    = {deviation_projection_ingestion_aid_client::ServerSink{.remote = arg.client_remote.remote, .client_id = arg.client_remote.client_id}},
-                    .token_firer_config = arg.firer_config
+                    .token_firer_config = stdx::to_automap_object(arg.firer_config)
                 };
             }
     };

@@ -6,7 +6,7 @@
 #include <memory>
 #include <matrix_evaluator/matrix_evaluator_interface.h>
 #include <deviation_projection_client/deviation_projection_client.h>
-#include <deviation_projector/generic_matrix_as_deviation_wrapper.h>
+#include <deviation_projector/matrix_resource_as_deviation_projector/generic_matrix_resource_as_deviation_projector_wrapper.h>
 #include <common_exception/cancellation_token.h>
 #include <vector>
 #include <matrix/generic_matrix_factory.h>
@@ -21,6 +21,8 @@
 
 namespace deviation_projection_matrix_evaluator
 {
+    namespace dp = deviation_projector::matrix_resource_as_deviation_projector;
+
     using namespace float_def;
 
     template <class T>
@@ -28,13 +30,30 @@ namespace deviation_projection_matrix_evaluator
 
     using ClientRemote = deviation_projection_client::ClientRemote;
 
+    //we'd build the global unified memory matrix later by injecting an interface of logit_vector
+    //due to the dynamic of the memory, only the host's version is considered <MatrixInterface>, the device's version must be <GenericMatrixDeviationCalculatorInterface>
+
+    //essentially, we wont be "setting" the matrix every run, but rather once, and establish a memory sync per every host mutable write, so by the time the requests hit devices
+    //we'd be considered <in_sync> and the devices only need to get_read_orders_for_subscriber(size_t)
+
+    //this week next week we'd have to draft the initial version (this is potentially a different project due to the complexity of <memory_span>)
+    //this is hard, because we'd have replicas, high availability, "tree_like" management of the mutable memory
+
+    //we'd have to build the cross-the-t-dot-the-i components like config_builder for loaders, support minimal arguments that specify the users' intent solely to spawn a meaningful loader
+    //out of the topic just a little but we reckoned that it's better to shape_project than normal project to hinder cancer (it's real)
+
+    //we are expecting to training 100 million - 1 billion token exactly like how we are training 1000 tokens on CPUs now
+    //maybe 10x-100x faster, next month
+
+    //
+
     class MatrixEvaluatorBuilder
     {
         private:
 
             std::optional<std::vector<ClientRemote>> client_remote_vec;
             std::optional<generic_matrix_factory::ExternalGenericMatrixResource> exportable_matrix;
-            std::optional<deviation_projector::ExternalGenericMatrixAsDeviationWrapperConfig> deviation_wrapper_config;
+            std::optional<dp::ExternalGenericMatrixResourceAsDeviationCalculatorWrapperConfig> deviation_wrapper_config;
             std::shared_ptr<common_exception::CancellationTokenInterface> cancellation_token;
             dg_sock::network_rest_frame::client::retry_policy_t retry_policy;
             connectivity_subsystem::MasterConfiguration connection_config;
@@ -69,7 +88,7 @@ namespace deviation_projection_matrix_evaluator
                 return *this;
             }
 
-            auto set_matrix_deviation_wrapper(const deviation_projector::ExternalGenericMatrixAsDeviationWrapperConfig& deviation_wrapper_config) -> self&
+            auto set_matrix_deviation_wrapper(const dp::ExternalGenericMatrixResourceAsDeviationCalculatorWrapperConfig& deviation_wrapper_config) -> self&
             {
                 this->deviation_wrapper_config = deviation_wrapper_config;
 
@@ -145,19 +164,19 @@ namespace deviation_projection_matrix_evaluator
 
                     std::vector<std::unique_ptr<deviation_projection_client::NoOwned_APIClient>> api_client_vec;
                     generic_matrix_factory::ExternalGenericMatrixResource exportable_matrix;
-                    deviation_projector::ExternalGenericMatrixAsDeviationWrapperConfig matrix_deviation_wrapper_config;
+                    dp::ExternalGenericMatrixResourceAsDeviationCalculatorWrapperConfig matrix_deviation_wrapper_config;
 
                 public:
 
                     MatrixEvaluator(std::vector<std::unique_ptr<deviation_projection_client::NoOwned_APIClient>> api_client_vec,
                                     generic_matrix_factory::ExternalGenericMatrixResource exportable_matrix,
-                                    deviation_projector::ExternalGenericMatrixAsDeviationWrapperConfig matrix_deviation_wrapper_config) noexcept: api_client_vec(std::move(api_client_vec)),
-                                                                                                                                                  exportable_matrix(std::move(exportable_matrix)),
-                                                                                                                                                  matrix_deviation_wrapper_config(std::move(matrix_deviation_wrapper_config)){}
+                                    dp::ExternalGenericMatrixResourceAsDeviationCalculatorWrapperConfig matrix_deviation_wrapper_config) noexcept: api_client_vec(std::move(api_client_vec)),
+                                                                                                                                                   exportable_matrix(std::move(exportable_matrix)),
+                                                                                                                                                   matrix_deviation_wrapper_config(std::move(matrix_deviation_wrapper_config)){}
 
                     auto get_deviation(the_matrix::MatrixInterface& matrix) -> eval_float_t
                     {
-                        deviation_projector::ExternalGenericMatrixDeviationCalculatorResource deviation_resource = this->get_deviation_resource(matrix);
+                        dp::ExternalGenericMatrixResourceAsDeviationCalculatorResource deviation_resource = this->get_deviation_resource(matrix);
                         std::vector<mdc_float_t> rs = this->get_deviation_from_client_vec(deviation_resource);
 
                         return this->reduce_deviation(rs);
@@ -165,7 +184,7 @@ namespace deviation_projection_matrix_evaluator
 
                 private:
 
-                    auto get_deviation_resource(the_matrix::MatrixInterface& matrix) -> deviation_projector::ExternalGenericMatrixDeviationCalculatorResource
+                    auto get_deviation_resource(the_matrix::MatrixInterface& matrix) -> dp::ExternalGenericMatrixResourceAsDeviationCalculatorResource
                     {
                         using namespace generic_matrix_factory;
 
@@ -173,16 +192,16 @@ namespace deviation_projection_matrix_evaluator
                         mutable_matrix->set_coefficient_vector(matrix.get_coefficient_vector());
                         generic_matrix_factory::ExternalGenericMatrixResource deviation_matrix  = GenericMatrixExternalizer{}.to_external(GenericMatrixLoader{}.unload(*mutable_matrix));
 
-                        return deviation_projector::GenericMatrixAsDeviationWrapper(this->matrix_deviation_wrapper_config).wrap(deviation_matrix);
+                        return dp::GenericMatrixResourceAsDeviationCalculatorWrapper(this->matrix_deviation_wrapper_config).wrap(deviation_matrix);
                     }
 
-                    auto get_deviation_from_client_vec(const deviation_projector::ExternalGenericMatrixDeviationCalculatorResource& deviation_resource) -> std::vector<mdc_float_t>
+                    auto get_deviation_from_client_vec(const dp::ExternalGenericMatrixResourceAsDeviationCalculatorResource& deviation_resource) -> std::vector<mdc_float_t>
                     {
                         std::vector<std::shared_ptr<Promise<std::vector<mdc_float_t>>>> promise_vec{};
 
                         for (const auto& api_client: this->api_client_vec)
                         {
-                            promise_vec.push_back(api_client->set_and_get_deviation(stdx::to_automap_object(std::vector<deviation_projector::ExternalGenericMatrixDeviationCalculatorResource>{deviation_resource})));
+                            promise_vec.push_back(api_client->set_and_get_deviation(stdx::to_automap_object(std::vector<dp::ExternalGenericMatrixResourceAsDeviationCalculatorResource>{deviation_resource})));
                         }
 
                         std::vector<mdc_float_t> rs{};

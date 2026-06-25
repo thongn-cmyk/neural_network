@@ -1,3 +1,5 @@
+
+//__GIT_INTEGRATION_TAG__
 #ifndef __TAYLOR_MATRIX_CUDA_MATRIX_TENSOR_BEING_UNIT_OPERATION_H__
 #define __TAYLOR_MATRIX_CUDA_MATRIX_TENSOR_BEING_UNIT_OPERATION_H__
 
@@ -169,7 +171,7 @@ namespace taylor_matrix::cuda_matrix::tensor_being_unit_operation
         
         local_exception_t local_err = SUCCESS;
 
-        if (err = nullptr)
+        if (err == nullptr)
         {
             err = &local_err;
         }

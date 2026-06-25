@@ -1,3 +1,7 @@
+//__GIT_INTEGRATION_TAG__
+
+#define STRONG_MEMORY_ORDERING_FLAG true
+
 #include <serializer/dg_buf.h>
 #include <cuda_management/host_service_header.h>
 #include <cuda_management/host_service.h>
@@ -121,8 +125,17 @@ void host_test_2d_vector_2()
     cudaDeviceSynchronize();    
 }
 
+void initialize_resource()
+{
+    std::cout << "initializing resource...\n";
+
+    cuda_management::cuda_malloc::init();
+}
+
 void run_test()
 {
+    initialize_resource();
+
     std::cout << "__BEGIN_CU_DG_BUF_TEST__\n";
     std::cout << "testing host vector...\n";
     host_test_vector();

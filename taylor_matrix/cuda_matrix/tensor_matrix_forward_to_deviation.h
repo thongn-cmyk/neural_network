@@ -1,3 +1,5 @@
+//__GIT_INTEGRATION_TAG__
+
 #ifndef __TENSOR_MATRIX_FORWARD_TO_DEVIATION_H__
 #define __TENSOR_MATRIX_FORWARD_TO_DEVIATION_H__
 
@@ -17,6 +19,7 @@
 #include <deviation_projector/cuda_device/cuda_device.h>
 #include "utility.h"
 #include <cuda_management/kernel_dispatch.h>
+#include "dispatch_code_generator.h"
 
 #endif
 
@@ -28,6 +31,8 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_forward_to_deviation
     using namespace float_def;
 
     #ifdef __CUDACC__
+
+    using DispatchCodeGenerator = taylor_matrix::cuda_matrix::dispatch_code_generator::DispatchCodeGenerator;
 
     __device__ static constexpr inline size_t MIN_BASE_SHAPE_COEFF_SZ   = 1u;
     __device__ static constexpr inline size_t MAX_BASE_SHAPE_COEFF_SZ   = 6u;

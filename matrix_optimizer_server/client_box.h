@@ -12,14 +12,13 @@
 #include <connectivity_subsystem/connectivity_subsystem.h>
 #include <data_loader/source_loader/multisource_loader.h>
 #include <connection_based_manager/connection_based_manager.h>
-// #include <matrix_optimizer_subsystem/matrix_optimizer_subsystem.h>
 #include <mutex_extension/fair_mutex.h>
-#include <deviation_projector/generic_matrix_as_deviation_wrapper.h>
 #include <matrix_optimizer_subsystem/optimizer.h>
 #include <matrix/generic_matrix_factory.h>
 #include <deviation_projection_client/deviation_projection_client.h>
 #include <deviation_projection_ingestion_aid/deviation_projection_ingestion_aid.h>
 #include <deviation_projection_matrix_evaluator/deviation_projection_matrix_evaluator.h>
+#include <stl_extension/semantic_mapper.h>
 #include <client_box/task_box/task_box.h>
 
 namespace matrix_optimizer_server
@@ -93,8 +92,8 @@ namespace matrix_optimizer_server
                         {
                             ingestor.add(deviation_projection_ingestion_aid::PiecewiseBuilder{}.worker_remote(this->work_order.pull_work_order_vec[i].worker_remote)
                                                                                                .client_remote(client_vec[i]->get_remote(), client_vec[i]->get_client_id())
-                                                                                               .data_loader_config(this->work_order.pull_work_order_vec[i].data_loader_config)
-                                                                                               .firer_config(this->work_order.pull_work_order_vec[i].firer_config)
+                                                                                               .data_loader_config(stdx::to_automap_object(this->work_order.pull_work_order_vec[i].data_loader_config))
+                                                                                               .firer_config(stdx::to_automap_object(this->work_order.pull_work_order_vec[i].firer_config))
                                                                                                .build());
                         }
 

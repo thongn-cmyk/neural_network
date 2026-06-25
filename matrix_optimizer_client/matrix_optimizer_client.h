@@ -20,7 +20,6 @@
 #include <exception>
 #include <stdexcept>
 #include <expected>
-#include <matrix/generic_matrix_factory.h>
 
 namespace matrix_optimizer_client
 {
@@ -201,7 +200,7 @@ namespace matrix_optimizer_client
                                    .get_promise();
             }
 
-            auto get_result(const Remote& remote, uint64_t client_box_id) -> std::shared_ptr<Promise<generic_matrix_factory::ExternalGenericMatrixResource>>
+            auto get_result(const Remote& remote, uint64_t client_box_id) -> std::shared_ptr<Promise<ExternalGenericMatrixResource>>
             {
                 using namespace dg_sock::network_rest_frame::client;
 
@@ -307,7 +306,7 @@ namespace matrix_optimizer_client
                 return this->base.is_completed(this->client_remote.remote, this->client_remote.client_id);
             }
 
-            auto get_result() -> std::shared_ptr<Promise<generic_matrix_factory::ExternalGenericMatrixResource>>
+            auto get_result() -> std::shared_ptr<Promise<ExternalGenericMatrixResource>>
             {
                 if (!this->can_operate())
                 {

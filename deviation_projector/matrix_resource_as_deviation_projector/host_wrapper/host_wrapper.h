@@ -19,10 +19,6 @@ namespace deviation_projector::matrix_resource_as_deviation_projector::host_wrap
 {
     using tensor_std_float_t = tensor_model::tensor_std_float_t;
 
-    //I understand that you want "model" "interface" "implementation" structures
-    //let you know that we will do that but that is not our job, it's AI job
-    //the codebase is too complex for me to jump around, I can't speed up the development
-
     struct GenericHostMatrixDeviationCalculatorResource
     {
         global_string_encoder::StringTransformationRule str_transformation_rule;

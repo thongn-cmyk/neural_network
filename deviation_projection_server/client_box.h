@@ -9,7 +9,7 @@
 #include <memory>
 #include <internal_rest/network_rest_frame.h>
 #include <deviation_projector/generic_matrix_deviation_calculator_interface.h>
-#include <deviation_projector/generic_matrix_deviation_calculator.h>
+#include <deviation_projector/matrix_resource_as_deviation_projector/generic_matrix_resource_as_deviation_projector.h>
 #include <connectivity_subsystem/connectivity_subsystem.h>
 #include <connection_based_manager/connection_based_manager.h>
 #include <string>
@@ -45,21 +45,15 @@ namespace deviation_projection_server
                 this->training_data.clear();
             }
 
-            void set_matrix_resource(const std::vector<deviation_projector::ExternalGenericMatrixDeviationCalculatorResource>& matrix_resource_vec)
+            void set_matrix_resource(const std::vector<deviation_projector::matrix_resource_as_deviation_projector::ExternalGenericMatrixResourceAsDeviationCalculatorResource>& matrix_resource_vec)
             {
                 this->deviation_calculator_vec.clear();
 
                 for (const auto& e: matrix_resource_vec)
                 {
-                    this->deviation_calculator_vec.push_back(std::make_unique<deviation_projector::GenericMatrixDeviationCalculator>(e));
+                    this->deviation_calculator_vec.push_back(std::make_unique<deviation_projector::matrix_resource_as_deviation_projector::GenericMatrixResourceAsDeviationCalculator>(e));
                 }
             }
-
-            //I've been thinking hard about whether to make this sequential, the answer is yes but on a different channel
-            //because this is CPU-bound, not network-bound, so we'd have to process this sequentially, serially (with the aid of cuda and seqpar_async) to make sure
-            //that we are being optimally fair
-
-            //this is given the assumption that the caller constraints themselves into a work-scope and the projection load is reasonable
 
             auto get() -> std::vector<mdc_float_t>
             {
@@ -114,7 +108,7 @@ namespace deviation_projection_server
                 this->base->clear_training_data();
             }
 
-            void set_matrix_resource(const std::vector<deviation_projector::ExternalGenericMatrixDeviationCalculatorResource>& matrix_resource_vec)
+            void set_matrix_resource(const std::vector<deviation_projector::matrix_resource_as_deviation_projector::ExternalGenericMatrixResourceAsDeviationCalculatorResource>& matrix_resource_vec)
             {
                 fair_mutex::xlock_guard<fair_mutex::fair_atomic_flag> lck_grd(*this->mtx);
 

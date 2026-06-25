@@ -14,7 +14,6 @@
 #include <stl_extension/stdx.h>
 #include <exception>
 #include <stdexcept>
-// #include <deviation_projector/generic_matrix_deviation_calculator.h>
 #include <expected>
 #include <connectivity_subsystem/connectivity_subsystem.h>
 #include "local_exception.h"

@@ -151,6 +151,11 @@ void test_batch_32()
 }
 int main()
 {
+    //we have learned the hard way to just pass region ffast-math and march=native to speed up the computation
+    //we have provided all the arguments that we could for the compiler to optimize, it's up to the compiler to generate the best instructions
+    //the actual flops were 200-300 flops/ second something
+    //it was amazing
+
     test_batch_8();
     test_batch_16();
     test_batch_32();

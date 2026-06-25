@@ -5,26 +5,76 @@
 #include <stdlib.h>
 #include <memory>
 #include <internal_rest/network_rest_frame.h>
-#include <deviation_projection_client/model.h>
-#include <data_loader/source_loader/multisource_loader.h>
-#include <fire_bandwidth_control/generic_firer.h>
 #include <connectivity_subsystem/connectivity_subsystem.h>
 
 namespace deviation_projection_ingestion_aid
 {
     template <class T>
-    using Promise       = dg_sock::network_rest_frame::client::Promise<T>;
+    using Promise   = dg_sock::network_rest_frame::client::Promise<T>;
 
-    using Remote        = dg_sock::network_rest_frame::model::Remote;
-    using Url           = dg_sock::network_rest_frame::model::Url;
-    using ClientRemote  = deviation_projection_client::ClientRemote;
+    using Remote    = dg_sock::network_rest_frame::model::Remote;
+    using Url       = dg_sock::network_rest_frame::model::Url;
+
+    //migrations
+    struct ExternalMultisourceLoaderConfig
+    {
+        std::string config_bytestream;
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector) const
+        {
+            reflector(config_bytestream);
+        }
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector)
+        {
+            reflector(config_bytestream);
+        }
+    };
+
+    //migrations
+    struct ExternalGenericFirerConfig
+    {
+        std::string config_bytestream;
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector) const
+        {
+            reflector(config_bytestream);
+        }
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector)
+        {
+            reflector(config_bytestream);
+        }
+    };
+
+    struct ClientRemote
+    {
+        Remote remote;
+        uint64_t client_id;
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector) const
+        {
+            reflector(remote, client_id);
+        }
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector)
+        {
+            reflector(remote, client_id);
+        }
+    };
 
     struct PiecewiseArgument
     {
         Remote worker_remote;
         ClientRemote client_remote;
-        data_loader::source_loader::multisource_loader::ExternalMultisourceLoaderConfig data_loader_config;
-        fire_bandwidth_control::generic_firer::ExternalGenericFirerConfig firer_config;
+        ExternalMultisourceLoaderConfig data_loader_config;
+        ExternalGenericFirerConfig firer_config;
         connectivity_subsystem::MasterConfiguration connection_config;
 
         template <class Reflector>

@@ -3,8 +3,6 @@
 
 #include <stdint.h>
 #include <stdlib.h>
-#include <fire_bandwidth_control/generic_firer.h>
-#include <data_loader/source_loader/multisource_loader.h>
 #include <memory>
 #include <expected>
 #include "local_exception.h"
@@ -143,11 +141,47 @@ namespace deviation_projection_ingestion_aid_client
         }
     };
 
+    //migrations (reasons that we dont use std::string is to make users life harder, we admit that)
+    struct ExternalMultisourceLoaderConfig
+    {
+        std::string config_bytestream;
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector) const
+        {
+            reflector(config_bytestream);
+        }
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector)
+        {
+            reflector(config_bytestream);
+        }
+    };
+
+    //migrations
+    struct ExternalGenericFirerConfig
+    {
+        std::string config_bytestream;
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector) const
+        {
+            reflector(config_bytestream);
+        }
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector)
+        {
+            reflector(config_bytestream);
+        }
+    };
+
     struct RunPayload
     {
-        data_loader::source_loader::multisource_loader::ExternalMultisourceLoaderConfig data_loader_config;
+        ExternalMultisourceLoaderConfig data_loader_config;
         std::vector<ServerSink> server_sink_vec;
-        fire_bandwidth_control::generic_firer::ExternalGenericFirerConfig token_firer_config;
+        ExternalGenericFirerConfig token_firer_config;
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector) const
@@ -170,9 +204,9 @@ namespace deviation_projection_ingestion_aid_client
     {
         uint64_t client_box_id;
 
-        data_loader::source_loader::multisource_loader::ExternalMultisourceLoaderConfig data_loader_config;
+        ExternalMultisourceLoaderConfig data_loader_config;
         std::vector<ServerSink> server_sink_vec;
-        fire_bandwidth_control::generic_firer::ExternalGenericFirerConfig token_firer_config;
+        ExternalGenericFirerConfig token_firer_config;
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector) const

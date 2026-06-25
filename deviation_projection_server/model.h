@@ -7,7 +7,7 @@
 #include "local_exception.h"
 #include <connectivity_subsystem/connectivity_subsystem.h>
 #include <expected>
-#include <deviation_projector/generic_matrix_deviation_calculator.h>
+#include <deviation_projector/matrix_resource_as_deviation_projector/generic_matrix_resource_as_deviation_projector.h>
 #include <vector>
 
 namespace deviation_projection_server
@@ -191,7 +191,7 @@ namespace deviation_projection_server
     struct SetMatrixResourceRequest
     {
         uint64_t client_id;
-        std::vector<deviation_projector::ExternalGenericMatrixDeviationCalculatorResource> matrix_resource_vec;
+        std::vector<deviation_projector::matrix_resource_as_deviation_projector::ExternalGenericMatrixResourceAsDeviationCalculatorResource> matrix_resource_vec;
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector) const
@@ -262,7 +262,7 @@ namespace deviation_projection_server
     struct SetAndGetDeviationRequest
     {
         uint64_t client_id;
-        std::vector<deviation_projector::ExternalGenericMatrixDeviationCalculatorResource> matrix_resource_vec;
+        std::vector<deviation_projector::matrix_resource_as_deviation_projector::ExternalGenericMatrixResourceAsDeviationCalculatorResource> matrix_resource_vec;
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector) const

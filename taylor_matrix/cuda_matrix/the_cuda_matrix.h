@@ -163,7 +163,7 @@ namespace taylor_matrix::cuda_matrix::the_cuda_matrix
             {
                 if (new_coeff_vec.size() != this->get_coefficient_vector().size())
                 {
-                    throw std::runtime_error("invalid new_coeff_vec shape");
+                    throw std::invalid_argument("invalid new_coeff_vec shape");
                 }
 
                 for (size_t i = 0u; i < new_coeff_vec.size(); ++i)
@@ -256,7 +256,7 @@ namespace taylor_matrix::cuda_matrix::the_cuda_matrix
 
                 for (const auto& e_vec: this->shape_coeff_vec)
                 {
-                    std::string_view logit_view                                     = std::string_view(static_cast<const char *>(static_cast<void *>(e_vec.data())),
+                    std::string_view logit_view                                     = std::string_view(static_cast<const char *>(static_cast<const void *>(e_vec.data())),
                                                                                                        e_vec.size() * sizeof(tensor_std_float_t));
 
                     std::shared_ptr<char[]> cuda_logit_view                         = cuda_management::host_service::make_cuda_buffer_from_host_view(logit_view);

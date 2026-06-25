@@ -85,7 +85,7 @@ namespace taylor_matrix::cuda_matrix::the_cuda_matrix_deviation_calculator
             std::vector<size_t> rotation_sz_vec;
             std::vector<double> parameter_bound_ratio_vec;
 
-            std::vector<tensor_std_float_t> shape_coeff_vec;
+            std::vector<std::vector<tensor_std_float_t>> shape_coeff_vec;
 
             size_t base_shape_coeff_sz;
             size_t hash_table_sz;
@@ -107,7 +107,7 @@ namespace taylor_matrix::cuda_matrix::the_cuda_matrix_deviation_calculator
                                              std::unordered_map<size_t, std::unordered_map<size_t, std::vector<std::vector<size_t>>>> focal_suffix_map,
                                              std::vector<size_t> rotation_sz_vec,
                                              std::vector<double> parameter_bound_ratio_vec,
-                                             std::vector<tensor_std_float_t> shape_coeff_vec,
+                                             std::vector<std::vector<tensor_std_float_t>> shape_coeff_vec,
                                              size_t base_shape_coeff_sz,
                                              size_t hash_table_sz,
                                              uint8_t cuda_deviation_calculator_device,
@@ -235,7 +235,7 @@ namespace taylor_matrix::cuda_matrix::the_cuda_matrix_deviation_calculator
 
                 for (const auto& e_vec: this->shape_coeff_vec)
                 {
-                    std::string_view logit_view                                     = std::string_view(static_cast<const char *>(static_cast<void *>(e_vec.data())),
+                    std::string_view logit_view                                     = std::string_view(static_cast<const char *>(static_cast<const void *>(e_vec.data())),
                                                                                                        e_vec.size() * sizeof(tensor_std_float_t));
 
                     std::shared_ptr<char[]> cuda_logit_view                         = cuda_management::host_service::make_cuda_buffer_from_host_view(logit_view);

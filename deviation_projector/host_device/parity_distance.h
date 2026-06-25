@@ -9,7 +9,7 @@
 
 namespace deviation_projector::host_device
 {
-    template <class PromotedFloatType = tensor_std_float_t>
+    template <class PromotedFloatType = tensor_model::tensor_std_float_t>
     class MatrixParityDistanceDeviationCalculator: public virtual MatrixDeviationCalculatorInterface
     {
         private:
