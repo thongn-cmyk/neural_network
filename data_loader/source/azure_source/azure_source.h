@@ -2,9 +2,7 @@
 #define __DATA_LOADER_SOURCE_AZURE_SOURCE_AZURE_SOURCE_H__
 
 #include <azure/storage/blobs.hpp>
-
 #include <array>
-#include <iostream>
 #include <string>
 #include <cstring>
 #include <stdint.h>
@@ -20,76 +18,13 @@
 #include <utility>
 #include "client_builder.h"
 #include "client_config_builder.h"
-#include <serializer/compact_serializer.h>
 #include <bit>
 
-namespace data_loader::azure_source
+namespace data_loader::source::azure_source
 {
-    using namespace data_loader::source_exception;
+    using namespace data_loader::source::exception;
 
-    struct AzureLoaderConfig
-    {
-        data_loader::stream_reader::ExternalDelimitedStreamReaderConfig delim_config;
-        data_loader::azure_source::ExternalSecuredAzureClientConfig service_client_config;
-        std::string container_name;
-        std::string blob_name;
-        std::optional<uint64_t> read_ahead_buffer_sz_hint;
-        std::optional<uint64_t> unit_byte_sz_hint;
-
-        template <class Reflector>
-        void dg_reflect(const Reflector& reflector) const
-        {
-            reflector(delim_config,
-                      service_client_config,
-                      container_name,
-                      blob_name,
-                      read_ahead_buffer_sz_hint,
-                      unit_byte_sz_hint);
-        }
-
-        template <class Reflector>
-        void dg_reflect(const Reflector& reflector)
-        {
-            reflector(delim_config,
-                      service_client_config,
-                      container_name,
-                      blob_name,
-                      read_ahead_buffer_sz_hint,
-                      unit_byte_sz_hint);
-        }
-    };
-
-    struct ExternalAzureLoaderConfig
-    {
-        std::string config_bytestream;
-
-        template <class Reflector>
-        void dg_reflect(const Reflector& reflector) const
-        {
-            reflector(config_bytestream);
-        }
-
-        template <class Reflector>
-        void dg_reflect(const Reflector& reflector)
-        {
-            reflector(config_bytestream);
-        }
-    };
-
-    auto to_external_azure_loader_config(const AzureLoaderConfig& config) -> ExternalAzureLoaderConfig
-    {
-        return ExternalAzureLoaderConfig
-        {
-            .config_bytestream = dg::network_compact_serializer::dgstd_serialize<std::string>(config)
-        };
-    }
-
-    auto to_internal_azure_loader_config(const ExternalAzureLoaderConfig& config) -> AzureLoaderConfig
-    {
-        return dg::network_compact_serializer::dgstd_deserialize<AzureLoaderConfig>(config.config_bytestream);
-    }
-
-    class AzureLoader: public virtual data_loader::SourceLoaderInterface
+    class AzureLoader: public virtual data_loader::source::SourceLoaderInterface
     {
         private:
 

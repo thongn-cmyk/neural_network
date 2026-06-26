@@ -98,7 +98,7 @@ auto randomize_external_delim_config() -> data_loader::stream_reader::ExternalDe
     return data_loader::stream_reader::to_external_delimited_stream_reader_config(randomize_delim_config());
 }
 
-auto randomize_file_loader_config(const std::string& file_path) -> data_loader::file_source::FileLoaderConfig
+auto randomize_file_loader_config(const std::string& file_path) -> data_loader::source::file_source::FileLoaderConfig
 {
     return 
     {
@@ -111,9 +111,9 @@ auto randomize_file_loader_config(const std::string& file_path) -> data_loader::
     };
 }
 
-auto randomize_external_file_loader_config(const std::string& file_path) -> data_loader::file_source::ExternalFileLoaderConfig
+auto randomize_external_file_loader_config(const std::string& file_path) -> data_loader::source::file_source::ExternalFileLoaderConfig
 {
-    return data_loader::file_source::to_external_file_loader_config(randomize_file_loader_config(file_path));
+    return data_loader::source::file_source::to_external_file_loader_config(randomize_file_loader_config(file_path));
 }
 
 auto join_hex_token(const std::vector<std::string>& token_vec) -> std::string
@@ -149,7 +149,7 @@ void run_one_test()
         out_file.write(file_output.data(), file_output.size());
     }
 
-    data_loader::file_source::FileLoader loader(randomize_external_file_loader_config(FILE_PATH));
+    data_loader::source::file_source::FileLoader loader(randomize_external_file_loader_config(FILE_PATH));
 
     std::vector<std::string> rs{};
 

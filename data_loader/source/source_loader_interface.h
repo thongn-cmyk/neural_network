@@ -7,7 +7,7 @@
 #include <string>
 #include <optional>
 
-namespace data_loader
+namespace data_loader::source
 {
     class SourceLoaderInterface
     {

@@ -11,8 +11,8 @@
 #include <matrix/tensor_model.h>
 #include <vector>
 #include <unordered_map>
-#include "tensor_matrix_forward_header.h"
-#include <cuda_management/host_service_header.h>
+#include "tensor_matrix_forward.h"
+#include <cuda_management/host_service.h>
 #include <cuda_management/host_service_dgbuf.h>
 #include <funnel/funnel.h>
 #include <matrix/tensor_factory.h>

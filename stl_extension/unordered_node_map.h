@@ -15,6 +15,7 @@
 #include <atomic>
 #include <algorithm>
 #include <climits>
+#include "assert.h"
 
 namespace unordered_map_variants{
 
@@ -34,11 +35,25 @@ namespace unordered_map_variants{
     template <class T, class U>
     using dg_forward_like_t = typename DGForwardLikeHelper<T, U>::type; 
 
+    template <class T>
+    constexpr void compile_time_unreachable()
+    {
+        #if defined(__CUDACC__)
+        {
+            assert(false);
+        }
+        #else
+        {
+            static_assert(FALSE_VAL<>);
+        }
+        #endif
+    }
+
     template <class T, class U>
     constexpr auto dg_forward_like(U&& value) noexcept -> dg_forward_like_t<T, U>&&{
 
         if constexpr(std::is_same_v<U, std::remove_reference_t<U>>){
-            static_assert(FALSE_VAL<>);
+            compile_time_unreachable<void>();
         } else{
             return static_cast<dg_forward_like_t<T, U>&&>(value);
         }
@@ -255,7 +270,7 @@ namespace unordered_map_variants{
         } else if constexpr(is_node6_v<node_t>){
             return node_t{std::forward<virtual_addr_t>(va_addr), std::forward<mapped_t>(mapped), std::forward<key_t>(key)};
         } else{
-            static_assert(FALSE_VAL<>);
+            compile_time_unreachable<void>();
         }
     }
 
@@ -523,7 +538,7 @@ namespace unordered_map_variants{
                     if constexpr(std::is_nothrow_convertible_v<EraseArg&&, const_iterator>){
                         return this->internal_erase_iter(std::forward<EraseArg>(erase_arg));
                     } else{
-                        static_assert(FALSE_VAL<>);
+                        compile_time_unreachable<void>();
                     }
                 } else{
                     return static_cast<size_type>(this->internal_erase_key(std::forward<EraseArg>(erase_arg)));
@@ -1171,7 +1186,7 @@ namespace unordered_map_variants{
                     if constexpr(std::is_nothrow_convertible_v<EraseArg&&, const_iterator>){
                         return this->nofancy_erase(const_iterator(std::forward<EraseArg>(erase_arg)).unfancy());
                     } else{
-                        static_assert(FALSE_VAL<>);
+                        compile_time_unreachable<void>();
                     }
                 } else{
                     return this->nofancy_erase(std::forward<EraseArg>(erase_arg));
@@ -1429,7 +1444,7 @@ namespace unordered_map_variants{
                     if constexpr(std::is_nothrow_convertible_v<EraseArg&&, nofancy_const_iterator>){
                         return this->internal_erase_iter(std::forward<EraseArg>(erase_arg));
                     } else{
-                        static_assert(FALSE_VAL<>);
+                        compile_time_unreachable<void>();
                     }
                 } else{
                     return static_cast<size_type>(this->internal_erase_key(std::forward<EraseArg>(erase_arg)));

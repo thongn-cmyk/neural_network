@@ -18,7 +18,7 @@
 #include <azure/core/credentials/credentials.hpp>
 #include <azure/core/http/curl_transport.hpp>
 
-namespace data_loader::azure_source
+namespace data_loader::source::azure_source
 {
     namespace as    = Azure::Storage;
     namespace asb   = Azure::Storage::Blobs;

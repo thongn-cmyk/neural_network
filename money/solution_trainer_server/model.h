@@ -8,7 +8,7 @@
 #include <optional>
 #include <string>
 #include <connectivity_subsystem/connectivity_subsystem.h>
-#include <data_loader/source_loader/multisource_loader.h>
+#include <data_loader/source_loader/multisource_loader/model.h>
 #include <matrix/generic_matrix_factory.h>
 #include <internal_rest/network_rest_frame.h>
 #include <fire_bandwidth_control/generic_firer.h>

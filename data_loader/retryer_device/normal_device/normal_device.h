@@ -4,12 +4,10 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <memory>
-#include "retryer_device_interface.h"
-
-#include <data_loader/source_loader/generic_loader.h>
+#include <data_loader/retryer_device/retryer_device_interface.h>
+#include <data_loader/retryer_device/runnable_device_interface.h>
 #include <data_loader/exception_base.h>
 #include <common_exception/common_exception.h>
-
 #include <optional>
 #include <chrono>
 #include <string>
@@ -18,66 +16,11 @@
 #include <thread>
 #include <cmath>
 #include <exception>
+#include "model.h"
 
 namespace data_loader::retryer_device::normal_device
 {
     using namespace data_loader::exception_base;
-
-    struct RetryConfig
-    {
-        std::chrono::nanoseconds base_wait_time;
-        uint32_t exponential_base;
-        uint32_t max_retry_count;
-        std::optional<std::vector<std::string>> retryable_exception_vec;
-
-        template <class Reflector>
-        void dg_reflect(const Reflector& reflector) const
-        {
-            reflector(base_wait_time,
-                      exponential_base,
-                      max_retry_count,
-                      retryable_exception_vec);
-        }
-
-        template <class Reflector>
-        void dg_reflect(const Reflector& reflector)
-        {
-            reflector(base_wait_time,
-                      exponential_base,
-                      max_retry_count,
-                      retryable_exception_vec);
-        }
-    };
-
-    struct ExternalRetryConfig
-    {
-        std::string config_bytestream;
-
-        template <class Reflector>
-        void dg_reflect(const Reflector& reflector) const
-        {
-            reflector(config_bytestream);
-        }
-
-        template <class Reflector>
-        void dg_reflect(const Reflector& reflector)
-        {
-            reflector(config_bytestream);
-        }
-    };
-
-    auto to_external_retry_config(const RetryConfig& config) -> ExternalRetryConfig
-    {
-        return ExternalRetryConfig
-        {
-            .config_bytestream = dg::network_compact_serializer::dgstd_serialize<std::string>(config)
-        };
-    }
-
-    auto to_internal_retry_config(const ExternalRetryConfig& config) -> RetryConfig
-    {
-        return dg::network_compact_serializer::dgstd_deserialize<RetryConfig>(config.config_bytestream);
-    }
 
     class RetryerMachine: public virtual RetryerMachineInterface
     {

@@ -10,9 +10,9 @@
 #include <general_definition/float_def.h>
 #include <mutex_extension/fair_mutex.h>
 #include <matrix/tensor_model.h>
-#include "tensor_matrix_forward_to_deviation_header.h"
-#include "tensor_matrix_forward_header.h"
-#include <cuda_management/host_service_header.h>
+#include "tensor_matrix_forward_to_deviation.h"
+#include "tensor_matrix_forward.h"
+#include <cuda_management/host_service.h>
 #include <cuda_management/host_service_dgbuf.h>
 #include <funnel/funnel.h>
 #include <bit>

@@ -12,9 +12,9 @@ namespace deviation_projector::cuda_device::parity_distance
     using namespace device_tensor::model;
     using namespace deviation_projector::cuda_device::local_exception;
 
-    __device__ double parity_distance(Matrix * lhs,
-                                      Matrix * rhs,
-                                      local_exception_t * err = nullptr)
+    __device__ inline double parity_distance(Matrix * lhs,
+                                             Matrix * rhs,
+                                             local_exception_t * err = nullptr)
     {
         using namespace device_tensor::common_operation;
         using namespace cuda_management::utility;

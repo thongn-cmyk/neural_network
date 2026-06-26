@@ -8,7 +8,7 @@
 #include <request_extension/type_based_dgstd_resolutor.h>
 #include <deviation_projection_client/deviation_projection_client.h>
 // #include <fire_bandwidth_control/generic_firer.h>
-#include <data_loader/source_loader/multisource_loader.h>
+#include <data_loader/source_loader/multisource_loader/multisource_loader.h>
 #include <memory>
 #include <atomic>
 #include "local_exception.h"

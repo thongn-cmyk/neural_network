@@ -58,10 +58,10 @@ namespace taylor_matrix::cuda_matrix::dispatch_code_generator
 
         public:
 
-            __device__ explicit DispatchCodeGenerator(Matrix * matrix,
-                                                      size_t table_sz): hasher(taylor_matrix::cuda_matrix::sip_hasher::implicit_key_tag{}, get_sip_hasher_key()),
-                                                                        previous_dispatch_code(std::nullopt),
-                                                                        table_sz(table_sz)
+            __device__ inline explicit DispatchCodeGenerator(Matrix * matrix,
+                                                             size_t table_sz): hasher(taylor_matrix::cuda_matrix::sip_hasher::implicit_key_tag{}, get_sip_hasher_key()),
+                                                                               previous_dispatch_code(std::nullopt),
+                                                                               table_sz(table_sz)
             {
                 if (this->table_sz == 0u)
                 {

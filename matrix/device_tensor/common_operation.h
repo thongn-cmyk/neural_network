@@ -12,7 +12,7 @@ namespace device_tensor::common_operation
 {
     using namespace device_tensor::model;
 
-    __device__ auto get_shape(const Matrix * arg) -> std::array<size_t, 4u>
+    __device__ inline auto get_shape(const Matrix * arg) -> std::array<size_t, 4u>
     {
         using namespace cuda_management::utility;
 
@@ -39,7 +39,7 @@ namespace device_tensor::common_operation
         return rs;
     }
 
-    __device__ auto shape_size(const std::array<size_t, 4u>& shape) -> size_t
+    __device__ inline auto shape_size(const std::array<size_t, 4u>& shape) -> size_t
     {
         size_t sz = 1u;
 

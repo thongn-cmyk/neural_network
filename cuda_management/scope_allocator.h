@@ -69,14 +69,14 @@ namespace cuda_management::scope_allocator
 
         public:
 
-            __device__ SplitStackAllocator(size_t base_sz): stack_buffer_vec(),
-                                                            saved_point_vec(),
-                                                            valid_point(std::nullopt),
-                                                            base_sz(base_sz){}
+            __device__ inline SplitStackAllocator(size_t base_sz): stack_buffer_vec(),
+                                                                   saved_point_vec(),
+                                                                   valid_point(std::nullopt),
+                                                                   base_sz(base_sz){}
 
-            __device__ SplitStackAllocator(): SplitStackAllocator(1024u){}
+            __device__ inline SplitStackAllocator(): SplitStackAllocator(1024u){}
 
-            __device__ ~SplitStackAllocator() noexcept
+            __device__ inline ~SplitStackAllocator() noexcept
             {
                 for (size_t i = 0u; i < stack_buffer_vec.size(); ++i)
                 {
@@ -161,7 +161,7 @@ namespace cuda_management::scope_allocator
                 return arg.value;
             }
 
-            __device__ __attribute__((noinline)) void slow_enter_scope()
+            __device__ inline __attribute__((noinline)) void slow_enter_scope()
             {
                 MemoryPoint next_point;
 
@@ -184,7 +184,7 @@ namespace cuda_management::scope_allocator
                 this->valid_point = next_point;
             }
 
-            __device__ __attribute__((noinline)) auto slow_allocate(size_t blk_sz) noexcept -> void *
+            __device__ inline __attribute__((noinline)) auto slow_allocate(size_t blk_sz) noexcept -> void *
             {
                 if (!this->valid_point.has_value())
                 {
@@ -221,7 +221,7 @@ namespace cuda_management::scope_allocator
                 }
             }
 
-            __device__ void reserve_for_vector_size_of(size_t sz)
+            __device__ inline void reserve_for_vector_size_of(size_t sz)
             {
                 size_t new_sz   = utility::max(sz, static_cast<size_t>(this->stack_buffer_vec.size()));
                 size_t old_sz   = this->stack_buffer_vec.size();

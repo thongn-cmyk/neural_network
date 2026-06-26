@@ -1,7 +1,7 @@
 //HEADER_CONTROL 0
 
-#ifndef __CUDA_MANAGEMENT_CU_DEVICE_MEMORY__
-#define __CUDA_MANAGEMENT_CU_DEVICE_MEMORY__
+#ifndef __CUDA_MANAGEMENT_DEVICE_MEMORY_H__
+#define __CUDA_MANAGEMENT_DEVICE_MEMORY_H__
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -85,29 +85,29 @@ namespace cuda_management::device_memory
     }
 
     template <class AllocatorInterface>
-    __device__ auto dg_malloc(size_t blk_sz,
-                              AllocatorInterface&& allocator) -> void *
+    __device__ inline auto dg_malloc(size_t blk_sz,
+                                     AllocatorInterface&& allocator) -> void *
     {
         return allocator.malloc(blk_sz); 
     }
 
     template <class AllocatorInterface>
-    __device__ void dg_free(void * ptr,
-                            AllocatorInterface&& allocator) noexcept
+    __device__ inline void dg_free(void * ptr,
+                                   AllocatorInterface&& allocator) noexcept
     {
         allocator.free(ptr);
     }
 
     template <class AllocatorInterface>
-    __device__ __attribute__((noinline, noipa)) void obj_dg_free(void * ptr,
-                                                                 AllocatorInterface&& allocator) noexcept
+    __device__ inline __attribute__((noinline, noipa)) void obj_dg_free(void * ptr,
+                                                                        AllocatorInterface&& allocator) noexcept
     {
         dg_free(ptr, allocator);
     }
 
     template <class AllocatorInterface>
-    __device__ auto dg_aligned_alloc(size_t alignment, size_t blk_sz,
-                                     AllocatorInterface&& allocator) -> void *
+    __device__ inline auto dg_aligned_alloc(size_t alignment, size_t blk_sz,
+                                            AllocatorInterface&& allocator) -> void *
     {
         if (!utility::is_pow2(alignment))
         {
@@ -144,8 +144,8 @@ namespace cuda_management::device_memory
     } 
 
     template <class AllocatorInterface>
-    __device__ void dg_aligned_free(void * ptr,
-                                    AllocatorInterface&& allocator) noexcept
+    __device__ inline void dg_aligned_free(void * ptr,
+                                           AllocatorInterface&& allocator) noexcept
     {
         if (ptr == nullptr)
         {
@@ -161,8 +161,8 @@ namespace cuda_management::device_memory
     }
 
     template <class AllocatorInterface>
-    __device__ __attribute__((noinline, noipa)) void obj_dg_aligned_free(void * ptr,
-                                                                         AllocatorInterface&& allocator) noexcept
+    __device__ inline __attribute__((noinline, noipa)) void obj_dg_aligned_free(void * ptr,
+                                                                                AllocatorInterface&& allocator) noexcept
     {
         dg_aligned_free(ptr, allocator);
     }
@@ -186,8 +186,8 @@ namespace cuda_management::device_memory
     };
 
     template <class AllocatorInterface>
-    __device__ auto dg_xaligned_alloc(size_t alignment, size_t blk_sz,
-                                      AllocatorInterface&& allocator) -> void *
+    __device__ inline auto dg_xaligned_alloc(size_t alignment, size_t blk_sz,
+                                             AllocatorInterface&& allocator) -> void *
     {
         constexpr size_t METADATA_SZ = trivial_serializer::size(XAlignMetadata{});
 
@@ -227,8 +227,8 @@ namespace cuda_management::device_memory
     }
 
     template <class AllocatorInterface>
-    __device__ void dg_xaligned_free(void * ptr,
-                                     AllocatorInterface&& allocator) noexcept
+    __device__ inline void dg_xaligned_free(void * ptr,
+                                            AllocatorInterface&& allocator) noexcept
     {
         if (ptr == nullptr)
         {
@@ -246,13 +246,13 @@ namespace cuda_management::device_memory
     }
 
     template <class AllocatorInterface>
-    __device__ __attribute__((noinline, noipa)) void obj_dg_xaligned_free(void * ptr,
-                                                                          AllocatorInterface&& allocator) noexcept
+    __device__ inline __attribute__((noinline, noipa)) void obj_dg_xaligned_free(void * ptr,
+                                                                                 AllocatorInterface&& allocator) noexcept
     {
         dg_xaligned_free(ptr, allocator);
     }
 
-    __device__ auto dg_xaligned_blk_size(const void * ptr) noexcept -> size_t
+    __device__ inline auto dg_xaligned_blk_size(const void * ptr) noexcept -> size_t
     {
         if (ptr == nullptr)
         {
@@ -270,7 +270,7 @@ namespace cuda_management::device_memory
     }
 
     template <class T, class ...Args, class AllocatorInterface>
-    __device__ auto std_new_object(AllocatorInterface&& allocator, Args&& ...args) -> T *
+    __device__ inline auto std_new_object(AllocatorInterface&& allocator, Args&& ...args) -> T *
     {
         static_assert(sizeof(T) != 0u);
         void * blk = nullptr;
@@ -296,7 +296,7 @@ namespace cuda_management::device_memory
     __device__ static inline constexpr bool FALSE_VAL = false;
 
     template <class T, class AllocatorInterface>
-    __device__ auto std_delete_object(AllocatorInterface&& allocator, T * obj) noexcept
+    __device__ inline auto std_delete_object(AllocatorInterface&& allocator, T * obj) noexcept
     {
         utility::destroy_at(obj);
 
@@ -311,7 +311,7 @@ namespace cuda_management::device_memory
     }
 
     template <class T, class AllocatorInterface>
-    __device__ auto std_new_array(AllocatorInterface&& allocator, size_t sz) -> T *
+    __device__ inline auto std_new_array(AllocatorInterface&& allocator, size_t sz) -> T *
     {
         static_assert(sizeof(T) != 0u);
 
@@ -332,7 +332,7 @@ namespace cuda_management::device_memory
     }
 
     template <class T, class AllocatorInterface>
-    __device__ void std_delete_array(AllocatorInterface&& allocator, T * arr) noexcept
+    __device__ inline void std_delete_array(AllocatorInterface&& allocator, T * arr) noexcept
     {
         if (arr == nullptr)
         {

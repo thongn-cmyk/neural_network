@@ -1,18 +1,18 @@
-#ifndef __CUDA_MANAGEMENT_DGBUF_SERVICE_H__
-#define __CUDA_MANAGEMENT_DGBUF_SERVICE_H__
+#ifndef __CUDA_MANAGEMENT_HOST_SERVICE_DGBUF_H__
+#define __CUDA_MANAGEMENT_HOST_SERVICE_DGBUF_H__
 
 #include <stdint.h>
 #include <stdlib.h>
 #include <functional>
 #include "assert.h"
-#include "host_service_header.h"
+#include "host_service.h"
 #include <serializer/dg_buf.h>
 
 namespace cuda_management::host_service
 {
     template <class T>
-    auto to_cuda_dgbuf(const T& obj) -> std::shared_ptr<decltype(dg::dgbuf::stl_to_dgbuf::serializer{}.serialize(std::declval<const T&>(),
-                                                                                                                 std::declval<std::string&>()))>
+    inline auto to_cuda_dgbuf(const T& obj) -> std::shared_ptr<decltype(dg::dgbuf::stl_to_dgbuf::serializer{}.serialize(std::declval<const T&>(),
+                                                                                                                        std::declval<std::string&>()))>
     {
         std::string host_buf                                    = {};
         auto result                                             = dg::dgbuf::stl_to_dgbuf::serializer{}.serialize(obj, host_buf);

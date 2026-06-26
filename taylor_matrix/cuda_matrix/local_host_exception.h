@@ -10,40 +10,40 @@ namespace taylor_matrix::cuda_matrix::local_exception
 {
     struct out_of_bound_access: std::invalid_argument
     {
-        out_of_bound_access(): std::invalid_argument("out of bound access"){}
+        inline out_of_bound_access(): std::invalid_argument("out of bound access"){}
     };
 
     struct insufficient_logit_vec_size: std::invalid_argument
     {
-        insufficient_logit_vec_size(): std::invalid_argument("insufficient logit vec size"){}
+        inline insufficient_logit_vec_size(): std::invalid_argument("insufficient logit vec size"){}
     };
 
     struct waiting_kernel_complete: std::runtime_error
     {
-        waiting_kernel_complete(): std::runtime_error("waiting kernel complete"){}        
+        inline waiting_kernel_complete(): std::runtime_error("waiting kernel complete"){}        
     };
 
     struct bad_cuda_synchronization: std::runtime_error
     {
-        bad_cuda_synchronization(const char * msg = "bad cuda synchronization"): std::runtime_error(msg){}
+        inline bad_cuda_synchronization(const char * msg = "bad cuda synchronization"): std::runtime_error(msg){}
     };
 
     struct cuda_device_not_supported: std::invalid_argument
     {
-        cuda_device_not_supported(): std::invalid_argument("cuda device not supported"){}
+        inline cuda_device_not_supported(): std::invalid_argument("cuda device not supported"){}
     };
 
     struct other_invalid_argument: std::invalid_argument
     {
-        other_invalid_argument(const char * msg): std::invalid_argument(msg){}
+        inline other_invalid_argument(const char * msg): std::invalid_argument(msg){}
     };
 
     struct other_runtime_error: std::runtime_error
     {
-        other_runtime_error(const char * msg): std::runtime_error(msg){}
+        inline other_runtime_error(const char * msg): std::runtime_error(msg){}
     };
 
-    void throw_error_code(local_exception_t err)
+    inline void throw_error_code(local_exception_t err)
     {
         switch (err)
         {

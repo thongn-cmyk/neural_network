@@ -3,7 +3,6 @@
 #define STRONG_MEMORY_ORDERING_FLAG true
 
 #include <serializer/dg_buf.h>
-#include <cuda_management/host_service_header.h>
 #include <cuda_management/host_service.h>
 #include <cuda_management/host_service_dgbuf.h>
 #include <iostream>

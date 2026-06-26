@@ -8,7 +8,7 @@
 
 namespace data_loader::hex_encoder
 {
-    auto index_to_hex_index(uint8_t index) -> uint8_t
+    constexpr auto index_to_hex_index(uint8_t index) -> uint8_t
     {
         if (index < 10)
         {
@@ -24,7 +24,7 @@ namespace data_loader::hex_encoder
         }
     }
 
-    auto hex_index_to_index(uint8_t hex_index)
+    constexpr auto hex_index_to_index(uint8_t hex_index)
     {
         constexpr uint8_t ZERO_INDEX    = std::bit_cast<uint8_t>('0');
         constexpr uint8_t TEN_INDEX     = std::bit_cast<uint8_t>('0') + 10;
@@ -45,7 +45,7 @@ namespace data_loader::hex_encoder
         }
     }
 
-    auto hex_encode_into(std::string_view inp, char * rs) noexcept -> char *
+    constexpr auto hex_encode_into(std::string_view inp, char * rs) noexcept -> char *
     {
         char * iter = rs;
 
@@ -70,7 +70,7 @@ namespace data_loader::hex_encoder
     }
 
     template <class Streamable = std::string>
-    auto hex_encode(std::string_view inp) -> Streamable
+    constexpr auto hex_encode(std::string_view inp) -> Streamable
     {
         Streamable rs{};
         rs.resize(inp.size() * 2);
@@ -80,7 +80,7 @@ namespace data_loader::hex_encoder
         return rs;
     }
 
-    auto hex_decode_into(std::string_view hex_str, char * rs) -> char *
+    constexpr auto hex_decode_into(std::string_view hex_str, char * rs) -> char *
     {
         if (hex_str.size() % 2 != 0u)
         {
@@ -113,7 +113,7 @@ namespace data_loader::hex_encoder
     }
 
     template <class Streamable = std::string>
-    auto hex_decode(std::string_view inp) -> Streamable
+    constexpr auto hex_decode(std::string_view inp) -> Streamable
     {
         Streamable rs{};
         rs.resize(inp.size() / 2);

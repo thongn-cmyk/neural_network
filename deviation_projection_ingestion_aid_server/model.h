@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <fire_bandwidth_control/generic_firer.h>
-#include <data_loader/source_loader/generic_loader.h>
+#include <data_loader/source_loader/multisource_loader/model.h>
 #include <memory>
 #include <expected>
 #include "local_exception.h"

@@ -10,8 +10,10 @@
 #include <stl_extension/stdx.h>
 #include <chrono>
 #include <vector>
+#include <data_loader/stream_reader/model.h>
+#include <serializer/compact_serializer.h>
 
-namespace data_loader::gcs_source
+namespace data_loader::source::gcs_source
 {
     static inline constexpr uint8_t CREDENTIAL_TYPE_K_DEFAULT                       = 0u;
     static inline constexpr uint8_t CREDENTIAL_TYPE_K_SERVICE_ACCOUNT_FILE          = 1u;
@@ -275,6 +277,81 @@ namespace data_loader::gcs_source
             reflector(config_bytestream);
         }
     };
+
+    auto to_internal_secured_gcs_client_config(const ExternalSecuredGCSClientConfig& config) -> SecuredGCSClientConfig
+    {
+        return dg::network_compact_serializer::dgstd_deserialize<SecuredGCSClientConfig>(config.config_bytestream);
+    }
+
+    auto to_external_secured_gcs_client_config(const SecuredGCSClientConfig& config) -> ExternalSecuredGCSClientConfig
+    {
+        return
+        {
+            .config_bytestream = dg::network_compact_serializer::dgstd_serialize<std::string>(config)
+        };
+    }
+
+    struct GCSLoaderConfig
+    {
+        data_loader::stream_reader::ExternalDelimitedStreamReaderConfig delim_config;
+        ExternalSecuredGCSClientConfig gcs_client_config;
+        std::string bucket_name;
+        std::string object_key;
+        std::optional<uint64_t> read_ahead_buffer_sz_hint;
+        std::optional<uint64_t> unit_byte_sz_hint;
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector) const
+        {
+            reflector(delim_config,
+                      gcs_client_config,
+                      bucket_name,
+                      object_key,
+                      read_ahead_buffer_sz_hint,
+                      unit_byte_sz_hint);
+        }
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector)
+        {
+            reflector(delim_config,
+                      gcs_client_config,
+                      bucket_name,
+                      object_key,
+                      read_ahead_buffer_sz_hint,
+                      unit_byte_sz_hint);
+        }
+    };
+
+    struct ExternalGCSLoaderConfig
+    {
+        std::string config_bytestream;
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector) const
+        {
+            reflector(config_bytestream);
+        }
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector)
+        {
+            reflector(config_bytestream);
+        }
+    };
+
+    auto to_external_gcs_loader_config(const GCSLoaderConfig& config) -> ExternalGCSLoaderConfig
+    {
+        return ExternalGCSLoaderConfig
+        {
+            .config_bytestream = dg::network_compact_serializer::dgstd_serialize<std::string>(config)
+        };
+    }
+
+    auto to_internal_gcs_loader_config(const ExternalGCSLoaderConfig& config) -> GCSLoaderConfig
+    {
+        return dg::network_compact_serializer::dgstd_deserialize<GCSLoaderConfig>(config.config_bytestream);
+    }
 }
 
 #endif

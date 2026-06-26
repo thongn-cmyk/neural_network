@@ -242,7 +242,7 @@ namespace stdx
 
         public:
 
-            StackGuard(Destructor destructor): destructor(std::move(destructor)){}
+            inline StackGuard(Destructor destructor): destructor(std::move(destructor)){}
 
             inline __attribute__((always_inline)) ~StackGuard() noexcept
             {
@@ -277,13 +277,13 @@ namespace stdx
     struct reflectible_monostate
     {
         template <class Reflector>
-        void dg_reflect(const Reflector& reflector) const
+        constexpr void dg_reflect(const Reflector& reflector) const noexcept
         {
             (void) reflector;
         }
 
         template <class Reflector>
-        void dg_reflect(const Reflector& reflector)
+        constexpr void dg_reflect(const Reflector& reflector) noexcept
         {
             (void) reflector;
         }
@@ -363,7 +363,7 @@ namespace stdx
                 }
             }
 
-            auto get_value() -> uint64_t
+            constexpr auto get_value() -> uint64_t
             {
                 return this->value;
             }
@@ -1070,7 +1070,7 @@ namespace stdx
             }
     };
 
-    auto get_random_identifier() -> std::string
+    inline auto get_random_identifier() -> std::string
     {
         static std::unique_ptr<fair_mutex::fair_atomic_flag> mtx = fair_mutex::make_unique_fair_atomic_flag();
 
@@ -1091,7 +1091,7 @@ namespace stdx
         return rs;
     }
 
-    auto shrunk_adjecent_interval(const std::vector<std::pair<size_t, size_t>>& arg_vec) -> std::vector<std::pair<size_t, size_t>>
+    constexpr auto shrunk_adjecent_interval(const std::vector<std::pair<size_t, size_t>>& arg_vec) -> std::vector<std::pair<size_t, size_t>>
     {
         std::vector<std::pair<size_t, size_t>> result_vec               = {};
         std::optional<std::pair<size_t, size_t>> aggregated_interval    = std::nullopt;
@@ -1187,7 +1187,7 @@ namespace stdx
     };
 
     template <class ...Args>
-    void high_resolution_sleep_for(std::chrono::duration<Args...> dur)
+    inline void high_resolution_sleep_for(std::chrono::duration<Args...> dur)
     {
         #if defined(__linux__)
         {
@@ -1214,7 +1214,7 @@ namespace stdx
     }
 
     template <class Clock, class ...Args>
-    auto add_timepoint(const std::chrono::time_point<Clock>& timepoint, const std::chrono::duration<Args...>& dur) -> std::chrono::time_point<Clock>
+    constexpr auto add_timepoint(const std::chrono::time_point<Clock>& timepoint, const std::chrono::duration<Args...>& dur) -> std::chrono::time_point<Clock>
     {
         using clock_dur_t   = typename std::chrono::time_point<Clock>::duration;
 
@@ -1222,7 +1222,7 @@ namespace stdx
     }
 
     template <class Clock, class ...Args>
-    auto sub_timepoint(const std::chrono::time_point<Clock>& timepoint, const std::chrono::duration<Args...>& dur) -> std::chrono::time_point<Clock>
+    constexpr auto sub_timepoint(const std::chrono::time_point<Clock>& timepoint, const std::chrono::duration<Args...>& dur) -> std::chrono::time_point<Clock>
     {
         using clock_dur_t   = typename std::chrono::time_point<Clock>::duration;
 
@@ -1230,8 +1230,8 @@ namespace stdx
     }
 
     template <class T, class Allocator = std::allocator<char>>
-    auto make_2d_vector(size_t first_sz, size_t second_sz, const T& default_val = T(),
-                        const Allocator& allocator = Allocator()) -> transparent_vector<transparent_vector<T, Allocator>, Allocator>
+    constexpr auto make_2d_vector(size_t first_sz, size_t second_sz, const T& default_val = T(),
+                                  const Allocator& allocator = Allocator()) -> transparent_vector<transparent_vector<T, Allocator>, Allocator>
     {
         transparent_vector<transparent_vector<T, Allocator>, Allocator> rs(first_sz,
                                                                            transparent_vector<T, Allocator>(allocator),

@@ -1598,7 +1598,7 @@ namespace dg::dgbuf::stl_to_dgbuf
     struct flattener
     {
         template <class Key, class Value, class Hasher, class ...Args, std::enable_if_t<std::is_trivially_constructible_v<Hasher>, bool> = true>
-        static auto flatten(const std::unordered_map<Key, Value, Hasher, Args...>& map) -> std::vector<std::optional<std::pair<Key, Value>>>
+        static constexpr auto flatten(const std::unordered_map<Key, Value, Hasher, Args...>& map) -> std::vector<std::optional<std::pair<Key, Value>>>
         {
             auto cap        = utility::pow2_ceil(map.size() * constants::CAP_TO_SIZE_RATIO);
             auto buckets    = std::vector<std::optional<std::pair<Key, Value>>>(cap, std::nullopt);
@@ -1631,7 +1631,7 @@ namespace dg::dgbuf::stl_to_dgbuf
         } 
 
         template <class Key, class Hasher, class ...Args, std::enable_if_t<std::is_trivially_constructible_v<Hasher>, bool> = true>
-        static auto flatten(const std::unordered_set<Key, Hasher, Args...>& set) -> std::vector<std::optional<Key>>
+        static constexpr auto flatten(const std::unordered_set<Key, Hasher, Args...>& set) -> std::vector<std::optional<Key>>
         {
             auto cap        = utility::pow2_ceil(set.size() * constants::CAP_TO_SIZE_RATIO);
             auto buckets    = std::vector<std::optional<Key>>(cap, std::nullopt);
@@ -1664,7 +1664,7 @@ namespace dg::dgbuf::stl_to_dgbuf
         }
 
         template <class Key, class Value, class ...Args>
-        static auto flatten(const std::map<Key, Value, Args...>& map) -> std::vector<std::pair<Key, Value>>
+        static constexpr auto flatten(const std::map<Key, Value, Args...>& map) -> std::vector<std::pair<Key, Value>>
         {    
             auto buckets = std::vector<std::pair<Key ,Value>>();
             buckets.reserve(map.size());
@@ -1674,7 +1674,7 @@ namespace dg::dgbuf::stl_to_dgbuf
         }
 
         template <class Key, class ...Args>
-        static auto flatten(const std::set<Key, Args...>& set) -> std::vector<Key>
+        static constexpr auto flatten(const std::set<Key, Args...>& set) -> std::vector<Key>
         {
             auto buckets = std::vector<Key>();
             buckets.reserve(set.size());
@@ -1687,7 +1687,7 @@ namespace dg::dgbuf::stl_to_dgbuf
     struct serializer
     {
         template <class Streamable>
-        void resize_streamable(Streamable& streamable, size_t expected_sz)
+        constexpr void resize_streamable(Streamable& streamable, size_t expected_sz)
         {
             if (streamable.size() < expected_sz)
             {
@@ -1699,7 +1699,7 @@ namespace dg::dgbuf::stl_to_dgbuf
         }
 
         template <class T, class Streamable, std::enable_if_t<types_space::is_std_vector_v<T>, bool> = true>
-        auto serialize(const T& obj, Streamable& streamable) -> decltype(type_converter<>::convert(obj))
+        constexpr auto serialize(const T& obj, Streamable& streamable) -> decltype(type_converter<>::convert(obj))
         {
             using converted_value_type = decltype(type_converter<>::convert(std::declval<typename T::value_type>()));
 
@@ -1724,7 +1724,7 @@ namespace dg::dgbuf::stl_to_dgbuf
         }
 
         template <class T, class Streamable, std::enable_if_t<types_space::is_std_basic_string_v<T>, bool> = true>
-        auto serialize(const T& obj, Streamable& streamable) -> decltype(type_converter<>::convert(obj))
+        constexpr auto serialize(const T& obj, Streamable& streamable) -> decltype(type_converter<>::convert(obj))
         {
             types::vaddr_type vaddr = streamable.size();
 
@@ -1741,7 +1741,7 @@ namespace dg::dgbuf::stl_to_dgbuf
         }
 
         template <class T, class Streamable, std::enable_if_t<types_space::is_std_unordered_map_v<T>, bool> = true>
-        auto serialize(const T& obj, Streamable& streamable) -> decltype(type_converter<>::convert(obj))
+        constexpr auto serialize(const T& obj, Streamable& streamable) -> decltype(type_converter<>::convert(obj))
         {
             auto flattened  = flattener::flatten(obj);
             auto serialized = serialize(flattened, streamable);
@@ -1750,7 +1750,7 @@ namespace dg::dgbuf::stl_to_dgbuf
         }
 
         template <class T, class Streamable, std::enable_if_t<types_space::is_std_map_v<T>, bool> = true>
-        auto serialize(const T& obj, Streamable& streamable) -> decltype(type_converter<>::convert(obj))
+        constexpr auto serialize(const T& obj, Streamable& streamable) -> decltype(type_converter<>::convert(obj))
         {
             auto flattened  = flattener::flatten(obj);
             auto serialized = serialize(flattened, streamable);
@@ -1759,7 +1759,7 @@ namespace dg::dgbuf::stl_to_dgbuf
         }
 
         template <class T, class Streamable, std::enable_if_t<types_space::is_std_unordered_set_v<T>, bool> = true>
-        auto serialize(const T& obj, Streamable& streamable) -> decltype(type_converter<>::convert(obj))
+        constexpr auto serialize(const T& obj, Streamable& streamable) -> decltype(type_converter<>::convert(obj))
         {
             auto flattened  = flattener::flatten(obj);
             auto serialized = serialize(flattened, streamable);
@@ -1768,7 +1768,7 @@ namespace dg::dgbuf::stl_to_dgbuf
         }
 
         template <class T, class Streamable, std::enable_if_t<types_space::is_std_set_v<T>, bool> = true>
-        auto serialize(const T& obj, Streamable& streamable) -> decltype(type_converter<>::convert(obj))
+        constexpr auto serialize(const T& obj, Streamable& streamable) -> decltype(type_converter<>::convert(obj))
         {
             auto flattened  = flattener::flatten(obj);
             auto serialized = serialize(flattened, streamable);
@@ -1777,7 +1777,7 @@ namespace dg::dgbuf::stl_to_dgbuf
         }
 
         template <class T, class Streamable, std::enable_if_t<types_space::is_std_optional_v<T>, bool> = true>
-        auto serialize(const T& obj, Streamable& streamable) -> decltype(type_converter<>::convert(obj))
+        constexpr auto serialize(const T& obj, Streamable& streamable) -> decltype(type_converter<>::convert(obj))
         {
             if (!obj.has_value())
             {
@@ -1788,7 +1788,7 @@ namespace dg::dgbuf::stl_to_dgbuf
         }
 
         template <class T, class Streamable, std::enable_if_t<types_space::is_std_fixed_size_container_v<T>,  bool> = true>
-        auto serialize(const T& obj, Streamable& streamable) -> decltype(type_converter<>::convert(obj))
+        constexpr auto serialize(const T& obj, Streamable& streamable) -> decltype(type_converter<>::convert(obj))
         {
             auto rs         = decltype(type_converter<>::convert(obj))();
             auto idx_seq    = std::make_index_sequence<std::tuple_size_v<T>>();
@@ -1801,7 +1801,7 @@ namespace dg::dgbuf::stl_to_dgbuf
         }
 
         template <class T, class Streamable, std::enable_if_t<std::is_arithmetic_v<T>, bool> = true>
-        auto serialize(const T& obj, Streamable& streamable) -> decltype(type_converter<>::convert(obj))
+        constexpr auto serialize(const T& obj, Streamable& streamable) -> decltype(type_converter<>::convert(obj))
         {
             return obj;
         }
@@ -1821,33 +1821,33 @@ namespace dg::dgbuf::std_iterator
 
             using self = inserter<Container>; 
 
-            inserter(Container& container) noexcept: container(&container){}
+            constexpr inserter(Container& container) noexcept: container(&container){}
 
             template <class T>
-            auto operator =(T&& e) noexcept(noexcept(container->insert(std::forward<T>(e)))) -> self&
+            constexpr auto operator =(T&& e) noexcept(noexcept(container->insert(std::forward<T>(e)))) -> self&
             {
                 container->insert(std::forward<T>(e));
                 return *this;
             }
 
-            auto operator *() noexcept -> self&
+            constexpr auto operator *() noexcept -> self&
             {
                 return *this;
             }
 
-            auto operator++() noexcept -> self&
+            constexpr auto operator++() noexcept -> self&
             {    
                 return *this;
             }
 
-            auto operator++(int) noexcept -> self&
+            constexpr auto operator++(int) noexcept -> self&
             {
                 return *this;
             }
     };
 
     template <class Container>
-    static auto get_std_inserter(Container& container)
+    static constexpr auto get_std_inserter(Container& container)
     {
         if constexpr(types_space::is_std_vector_v<Container> | types_space::is_std_basic_string_v<Container>)
         {
@@ -1919,7 +1919,7 @@ namespace dg::dgbuf::dgbuf_to_stl
         using converter = type_converter<Allocator, 0>; 
 
         template <class T, std::enable_if_t<types_space::is_dg_container_view_v<T>, bool> = true>
-        auto deserialize(const T& obj) -> decltype(converter::convert(obj))
+        constexpr auto deserialize(const T& obj) -> decltype(converter::convert(obj))
         {
             auto rs             = decltype(converter::convert(obj))();
             auto transformer    = [&](const auto& e){return this->deserialize(e);};
@@ -1930,7 +1930,7 @@ namespace dg::dgbuf::dgbuf_to_stl
         }
 
         template <class T, std::enable_if_t<types_space::is_std_optional_v<T>, bool> = true>
-        auto deserialize(const T& obj) -> decltype(converter::convert(obj))
+        constexpr auto deserialize(const T& obj) -> decltype(converter::convert(obj))
         {
             if (!obj)
             {
@@ -1941,7 +1941,7 @@ namespace dg::dgbuf::dgbuf_to_stl
         }
 
         template <class T, std::enable_if_t<types_space::is_std_fixed_size_container_v<T>, bool> = true>
-        auto deserialize(const T& obj) -> decltype(converter::convert(obj))
+        constexpr auto deserialize(const T& obj) -> decltype(converter::convert(obj))
         {
             const auto idx_seq = std::make_index_sequence<std::tuple_size_v<T>>();
             auto rs = decltype(converter::convert(obj))();
@@ -1954,7 +1954,7 @@ namespace dg::dgbuf::dgbuf_to_stl
         }
 
         template <class T, std::enable_if_t<std::is_arithmetic_v<T>, bool> = true>
-        auto deserialize(const T& obj) -> decltype(converter::convert(obj))
+        constexpr auto deserialize(const T& obj) -> decltype(converter::convert(obj))
         {
             return obj;
         }

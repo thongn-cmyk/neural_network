@@ -21,75 +21,12 @@
 #include <utility>
 #include "client_builder.h"
 #include "client_config_builder.h"
-#include <serializer/compact_serializer.h>
 
-namespace data_loader::s3_source
+namespace data_loader::source::s3_source
 {
-    using namespace data_loader::source_exception;
+    using namespace data_loader::source::source_exception;
 
-    struct S3LoaderConfig
-    {
-        data_loader::stream_reader::ExternalDelimitedStreamReaderConfig delim_config;
-        data_loader::s3_source::ExternalSecuredS3ClientConfiguration s3_client_config;
-        std::string bucket_name;
-        std::string object_key;
-        std::optional<uint64_t> read_ahead_buffer_sz_hint;
-        std::optional<uint64_t> unit_byte_sz_hint;
-
-        template <class Reflector>
-        void dg_reflect(const Reflector& reflector) const
-        {
-            reflector(delim_config,
-                      s3_client_config,
-                      bucket_name,
-                      object_key,
-                      read_ahead_buffer_sz_hint,
-                      unit_byte_sz_hint);
-        }
-
-        template <class Reflector>
-        void dg_reflect(const Reflector& reflector)
-        {
-            reflector(delim_config,
-                      s3_client_config,
-                      bucket_name,
-                      object_key,
-                      read_ahead_buffer_sz_hint,
-                      unit_byte_sz_hint);
-        }
-    };
-
-    struct ExternalS3LoaderConfig
-    {
-        std::string config_bytestream;
-
-        template <class Reflector>
-        void dg_reflect(const Reflector& reflector) const
-        {
-            reflector(config_bytestream);
-        }
-
-        template <class Reflector>
-        void dg_reflect(const Reflector& reflector)
-        {
-            reflector(config_bytestream);
-        }
-    };
-
-    auto to_external_s3_loader_config(const S3LoaderConfig& config) -> ExternalS3LoaderConfig
-    {
-        return ExternalS3LoaderConfig
-        {
-            .config_bytestream = dg::network_compact_serializer::dgstd_serialize<std::string>(config)
-        };
-    }
-
-    auto to_internal_s3_loader_config(const ExternalS3LoaderConfig& config) -> S3LoaderConfig
-    {
-        return dg::network_compact_serializer::dgstd_deserialize<S3LoaderConfig>(config.config_bytestream);
-    }
-
-    class S3Loader: public virtual data_loader::SourceLoaderInterface
+    class S3Loader: public virtual data_loader::source::SourceLoaderInterface
     {
         private:
 

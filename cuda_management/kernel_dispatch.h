@@ -19,14 +19,14 @@ namespace cuda_management::kernel_dispatch
 
     static inline constexpr size_t MAX_THREAD_SZ                    = size_t{1} << 8;
 
-    void init()
+    inline void init()
     {
         stdx::memtransaction_guard tx_grd;
 
         SmpSingletonContainer::get() = std::make_unique<semaphore>(KERNEL_CONCURRENT_DISPATCH_COUNT);
     }
 
-    void deinit() noexcept
+    inline void deinit() noexcept
     {
         stdx::memtransaction_guard tx_grd;
 
@@ -51,7 +51,7 @@ namespace cuda_management::kernel_dispatch
         return std::make_pair(blk_sz, MAX_THREAD_SZ);
     }
 
-    auto get_semaphore() -> semaphore&
+    inline auto get_semaphore() -> semaphore&
     {
         if (SmpSingletonContainer::get() == nullptr)
         {

@@ -828,7 +828,7 @@ namespace dg::network_compact_serializer::utility{
         return {h1, h2};
     } 
 
-    auto hash(const char * buf, size_t sz, uint32_t secret) noexcept -> hash_type{
+    constexpr auto hash(const char * buf, size_t sz, uint32_t secret) noexcept -> hash_type{
 
         return murmur_hash_base(buf, sz, secret);
     }

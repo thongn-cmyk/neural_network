@@ -4,7 +4,7 @@
 #include <exception>
 #include <data_loader/exception_base.h>
 
-namespace data_loader::source_exception
+namespace data_loader::source::source_exception
 {
     using namespace data_loader::exception_base;
 

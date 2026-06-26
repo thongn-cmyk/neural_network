@@ -1,80 +1,24 @@
-#ifndef __DATA_LOADER_WAIT_LOADER_H__
-#define __DATA_LOADER_WAIT_LOADER_H__
+#ifndef __DATA_LOADER_SOURCE_LOADER_WAIT_LOADER_WAIT_LOADER_H__
+#define __DATA_LOADER_SOURCE_LOADER_WAIT_LOADER_WAIT_LOADER_H__
 
 #include <stdint.h>
 #include <stdlib.h>
 #include <memory>
-#include <data_loader/source/generic_source.h>
-#include <data_loader/retryer_device/generic_device.h>
-#include <data_loader/exception_base.h>
+#include <data_loader/source/generic_source/generic_source.h>
+#include <data_loader/retryer_device/generic_device/generic_device.h>
+#include "local_exception.h"
+#include "model.h"
 #include <deque>
-#include "source_transaction_broker.h"
-#include "userspace_source_loader_interface.h"
+#include <data_loader/transaction_broker/transaction_broker.h>
+#include <data_loader/source_loader/userspace_source_loader_interface.h>
 
 namespace data_loader::source_loader::wait_loader
 {
-    using namespace data_loader::exception_base;
-
-    struct corrupted_loader_error: runtime_error_base
-    {
-        corrupted_loader_error(): runtime_error_base("bad loader, loader is in corrupted state"){}
-    };
-
-    struct WaitLoaderConfig
-    {
-        uint64_t tx_sz;
-        data_loader::source_loader::broker::ExternalSourceTransactionBrokerConfig broker_config;
-
-        template <class Reflector>
-        void dg_reflect(const Reflector& reflector) const
-        {
-            reflector(tx_sz,
-                      broker_config);
-        }
-
-        template <class Reflector>
-        void dg_reflect(const Reflector& reflector)
-        {
-            reflector(tx_sz,
-                      broker_config);
-        }
-    };
-
-    struct ExternalWaitLoaderConfig
-    {
-        std::string config_bytestream;
-
-        template <class Reflector>
-        void dg_reflect(const Reflector& reflector) const
-        {
-            reflector(config_bytestream);
-        }
-
-        template <class Reflector>
-        void dg_reflect(const Reflector& reflector)
-        {
-            reflector(config_bytestream);
-        }
-    };
-
-    auto to_external_wait_loader_config(const WaitLoaderConfig& config) -> ExternalWaitLoaderConfig
-    {
-        return ExternalWaitLoaderConfig
-        {
-            .config_bytestream = dg::network_compact_serializer::dgstd_serialize<std::string>(config)
-        };
-    }
-
-    auto to_internal_wait_loader_config(const ExternalWaitLoaderConfig& config) -> WaitLoaderConfig
-    {
-        return dg::network_compact_serializer::dgstd_deserialize<WaitLoaderConfig>(config.config_bytestream);
-    }
-
     class WaitLoader: public virtual data_loader::source_loader::UserSpaceSourceLoaderInterface
     {
         private:
 
-            std::unique_ptr<data_loader::source_loader::broker::TransactionBrokerInterface> broker;
+            std::unique_ptr<data_loader::transaction_broker::TransactionBrokerInterface> broker;
             std::deque<std::string> prefetched_token_vec;
             size_t tx_sz;
             bool was_completed;
@@ -82,7 +26,7 @@ namespace data_loader::source_loader::wait_loader
 
         public:
 
-            WaitLoader(const WaitLoaderConfig& config): broker(std::make_unique<data_loader::source_loader::broker::SourceTransactionBroker>(config.broker_config)),
+            WaitLoader(const WaitLoaderConfig& config): broker(std::make_unique<data_loader::transaction_broker::SourceTransactionBroker>(config.broker_config)),
                                                         prefetched_token_vec(),
                                                         tx_sz(stdx::safe_non_zero_access(config.tx_sz)),
                                                         was_completed(false),

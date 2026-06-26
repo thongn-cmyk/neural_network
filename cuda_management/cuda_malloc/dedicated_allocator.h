@@ -1,5 +1,5 @@
-#ifndef __CUDA_MANAGEMENT_CUDA_MEMORY_H__
-#define __CUDA_MANAGEMENT_CUDA_MEMORY_H__
+#ifndef __CUDA_MANAGEMENT_CUDA_MALLOC_DEDICATED_ALLOCATOR_H__
+#define __CUDA_MANAGEMENT_CUDA_MALLOC_DEDICATED_ALLOCATOR_H__
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -11,9 +11,8 @@
 #include <exception>
 #include <stdexcept>
 #include "assert.h"
-#include "local_exception.h"
-#include <memory_management/global_allocator.h>
-#include <global_config/cuda_memory_config.h>
+#include <cuda_management/local_exception.h>
+#include "segment_allocator.h"
 #include <variant>
 #include <stl_extension/stdx.h>
 #include <mutex_extension/fair_mutex.h>
@@ -21,76 +20,6 @@
 
 namespace cuda_management::cuda_malloc
 {
-    class AllocatorInterface
-    {
-        public:
-
-            virtual ~AllocatorInterface() = default;
-
-            virtual auto malloc(size_t sz) -> std::add_pointer_t<void> = 0;
-            virtual void free(void * ptr) = 0;
-    };
-
-    struct NormalAllocatorConfig
-    {
-        template <class Reflector>
-        void dg_reflect(const Reflector& reflector) const
-        {
-            (void) reflector;
-        }
-
-        template <class Reflector>
-        void dg_reflect(const Reflector& reflector)
-        {
-            (void) reflector;
-        }
-    };
-
-    class NormalAllocator: public virtual AllocatorInterface
-    {
-        public:
-
-            NormalAllocator(){}
-            NormalAllocator(const NormalAllocatorConfig&){}
-
-            auto malloc(size_t sz) -> void *
-            {
-                using namespace cuda_management::local_exception;
-
-                if (sz == 0u)
-                {
-                    return nullptr;
-                }
-
-                void * cuda_buf = nullptr;
-                cudaError_t err = cudaMalloc(static_cast<void **>(&cuda_buf), sz);
-
-                if (err != cudaSuccess)
-                {
-                    throw cuda_bad_alloc();
-                }
-
-                if (cuda_buf == nullptr)
-                {
-                    throw cuda_corruption();
-                }
-
-                return cuda_buf;
-            }
-
-            void free(void * ptr) noexcept
-            {
-                using namespace cuda_management::local_exception;
-
-                if (ptr == nullptr)
-                {
-                    return;
-                }
-
-                cudaFree(ptr);
-            }
-    };
-
     struct DedicatedAllocatorConfig
     {
         uint64_t heap_memory_sz;
@@ -120,7 +49,7 @@ namespace cuda_management::cuda_malloc
 
             static inline constexpr size_t HEAP_OUTDEGREE_SZ    = 8u;
 
-            using BaseAllocatorType = global_allocator::SegmentAllocator<std::integral_constant<size_t, HEAP_OUTDEGREE_SZ>>;
+            using BaseAllocatorType = SegmentAllocator<std::integral_constant<size_t, HEAP_OUTDEGREE_SZ>>;
 
             std::unique_ptr<BaseAllocatorType> allocator;
             std::shared_ptr<char[]> cu_mem;
@@ -180,13 +109,50 @@ namespace cuda_management::cuda_malloc
                 return get_tree_height_from_leaf_count(leaf_count);
             }
 
+            static auto base_malloc(size_t sz) -> void *
+            {
+                using namespace cuda_management::local_exception;
+
+                if (sz == 0u)
+                {
+                    return nullptr;
+                }
+
+                void * cuda_buf = nullptr;
+                cudaError_t err = cudaMalloc(static_cast<void **>(&cuda_buf), sz);
+
+                if (err != cudaSuccess)
+                {
+                    throw cuda_bad_alloc();
+                }
+
+                if (cuda_buf == nullptr)
+                {
+                    throw cuda_corruption();
+                }
+
+                return cuda_buf;
+            }
+
+            static void base_free(void * ptr) noexcept
+            {
+                using namespace cuda_management::local_exception;
+
+                if (ptr == nullptr)
+                {
+                    return;
+                }
+
+                cudaFree(ptr);
+            }
+
             static auto make_cuda_memory(size_t sz) -> std::shared_ptr<char[]>
             {
                 auto destructor = [](char * ptr) noexcept
                 {
-                    NormalAllocator().free(ptr);
+                    base_free(ptr);
                 };
-                char * mem      = static_cast<char *>(NormalAllocator().malloc(sz));
+                char * mem      = static_cast<char *>(base_malloc(sz));
 
                 return std::unique_ptr<char[], decltype(destructor)>(mem, std::move(destructor));
             }
@@ -274,113 +240,6 @@ namespace cuda_management::cuda_malloc
                 this->allocation_map.erase(map_ptr);
             }
     };
-
-    struct GenericAllocatorConfig
-    {
-        std::variant<stdx::reflectible_monostate, NormalAllocatorConfig, DedicatedAllocatorConfig> config;
-
-        template <class Reflector>
-        void dg_reflect(const Reflector& reflector) const
-        {
-            reflector(config);
-        }
-
-        template <class Reflector>
-        void dg_reflect(const Reflector& reflector)
-        {
-            reflector(config);
-        }
-    };
-
-    class GenericAllocator: public virtual AllocatorInterface
-    {
-        private:
-
-            std::unique_ptr<AllocatorInterface> base;
-        
-        public:
-
-            GenericAllocator(const GenericAllocatorConfig& config)
-            {
-                if (std::holds_alternative<NormalAllocatorConfig>(config.config))
-                {
-                    this->base  = std::make_unique<NormalAllocator>(std::get<NormalAllocatorConfig>(config.config));
-                }
-                else if (std::holds_alternative<DedicatedAllocatorConfig>(config.config))
-                {
-                    this->base  = std::make_unique<DedicatedAllocator>(std::get<DedicatedAllocatorConfig>(config.config));
-                }
-                else
-                {
-                    throw std::invalid_argument("bad allocator config, dispatch code not found");
-                }
-            }
-
-            auto malloc(size_t sz) -> void *
-            {
-                return this->base->malloc(sz);
-            }
-
-            void free(void * ptr) noexcept
-            {
-                this->base->free(ptr);
-            }
-    };
-
-    struct Signature{};
-
-    using SingletonContainer = stdx::singleton_container<std::unique_ptr<AllocatorInterface>, Signature>;
-
-    void init()
-    {
-        stdx::memtransaction_guard tx_grd;
-
-        if (global_config::cuda_memory_config::CUDA_HAS_HEAP)
-        {
-            SingletonContainer::get() = std::make_unique<GenericAllocator>(GenericAllocatorConfig
-            {
-                .config = DedicatedAllocatorConfig
-                {
-                    .heap_memory_sz = global_config::cuda_memory_config::CUDA_HEAP_MEMORY_SZ,
-                    .heap_leaf_sz   = global_config::cuda_memory_config::CUDA_HEAP_LEAF_SZ
-                }
-            });
-        }
-        else
-        {
-            SingletonContainer::get() = std::make_unique<GenericAllocator>(GenericAllocatorConfig
-            {
-                .config = NormalAllocatorConfig{}
-            });
-        }
-    }
-
-    void deinit() noexcept
-    {
-        stdx::memtransaction_guard tx_grd;
-
-        SingletonContainer::get() = nullptr;
-    }
-
-    auto get_instance() -> AllocatorInterface *
-    {
-        if (SingletonContainer::get() == nullptr)
-        {
-            std::abort();
-        }
-
-        return SingletonContainer::get().get();
-    }
-
-    auto malloc(size_t sz) -> void *
-    {
-        return get_instance()->malloc(sz);
-    }
-
-    void free(void * ptr) noexcept
-    {
-        get_instance()->free(ptr);
-    }
 }
 
 #endif

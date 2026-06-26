@@ -19,98 +19,16 @@
 #include <utility>
 #include "client_builder.h"
 #include "client_config_builder.h"
-#include <serializer/compact_serializer.h>
 #include <google/cloud/status.h>
 
-namespace data_loader::gcs_source
+namespace data_loader::source::gcs_source
 {
     namespace gcs   = ::google::cloud::storage;
     namespace gc    = ::google::cloud;
 
-    using namespace data_loader::source_exception;
+    using namespace data_loader::source::source_exception;
 
-    struct GCSLoaderConfig
-    {
-        data_loader::stream_reader::ExternalDelimitedStreamReaderConfig delim_config;
-        data_loader::gcs_source::ExternalSecuredGCSClientConfig gcs_client_config;
-        std::string bucket_name;
-        std::string object_key;
-        std::optional<uint64_t> read_ahead_buffer_sz_hint;
-        std::optional<uint64_t> unit_byte_sz_hint;
-
-        template <class Reflector>
-        void dg_reflect(const Reflector& reflector) const
-        {
-            reflector(delim_config,
-                      gcs_client_config,
-                      bucket_name,
-                      object_key,
-                      read_ahead_buffer_sz_hint,
-                      unit_byte_sz_hint);
-        }
-
-        template <class Reflector>
-        void dg_reflect(const Reflector& reflector)
-        {
-            reflector(delim_config,
-                      gcs_client_config,
-                      bucket_name,
-                      object_key,
-                      read_ahead_buffer_sz_hint,
-                      unit_byte_sz_hint);
-        }
-    };
-
-    struct ExternalGCSLoaderConfig
-    {
-        std::string config_bytestream;
-
-        template <class Reflector>
-        void dg_reflect(const Reflector& reflector) const
-        {
-            reflector(config_bytestream);
-        }
-
-        template <class Reflector>
-        void dg_reflect(const Reflector& reflector)
-        {
-            reflector(config_bytestream);
-        }
-    };
-
-    auto to_external_gcs_loader_config(const GCSLoaderConfig& config) -> ExternalGCSLoaderConfig
-    {
-        return ExternalGCSLoaderConfig
-        {
-            .config_bytestream = dg::network_compact_serializer::dgstd_serialize<std::string>(config)
-        };
-    }
-
-    auto to_internal_gcs_loader_config(const ExternalGCSLoaderConfig& config) -> GCSLoaderConfig
-    {
-        return dg::network_compact_serializer::dgstd_deserialize<GCSLoaderConfig>(config.config_bytestream);
-    }
-
-    //I think we are fine for the data loader for now
-    //let's look at the problem the way I already described it but we'd need proof of defined
-
-    //we assume an immutable range [a, b), this is our entry, the precond of the function
-    //the aggregated returned results is [a, b), with each subsegment read only once
-    //we'd need to retry indefinitely to achieve that end
-
-    //so in the normal case, assume that everything is perfect, we only prove that the normal flow works fine
-    //so that we read one segment, another segment, another segment etc.
-    //then we'd need to prove that each failed operation is "atomic" with respect to the object, as if the call did not exist
-
-    //then we have our proof of completeness, such is retry indefinitely would maybe get the range [a, b)
-
-    //then we'd want to radix the std::exception (generic exception) as different exceptions to prune the retry cases
-    //and we'd want to handle the client failure to prepare for the next call
-
-    //I guess that the difficulty in writing these is the "unclear" in the precond and the "how-to" implement it in the way that we cannot define
-    //so if we define our problem as an immutable range [a, b), and return an arbitrary range [a, b), then it would clear a lot of issues
-
-    class GCSLoader: public virtual data_loader::SourceLoaderInterface
+    class GCSLoader: public virtual data_loader::source::SourceLoaderInterface
     {
         private:
 

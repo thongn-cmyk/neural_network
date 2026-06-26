@@ -26,7 +26,7 @@ namespace global_config::cuda_memory_config
 
 #endif
 
-#include <cuda_management/cuda_malloc.h>
+#include <cuda_management/cuda_malloc/cuda_malloc.h>
 
 auto randomize_int(size_t first, size_t last) -> size_t
 {

@@ -16,7 +16,7 @@
 #include <aws/core/Aws.h>
 #include <aws/core/auth/AWSCredentials.h>
 
-namespace data_loader::s3_source
+namespace data_loader::source::s3_source
 {
     class S3ClientBuilder
     {

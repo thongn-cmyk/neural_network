@@ -2,7 +2,6 @@
 #define DEBUG_MODE_FLAG true
 
 #include <data_loader/source/gcs_source/gcs_source.h>
-#include <data_loader/source/gcs_source/client_config_builder.h>
 #include <data_loader/hex_encoder/hex_encoder.h>
 #include <stdint.h>
 #include <stdlib.h>

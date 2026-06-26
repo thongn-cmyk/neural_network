@@ -1,62 +1,18 @@
 #ifndef __DATA_LOADER_MULTISOURCE_SOURCE_LOADER_H__
 #define __DATA_LOADER_MULTISOURCE_SOURCE_LOADER_H__
 
+#include <vector>
+#include <memory>
 #include <stdint.h>
 #include <stdlib.h>
-#include "generic_loader.h"
+#include <data_loader/source_loader/generic_loader/generic_loader.h>
 #include <vector>
-#include "userspace_source_loader_interface.h"
+#include <data_loader/source_loader/userspace_source_loader_interface.h>
 #include <common_exception/cancellation_token.h>
+#include "model.h"
 
 namespace data_loader::source_loader::multisource_loader
 {
-    struct MultisourceLoaderConfig
-    {
-        std::vector<data_loader::source_loader::generic_loader::ExternalGenericLoaderConfig> config_vec;
-
-        template <class Reflector>
-        void dg_reflect(const Reflector& reflector) const
-        {
-            reflector(config_vec);
-        }
-
-        template <class Reflector>
-        void dg_reflect(const Reflector& reflector)
-        {
-            reflector(config_vec);
-        }
-    };
-
-    struct ExternalMultisourceLoaderConfig
-    {
-        std::string config_bytestream;
-
-        template <class Reflector>
-        void dg_reflect(const Reflector& reflector) const
-        {
-            reflector(config_bytestream);
-        }
-
-        template <class Reflector>
-        void dg_reflect(const Reflector& reflector)
-        {
-            reflector(config_bytestream);
-        }
-    };
-
-    auto to_external_multisource_loader_config(const MultisourceLoaderConfig& config) -> ExternalMultisourceLoaderConfig
-    {
-        return ExternalMultisourceLoaderConfig
-        {
-            .config_bytestream = dg::network_compact_serializer::dgstd_serialize<std::string>(config)
-        };
-    }
-
-    auto to_internal_multisource_loader_config(const ExternalMultisourceLoaderConfig& config) -> MultisourceLoaderConfig
-    {
-        return dg::network_compact_serializer::dgstd_deserialize<MultisourceLoaderConfig>(config.config_bytestream);
-    }
-
     class MultisourceLoader: public virtual data_loader::source_loader::UserSpaceSourceLoaderInterface
     {
         private:

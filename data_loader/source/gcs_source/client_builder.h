@@ -19,7 +19,7 @@
 #include <google/cloud/storage/options.h>
 #include <fstream>
 
-namespace data_loader::gcs_source
+namespace data_loader::source::gcs_source
 {
     namespace gc    = ::google::cloud;
     namespace gcs   = ::google::cloud::storage;

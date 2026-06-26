@@ -12,22 +12,22 @@ namespace cuda_management::local_exception
     
     struct cuda_corruption: std::runtime_error
     {
-        cuda_corruption(): std::runtime_error("cuda corruption"){}
+        inline cuda_corruption(): std::runtime_error("cuda corruption"){}
     };
 
     struct device_not_available_error: std::invalid_argument
     {
-        device_not_available_error(const char * msg = "device not available error"): std::invalid_argument(msg){}
+        inline device_not_available_error(const char * msg = "device not available error"): std::invalid_argument(msg){}
     };
 
     struct cuda_invalid_argument: std::invalid_argument
     {
-        cuda_invalid_argument(const char * msg): std::invalid_argument(msg){}
+        inline cuda_invalid_argument(const char * msg): std::invalid_argument(msg){}
     };
 
     struct cuda_runtime_error: std::runtime_error
     {
-        cuda_runtime_error(const char * msg): std::runtime_error(msg){}
+        inline cuda_runtime_error(const char * msg): std::runtime_error(msg){}
     };
 }
 

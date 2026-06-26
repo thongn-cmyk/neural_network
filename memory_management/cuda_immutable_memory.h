@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <string_view>
 #include <memory>
-#include <cuda_management/host_service_header.h>
+#include <cuda_management/host_service.h>
 #include <cuda_management/host_service_x.h>
 #include "immutable_multiplatform_memory_x.h"
 #include <stl_extension/stdx.h>

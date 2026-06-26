@@ -10,7 +10,6 @@
 #include <concurrency_detachable_task/detachable_task_launcher.h>
 #include "model.h"
 #include <connectivity_subsystem/connectivity_subsystem.h>
-#include <data_loader/source_loader/multisource_loader.h>
 #include <connection_based_manager/connection_based_manager.h>
 #include <mutex_extension/fair_mutex.h>
 #include <matrix_optimizer_subsystem/optimizer.h>

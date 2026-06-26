@@ -10,7 +10,7 @@
 #include <exception>
 #include <stdexcept>
 #include "assert.h"
-#include "host_service_header.h"
+#include "host_service.h"
 #include "local_exception.h"
 
 namespace cuda_management::host_service_x
@@ -38,10 +38,10 @@ namespace cuda_management::host_service_x
 
         public:
 
-            PartialBumpAllocator(size_t bump_allocation_bucket_sz,
-                                 size_t bump_allocation_threshold): bump_allocation_bucket_sz(bump_allocation_bucket_sz),
-                                                                    bump_allocation_threshold(bump_allocation_threshold),
-                                                                    bump_allocation_bucket(std::nullopt)
+            inline PartialBumpAllocator(size_t bump_allocation_bucket_sz,
+                                        size_t bump_allocation_threshold): bump_allocation_bucket_sz(bump_allocation_bucket_sz),
+                                                                           bump_allocation_threshold(bump_allocation_threshold),
+                                                                           bump_allocation_bucket(std::nullopt)
             {
                 if (bump_allocation_bucket_sz < bump_allocation_threshold)
                 {
@@ -49,10 +49,10 @@ namespace cuda_management::host_service_x
                 }
             }
 
-            PartialBumpAllocator(): PartialBumpAllocator(DEFAULT_BUMP_ALLOCATION_BUCKET_SZ,
-                                                         DEFAULT_BUMP_ALLOCATION_THRESHOLD){}
+            inline PartialBumpAllocator(): PartialBumpAllocator(DEFAULT_BUMP_ALLOCATION_BUCKET_SZ,
+                                                                DEFAULT_BUMP_ALLOCATION_THRESHOLD){}
 
-            auto allocate(size_t sz) -> std::shared_ptr<char[]>
+            inline auto allocate(size_t sz) -> std::shared_ptr<char[]>
             {
                 if (sz > this->bump_allocation_threshold)
                 {
@@ -66,7 +66,7 @@ namespace cuda_management::host_service_x
 
         private:
 
-            void make_bump_allocation_bucket()
+            inline void make_bump_allocation_bucket()
             {
                 this->bump_allocation_bucket = BumpAllocationBucket
                 {
@@ -76,12 +76,12 @@ namespace cuda_management::host_service_x
                 };
             }
 
-            auto huge_allocate(size_t sz) -> std::shared_ptr<char[]>
+            inline auto huge_allocate(size_t sz) -> std::shared_ptr<char[]>
             {
                 return cuda_management::host_service::make_cuda_buffer_from_size(sz);
             }
 
-            auto small_allocate(size_t sz) -> std::shared_ptr<char[]>
+            inline auto small_allocate(size_t sz) -> std::shared_ptr<char[]>
             {
                 if (sz == 0u)
                 {
@@ -126,22 +126,22 @@ namespace cuda_management::host_service_x
     {
         public:
 
-            auto allocate(size_t sz) -> std::shared_ptr<char[]>
+            inline auto allocate(size_t sz) -> std::shared_ptr<char[]>
             {
                 return cuda_management::host_service::make_cuda_buffer_from_size(sz);
             }
     };
 
     template <class Allocator = CudaAllocator>
-    auto make_cuda_buffer_from_size(size_t sz,
-                                    Allocator&& allocator = Allocator()) -> std::shared_ptr<char[]>
+    inline auto make_cuda_buffer_from_size(size_t sz,
+                                           Allocator&& allocator = Allocator()) -> std::shared_ptr<char[]>
     {
         return allocator.allocate(sz);
     }
 
     template <class Allocator = CudaAllocator>
-    auto make_cuda_buffer_from_host_view(std::string_view host_view,
-                                         Allocator&& allocator = Allocator()) -> std::shared_ptr<char[]>
+    inline auto make_cuda_buffer_from_host_view(std::string_view host_view,
+                                                Allocator&& allocator = Allocator()) -> std::shared_ptr<char[]>
     {
         std::shared_ptr<char[]> rs  = make_cuda_buffer_from_size(host_view.size(), allocator);
         cuda_management::host_service::memcpy_host_to_device(rs.get(), host_view.data(), host_view.size());
@@ -149,7 +149,7 @@ namespace cuda_management::host_service_x
         return rs;
     }
 
-    auto cuda_to_host_buffer(const std::shared_ptr<char[]>& cuda_buf, size_t cuda_buf_sz) -> std::shared_ptr<char[]>
+    inline auto cuda_to_host_buffer(const std::shared_ptr<char[]>& cuda_buf, size_t cuda_buf_sz) -> std::shared_ptr<char[]>
     {
         if (cuda_buf == nullptr)
         {
@@ -179,7 +179,7 @@ namespace cuda_management::host_service_x
     template <class T, class ...Args,
               class Allocator,
               std::enable_if_t<std::is_arithmetic_v<T>, bool> = true> //iec559 + compliances
-    auto make_cuda_object(Allocator&& allocator, Args&& ...args) -> std::shared_ptr<T>
+    inline auto make_cuda_object(Allocator&& allocator, Args&& ...args) -> std::shared_ptr<T>
     {
         static_assert(sizeof(T) != 0u);
 
@@ -193,7 +193,7 @@ namespace cuda_management::host_service_x
     }
 
     template <class T, std::enable_if_t<std::is_arithmetic_v<T>, bool> = true>
-    auto read_cuda_object(const std::shared_ptr<T>& obj) -> T
+    inline auto read_cuda_object(const std::shared_ptr<T>& obj) -> T
     {
         if (obj == nullptr)
         {

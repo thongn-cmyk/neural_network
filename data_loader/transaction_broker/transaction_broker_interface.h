@@ -4,8 +4,12 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <memory>
+#include <optional>
+#include <vector>
+#include <string>
+#include <common_exception/cancellation_token.h>
 
-namespace data_loader::source_loader::broker
+namespace data_loader::transaction_broker
 {
     class TransactionBrokerInterface
     {

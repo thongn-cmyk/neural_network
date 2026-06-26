@@ -16,7 +16,7 @@ namespace deviation_projector::cuda_device
 
     __device__ static constexpr inline size_t DEVIATION_CALCULATOR_FUNCTION_TABLE_SZ  = 2u;
 
-    __device__ static deviation_calculator_function deviation_calculation_table[DEVIATION_CALCULATOR_FUNCTION_TABLE_SZ]
+    __device__ static inline deviation_calculator_function deviation_calculation_table[DEVIATION_CALCULATOR_FUNCTION_TABLE_SZ]
     {
         deviation_projector::cuda_device::mean_square::mean_square,
         deviation_projector::cuda_device::parity_distance::parity_distance
@@ -25,10 +25,10 @@ namespace deviation_projector::cuda_device
     __device__ static inline uint8_t MEAN_SQUARE_DEVICE     = 0u;
     __device__ static inline uint8_t PARITY_DISTANCE_DEVICE = 1u;
 
-    __device__ double get_deviation(uint8_t calculator_id,
-                                    Matrix * lhs,
-                                    Matrix * rhs,
-                                    local_exception_t * err = nullptr)
+    __device__ inline double get_deviation(uint8_t calculator_id,
+                                           Matrix * lhs,
+                                           Matrix * rhs,
+                                           local_exception_t * err = nullptr)
     {
         local_exception_t local_err = SUCCESS;
 

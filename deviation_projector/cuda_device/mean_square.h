@@ -12,9 +12,9 @@ namespace deviation_projector::cuda_device::mean_square
     using namespace device_tensor::model;
     using namespace deviation_projector::cuda_device::local_exception;
 
-    __device__ double mean_square(Matrix * lhs,
-                                  Matrix * rhs,
-                                  local_exception_t * err = nullptr)
+    __device__ inline double mean_square(Matrix * lhs,
+                                         Matrix * rhs,
+                                         local_exception_t * err = nullptr)
     {
         using namespace device_tensor::common_operation;
         using namespace cuda_management::utility;

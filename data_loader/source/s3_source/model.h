@@ -11,8 +11,10 @@
 #include <optional>
 #include <chrono>
 #include <stl_extension/stdx.h>
+#include <data_loader/stream_reader/model.h>
+#include <serializer/compact_serializer.h>
 
-namespace data_loader::s3_source
+namespace data_loader::source::s3_source
 {
     static inline constexpr uint8_t PAYLOAD_SIGNING_POLICY_REQUEST_DEPENDENT    = 0u;
     static inline constexpr uint8_t PAYLOAD_SIGNING_POLICY_ALWAYS               = 1u;
@@ -209,6 +211,81 @@ namespace data_loader::s3_source
             reflector(config_bytestream);
         }
     };
+
+    auto to_internal_secured_s3_client_configuration(const ExternalSecuredS3ClientConfiguration& config) -> SecuredS3ClientConfiguration
+    {
+        return dg::network_compact_serializer::dgstd_deserialize<SecuredS3ClientConfiguration>(config.config_bytestream);
+    }
+
+    auto to_external_secured_s3_client_configuration(const SecuredS3ClientConfiguration& config) -> ExternalSecuredS3ClientConfiguration
+    {
+        return
+        {
+            .config_bytestream = dg::network_compact_serializer::dgstd_serialize<std::string>(config)
+        };
+    }
+
+    struct S3LoaderConfig
+    {
+        data_loader::stream_reader::ExternalDelimitedStreamReaderConfig delim_config;
+        ExternalSecuredS3ClientConfiguration s3_client_config;
+        std::string bucket_name;
+        std::string object_key;
+        std::optional<uint64_t> read_ahead_buffer_sz_hint;
+        std::optional<uint64_t> unit_byte_sz_hint;
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector) const
+        {
+            reflector(delim_config,
+                      s3_client_config,
+                      bucket_name,
+                      object_key,
+                      read_ahead_buffer_sz_hint,
+                      unit_byte_sz_hint);
+        }
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector)
+        {
+            reflector(delim_config,
+                      s3_client_config,
+                      bucket_name,
+                      object_key,
+                      read_ahead_buffer_sz_hint,
+                      unit_byte_sz_hint);
+        }
+    };
+
+    struct ExternalS3LoaderConfig
+    {
+        std::string config_bytestream;
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector) const
+        {
+            reflector(config_bytestream);
+        }
+
+        template <class Reflector>
+        void dg_reflect(const Reflector& reflector)
+        {
+            reflector(config_bytestream);
+        }
+    };
+
+    auto to_external_s3_loader_config(const S3LoaderConfig& config) -> ExternalS3LoaderConfig
+    {
+        return ExternalS3LoaderConfig
+        {
+            .config_bytestream = dg::network_compact_serializer::dgstd_serialize<std::string>(config)
+        };
+    }
+
+    auto to_internal_s3_loader_config(const ExternalS3LoaderConfig& config) -> S3LoaderConfig
+    {
+        return dg::network_compact_serializer::dgstd_deserialize<S3LoaderConfig>(config.config_bytestream);
+    }
 }
 
 #endif

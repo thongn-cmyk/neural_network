@@ -1,5 +1,5 @@
-#ifndef __DATA_LOADER_DELIMITED_STREAM_READER_H__
-#define __DATA_LOADER_DELIMITED_STREAM_READER_H__
+#ifndef __DATA_LOADER_STREAM_READER_DELIMITED_STREAM_READER_H__
+#define __DATA_LOADER_STREAM_READER_DELIMITED_STREAM_READER_H__
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -8,67 +8,11 @@
 #include <string>
 #include <optional>
 #include "delimited_stream_reader_interface.h"
-#include <data_loader/exception_base.h>
-#include <serializer/compact_serializer.h>
+#include "model.h"
+#include "local_exception.h"
 
 namespace data_loader::stream_reader
 {
-    using namespace data_loader::exception_base;
-
-    struct token_overflow_error: runtime_error_base
-    {
-        token_overflow_error(): runtime_error_base("max token size reached", "token_overflow_error"){}
-    };
-
-    struct DelimitedStreamReaderConfig
-    {
-        char delim_char;
-        char eor_char;
-        std::optional<uint64_t> max_token_sz;
-
-        template <class Reflector>
-        void dg_reflect(const Reflector& reflector) const
-        {
-            reflector(delim_char, max_token_sz);
-        }
-
-        template <class Reflector>
-        void dg_reflect(const Reflector& reflector)
-        {
-            reflector(delim_char, max_token_sz);
-        }
-    };
-
-    struct ExternalDelimitedStreamReaderConfig
-    {
-        std::string config_bytestream;
-
-        template <class Reflector>
-        void dg_reflect(const Reflector& reflector) const
-        {
-            reflector(config_bytestream);
-        }
-
-        template <class Reflector>
-        void dg_reflect(const Reflector& reflector)
-        {
-            reflector(config_bytestream);
-        }
-    };
-
-    auto to_external_delimited_stream_reader_config(const DelimitedStreamReaderConfig& config) -> ExternalDelimitedStreamReaderConfig
-    {
-        return ExternalDelimitedStreamReaderConfig
-        {
-            .config_bytestream = dg::network_compact_serializer::dgstd_serialize<std::string>(config)
-        };
-    }
-
-    auto to_internal_delimited_stream_reader_config(const ExternalDelimitedStreamReaderConfig& config) -> DelimitedStreamReaderConfig
-    {
-        return dg::network_compact_serializer::dgstd_deserialize<DelimitedStreamReaderConfig>(config.config_bytestream);
-    }
-
     class DelimitedStreamReader: public virtual DelimitedStreamReaderInterface
     {
         private:

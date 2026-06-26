@@ -161,11 +161,11 @@ namespace taylor_matrix::cuda_matrix::tensor_process_unit_operation
 
     template <class ShapeBaseCoeffSizeContainer,
               class ShapeBasePromotedFloatType = tensor_model::tensor_std_float_t>
-    constexpr auto mono_transform(const ProcessUnit& process_unit,
-                                  ShapeBaseCoeffSizeContainer base_shape_coeff_sz_container,
-                                  const tensor_model::tensor_std_float_t * shape_coeff_arr, size_t& shape_coeff_arr_offset, size_t shape_coeff_arr_cap,
-                                  Tag<ShapeBasePromotedFloatType> shape_base_promotion_tag = Tag<ShapeBasePromotedFloatType>{},
-                                  local_exception_t * err = nullptr) -> ProcessUnit
+    constexpr constexpr auto mono_transform(const ProcessUnit& process_unit,
+                                            ShapeBaseCoeffSizeContainer base_shape_coeff_sz_container,
+                                            const tensor_model::tensor_std_float_t * shape_coeff_arr, size_t& shape_coeff_arr_offset, size_t shape_coeff_arr_cap,
+                                            Tag<ShapeBasePromotedFloatType> shape_base_promotion_tag = Tag<ShapeBasePromotedFloatType>{},
+                                            local_exception_t * err = nullptr) -> ProcessUnit
     {
         local_exception_t local_err = SUCCESS;
 

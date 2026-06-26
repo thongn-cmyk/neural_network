@@ -17,7 +17,7 @@ namespace cuda_management::utility
     struct Tag{};
 
     template <class T, std::enable_if_t<std::is_unsigned_v<T>, bool> = true>
-    __device__ auto ulog2(T val) noexcept -> size_t
+    __device__ inline auto ulog2(T val) noexcept -> size_t
     {
         using promoted_value                = long long int; 
         using counterpart_promoted_value    = uint64_t;

@@ -25,7 +25,7 @@ namespace fair_mutex
         std::atomic<size_t> busy_waiter_sz;
     };
 
-    auto make_fair_atomic_flag(bool value = false) noexcept -> fair_atomic_flag
+    inline auto make_fair_atomic_flag(bool value = false) noexcept -> fair_atomic_flag
     {
         return fair_atomic_flag
         {
@@ -36,8 +36,8 @@ namespace fair_mutex
         };
     }
 
-    auto inplace_make_fair_atomic_flag(fair_atomic_flag& atomic_flag,
-                                       bool value = false) noexcept
+    inline auto inplace_make_fair_atomic_flag(fair_atomic_flag& atomic_flag,
+                                              bool value = false) noexcept
     {
         if (value)
         {
@@ -52,7 +52,7 @@ namespace fair_mutex
         atomic_flag.busy_waiter_sz.exchange(0u);
     }
 
-    auto make_unique_fair_atomic_flag(bool value = false) -> std::unique_ptr<fair_atomic_flag>
+    inline auto make_unique_fair_atomic_flag(bool value = false) -> std::unique_ptr<fair_atomic_flag>
     {
         auto rs = std::make_unique<fair_atomic_flag>();
         inplace_make_fair_atomic_flag(*rs, value);

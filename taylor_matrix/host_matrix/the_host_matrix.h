@@ -661,7 +661,7 @@ namespace taylor_matrix::host_matrix::the_host_matrix
 
             static inline const std::unordered_map<uint8_t, std::optional<size_t>> CONCURRENT_WORKER_MAP =
             {
-                {LOW_COMPUTE, std::optional<size_t>(8)},
+                {LOW_COMPUTE, std::optional<size_t>(std::nullopt)},
                 {MID_COMPUTE, std::optional<size_t>(std::nullopt)},
                 {HIGH_COMPUTE, std::optional<size_t>(std::nullopt)}
             };
