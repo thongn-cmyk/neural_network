@@ -11,6 +11,9 @@
 #include "sip_hasher.h"
 #include "murmur_hasher.h"
 
+//I encountered a very weird bug last week, we'd have to implement generic version and trace where that might be
+//let's just make it into different compilable files
+
 namespace hasher
 {
     constexpr auto murmur_hash(const char * buf, size_t len, const uint32_t seed = 0xFF) -> uint64_t

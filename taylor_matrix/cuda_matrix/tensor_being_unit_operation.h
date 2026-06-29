@@ -155,16 +155,16 @@ namespace taylor_matrix::cuda_matrix::tensor_being_unit_operation
     template <class ShapeBaseCoeffSizeContainer,
               class ScopeAllocatorInterface,
               class ShapeBasePromotedFloatType = tensor_model::tensor_std_float_t>
-    __device__ constexpr __attribute__((noinline)) auto two_to_one_project(const BeingUnit * lhs,
-                                                                           const BeingUnit * rhs,
-                                                                           ShapeBaseCoeffSizeContainer base_shape_coeff_sz_container,
-                                                                           const tensor_model::tensor_std_float_t * shape_coeff_arr, size_t& shape_coeff_arr_offset, size_t shape_coeff_arr_cap,
-                                                                           ScopeAllocatorInterface&& allocator,
-                                                                           const Tag<ShapeBasePromotedFloatType>& shape_base_promotion_tag = Tag<ShapeBasePromotedFloatType>{},
-                                                                           bool has_process_unit_logit_reuse_tag = true,
-                                                                           bool has_process_group_logit_reuse_tag = true,
-                                                                           bool has_being_logit_reuse_tag = true,
-                                                                           local_exception_t * err = nullptr) -> BeingUnit *
+    __device__ constexpr auto two_to_one_project(const BeingUnit * lhs,
+                                                 const BeingUnit * rhs,
+                                                 ShapeBaseCoeffSizeContainer base_shape_coeff_sz_container,
+                                                 const tensor_model::tensor_std_float_t * shape_coeff_arr, size_t& shape_coeff_arr_offset, size_t shape_coeff_arr_cap,
+                                                 ScopeAllocatorInterface&& allocator,
+                                                 const Tag<ShapeBasePromotedFloatType>& shape_base_promotion_tag = Tag<ShapeBasePromotedFloatType>{},
+                                                 bool has_process_unit_logit_reuse_tag = true,
+                                                 bool has_process_group_logit_reuse_tag = true,
+                                                 bool has_being_logit_reuse_tag = true,
+                                                 local_exception_t * err = nullptr) -> BeingUnit *
     {
         using namespace cuda_management::scope_allocator;
         using namespace cuda_management::device_memory;
@@ -229,12 +229,12 @@ namespace taylor_matrix::cuda_matrix::tensor_being_unit_operation
     template <class AllocatorInterface,
               class ShapeBaseCoeffSizeContainer,
               class ShapeBasePromotedFloatType = tensor_model::tensor_std_float_t>
-    __device__ constexpr __attribute__((noinline)) auto mono_transform(const BeingUnit * arg,
-                                                                       ShapeBaseCoeffSizeContainer base_shape_coeff_sz_container,
-                                                                       const tensor_model::tensor_std_float_t * shape_coeff_arr, size_t& shape_coeff_arr_offset, size_t shape_coeff_arr_cap,
-                                                                       AllocatorInterface& allocator,
-                                                                       const Tag<ShapeBasePromotedFloatType>& shape_base_promotion_tag = Tag<ShapeBasePromotedFloatType>{},
-                                                                       local_exception_t * err = nullptr) -> BeingUnit *
+    __device__ constexpr auto mono_transform(const BeingUnit * arg,
+                                             ShapeBaseCoeffSizeContainer base_shape_coeff_sz_container,
+                                             const tensor_model::tensor_std_float_t * shape_coeff_arr, size_t& shape_coeff_arr_offset, size_t shape_coeff_arr_cap,
+                                             AllocatorInterface& allocator,
+                                             const Tag<ShapeBasePromotedFloatType>& shape_base_promotion_tag = Tag<ShapeBasePromotedFloatType>{},
+                                             local_exception_t * err = nullptr) -> BeingUnit *
     {
         safe_ptr_access(arg);
 

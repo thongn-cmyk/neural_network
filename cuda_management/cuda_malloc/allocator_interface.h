@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-namespace cuda_mangement::cuda_malloc
+namespace cuda_management::cuda_malloc
 {
     class AllocatorInterface
     {

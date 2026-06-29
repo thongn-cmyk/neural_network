@@ -1,5 +1,7 @@
 //HEADER_CONTROL 3
 
+//__GIT_INTEGRATION_TAG__
+
 #ifndef __TAYLOR_MATRIX_CUDA_MATRIX_TENSOR_PROCESS_UNIT_OPERATION_H__
 #define __TAYLOR_MATRIX_CUDA_MATRIX_TENSOR_PROCESS_UNIT_OPERATION_H__
 
@@ -63,13 +65,13 @@ namespace taylor_matrix::cuda_matrix::tensor_process_unit_operation
     }
 
     template <class ShapeBaseCoeffSizeContainer, class ShapeBasePromotedFloatType = tensor_model::tensor_std_float_t>
-    __device__ constexpr __attribute__((noinline)) auto two_to_one_project(const ProcessUnit& lhs,
-                                                                           const ProcessUnit& rhs,
-                                                                           ShapeBaseCoeffSizeContainer base_shape_coeff_sz_container,
-                                                                           const tensor_model::tensor_std_float_t * shape_coeff_arr, size_t& shape_coeff_arr_offset, size_t shape_coeff_arr_cap,
-                                                                           local_exception_t * err = nullptr,
-                                                                           const Tag<ShapeBasePromotedFloatType>& shape_base_promotion_tag = Tag<ShapeBasePromotedFloatType>{},
-                                                                           bool has_logit_reuse_tag = true) -> ProcessUnit
+    __device__ constexpr auto two_to_one_project(const ProcessUnit& lhs,
+                                                 const ProcessUnit& rhs,
+                                                 ShapeBaseCoeffSizeContainer base_shape_coeff_sz_container,
+                                                 const tensor_model::tensor_std_float_t * shape_coeff_arr, size_t& shape_coeff_arr_offset, size_t shape_coeff_arr_cap,
+                                                 local_exception_t * err = nullptr,
+                                                 const Tag<ShapeBasePromotedFloatType>& shape_base_promotion_tag = Tag<ShapeBasePromotedFloatType>{},
+                                                 bool has_logit_reuse_tag = true) -> ProcessUnit
     {
         constexpr size_t COMBINED_DIMENSION_SZ = PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ * 2u;
 
@@ -92,15 +94,15 @@ namespace taylor_matrix::cuda_matrix::tensor_process_unit_operation
     }
 
     template <class ShapeBaseCoeffSizeContainer, size_t BATCH_SZ, class ShapeBasePromotedFloatType = tensor_model::tensor_std_float_t>
-    __device__ constexpr __attribute__((noinline)) auto batch_two_to_one_project(const ProcessUnit * lhs_arr,
-                                                                                 const ProcessUnit * rhs_arr,
-                                                                                 const std::integral_constant<size_t, BATCH_SZ> batch_sz,
-                                                                                 ProcessUnit * out_arr,
-                                                                                 ShapeBaseCoeffSizeContainer base_shape_coeff_sz_container,
-                                                                                 const tensor_model::tensor_std_float_t * shape_coeff_arr, size_t& shape_coeff_arr_offset, size_t shape_coeff_arr_cap,
-                                                                                 local_exception_t * err = nullptr,
-                                                                                 const Tag<ShapeBasePromotedFloatType>& shape_base_promotion_tag = Tag<ShapeBasePromotedFloatType>{},
-                                                                                 bool has_logit_reuse_tag = true)
+    __device__ constexpr auto batch_two_to_one_project(const ProcessUnit * lhs_arr,
+                                                       const ProcessUnit * rhs_arr,
+                                                       const std::integral_constant<size_t, BATCH_SZ> batch_sz,
+                                                       ProcessUnit * out_arr,
+                                                       ShapeBaseCoeffSizeContainer base_shape_coeff_sz_container,
+                                                       const tensor_model::tensor_std_float_t * shape_coeff_arr, size_t& shape_coeff_arr_offset, size_t shape_coeff_arr_cap,
+                                                       local_exception_t * err = nullptr,
+                                                       const Tag<ShapeBasePromotedFloatType>& shape_base_promotion_tag = Tag<ShapeBasePromotedFloatType>{},
+                                                       bool has_logit_reuse_tag = true)
     {
         static_assert(BATCH_SZ != 0u);
 
@@ -161,11 +163,11 @@ namespace taylor_matrix::cuda_matrix::tensor_process_unit_operation
 
     template <class ShapeBaseCoeffSizeContainer,
               class ShapeBasePromotedFloatType = tensor_model::tensor_std_float_t>
-    constexpr constexpr auto mono_transform(const ProcessUnit& process_unit,
-                                            ShapeBaseCoeffSizeContainer base_shape_coeff_sz_container,
-                                            const tensor_model::tensor_std_float_t * shape_coeff_arr, size_t& shape_coeff_arr_offset, size_t shape_coeff_arr_cap,
-                                            Tag<ShapeBasePromotedFloatType> shape_base_promotion_tag = Tag<ShapeBasePromotedFloatType>{},
-                                            local_exception_t * err = nullptr) -> ProcessUnit
+    constexpr auto mono_transform(const ProcessUnit& process_unit,
+                                  ShapeBaseCoeffSizeContainer base_shape_coeff_sz_container,
+                                  const tensor_model::tensor_std_float_t * shape_coeff_arr, size_t& shape_coeff_arr_offset, size_t shape_coeff_arr_cap,
+                                  Tag<ShapeBasePromotedFloatType> shape_base_promotion_tag = Tag<ShapeBasePromotedFloatType>{},
+                                  local_exception_t * err = nullptr) -> ProcessUnit
     {
         local_exception_t local_err = SUCCESS;
 
@@ -182,12 +184,12 @@ namespace taylor_matrix::cuda_matrix::tensor_process_unit_operation
 
             if (required_sz > shape_coeff_arr_cap)
             {
-                *err = OTHER_INVALID_ARGUMENT_CODE;
+                *err = INSUFFICIENT_LOGIT_VEC_SIZE_CODE;
                 return {};
             }
 
             rs.logit_vec[i]         = shape_projection::taylor_shape_project(process_unit.logit_vec[i],
-                                                                             std::next(shape_coeff_arr, shape_coeff_arr_offset), base_shape_coeff_sz_container,
+                                                                             next(shape_coeff_arr, shape_coeff_arr_offset), base_shape_coeff_sz_container,
                                                                              shape_base_promotion_tag);
 
             shape_coeff_arr_offset  = required_sz;

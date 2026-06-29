@@ -11,10 +11,12 @@
 #include "utility.h"
 #include <serializer/trivial_serializer.h>
 #include <cuda/std/limits>
+#include <global_config/cuda_device_memory_config.h>
+#include <type_traits>
 
 namespace cuda_management::device_memory
 {
-    class CudaAllocator
+    class HeapAllocator
     {
         public:
 
@@ -45,6 +47,58 @@ namespace cuda_management::device_memory
                 delete[] static_cast<char *>(buf);
             }
     };
+
+    __device__ static constexpr inline uint32_t ON_DEVICE_MEMORY_SZ     = global_config::cuda_device_memory_config::ON_DEVICE_MEMORY_SZ;
+    __device__ static constexpr inline bool USE_SESSION_MEMORY          = global_config::cuda_device_memory_config::USE_SESSION_MEMORY;
+ 
+    __device__ char MEM_POOL[ON_DEVICE_MEMORY_SZ];
+
+    __device__ uint32_t bump_ptr            = 0u;
+    __device__ uint32_t in_use_memory_sz    = 0u;
+
+    //I would not let myself to not implement a bound check, because it is so mandatory that I don't think that we can get away with it
+    //let just keep the must-implement safety feature here for backlog, because it is in the std::abort() category, we can get away with production if careful, but we are not careful  
+
+    //this is different from normal errors of malloc() -> free(), check buffers, it's skill issues, it's strictly in the std::abort() category and we can disable it in production
+    //this is some high-risk errors that need safeguard to std::abort()
+
+    class SessionAllocator
+    {
+        public:
+
+            __device__ inline auto malloc(size_t sz) -> std::add_pointer_t<void>
+            {
+                if (sz == 0u)
+                {
+                    return nullptr;
+                }
+
+                size_t first    = atomicAdd(&bump_ptr, sz) % ON_DEVICE_MEMORY_SZ; 
+                size_t last     = first + sz;
+
+                if (last > ON_DEVICE_MEMORY_SZ)
+                {
+                    first   = atomicAdd(&bump_ptr, sz) % ON_DEVICE_MEMORY_SZ;
+                    last    = first + sz;
+
+                    if (last > ON_DEVICE_MEMORY_SZ)
+                    {
+                        assert(false);
+                    }
+                }
+
+                return MEM_POOL + first;
+            }
+
+            __device__ inline void free(void * buf) noexcept
+            {
+                (void) buf;
+            }
+    };
+
+    using CudaAllocator = std::conditional_t<USE_SESSION_MEMORY,
+                                             SessionAllocator,
+                                             HeapAllocator>;
 
     __device__ static inline constexpr size_t DEFAULT_ALIGNMENT_SZ          = 1u;
     __device__ static inline constexpr size_t DEFAULT_OBJECT_ALIGNMENT_SZ   = alignof(std::max_align_t); 

@@ -11,13 +11,10 @@ namespace cuda_management::kernel_dispatch
 {
     struct SmpSignature{};
 
-    static inline constexpr size_t KERNEL_CONCURRENT_DISPATCH_COUNT = size_t{1} << 4;
+    static inline constexpr size_t KERNEL_CONCURRENT_DISPATCH_COUNT = size_t{1} << 0;
 
-    using semaphore = std::counting_semaphore<KERNEL_CONCURRENT_DISPATCH_COUNT>; 
-
+    using semaphore             = std::counting_semaphore<KERNEL_CONCURRENT_DISPATCH_COUNT>; 
     using SmpSingletonContainer = stdx::singleton_container<std::unique_ptr<semaphore>, SmpSignature>;
-
-    static inline constexpr size_t MAX_THREAD_SZ                    = size_t{1} << 8;
 
     inline void init()
     {
@@ -33,8 +30,36 @@ namespace cuda_management::kernel_dispatch
         SmpSingletonContainer::get() = nullptr;
     }
 
-    constexpr auto get_block_thread(size_t concurrent_dispatch_sz) -> std::pair<size_t, size_t>
+    template <class KernelFunction>
+    inline auto get_block_thread(KernelFunction func,
+                                 size_t concurrent_dispatch_sz) -> std::pair<size_t, size_t>
     {
+        using namespace local_exception;
+
+        int optimal_blk_sz{};
+        int min_grid_sz{};
+
+        cudaError_t err = cudaOccupancyMaxPotentialBlockSize
+        (
+            &min_grid_sz,
+            &optimal_blk_sz,
+            func,
+            0,
+            0
+        );
+
+        if (err != cudaSuccess)
+        {
+            throw cuda_invalid_argument(cudaGetErrorString(err));
+        }
+
+        if (optimal_blk_sz <= 0)
+        {
+            throw cuda_invalid_argument("bad invoke, unable to get cuda metadata");
+        }
+
+        const size_t MAX_THREAD_SZ  = optimal_blk_sz;
+
         if (concurrent_dispatch_sz == 0u)
         {
             return std::make_pair(size_t{0u}, size_t{0u});

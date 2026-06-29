@@ -1,4 +1,6 @@
 //__GIT_INTEGRATION_TAG__
+#define STRONG_MEMORY_ORDERING_FLAG true
+#define DEBUG_MODE_FLAG true
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -49,7 +51,7 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_forward_to_deviation
 
                                                          size_t base_shape_coeff_sz,
                                                          const std::add_pointer_t<tensor_model::tensor_std_float_t> * shape_coeff_arr, size_t * shape_coeff_arr_offset, size_t shape_coeff_arr_cap,
-                                                         
+
                                                          size_t hash_table_sz,
 
                                                          local_exception_t * err,
@@ -78,11 +80,11 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_forward_to_deviation
         }
 
         SplitStackAllocator allocator{};
+        scope_guard scope_grd(&allocator);
+
         local_exception_t local_err = SUCCESS;
 
         {
-            scope_guard scope_grd(&allocator);
-
             auto callback_handler = [&]<size_t BaseSize>(const std::integral_constant<size_t, BaseSize> base_sz_ic)
             {
                 size_t * shape_arr  = std_new_array<size_t>(allocator, matrix_shape_vec.size());
@@ -111,14 +113,12 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_forward_to_deviation
                     assert(false);
                 }
 
-                size_t local_shape_coeff_arr_offset{};
+                size_t local_shape_coeff_arr_offset = 0u;
 
                 if (shape_coeff_arr_offset == nullptr)
                 {
                     shape_coeff_arr_offset = &local_shape_coeff_arr_offset;
                 }
-
-                *shape_coeff_arr_offset = 0u;
 
                 Matrix * arg        = taylor_matrix::cuda_matrix::tensor_matrix_operation::allocate(matrix_shape_vec[0],
                                                                                                     matrix_shape_vec[1],
@@ -183,9 +183,6 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_forward_to_deviation
 
     #endif
 
-    //I think that matrix_arr_sz should be compromised at this site, I'm unsure
-    //this is runtime-deterministic at the function
-
     extern void matrix_transform_to_deviation(tensor_model::tensor_std_float_t ** inp_matrix,
                                               tensor_model::tensor_std_float_t ** expected_matrix, size_t matrix_arr_sz,
 
@@ -212,7 +209,8 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_forward_to_deviation
             std::shared_ptr<local_exception_t> cuda_err     = cuda_management::host_service::make_cuda_object<local_exception_t>(SUCCESS);
             std::shared_ptr<uint32_t> cuda_success_counter  = cuda_management::host_service::make_cuda_object<uint32_t>(0u);
 
-            std::tie(blk_per_grid_sz, thread_per_blk_sz)    = cuda_management::kernel_dispatch::get_block_thread(matrix_arr_sz);
+            std::tie(blk_per_grid_sz, thread_per_blk_sz)    = cuda_management::kernel_dispatch::get_block_thread(matrix_transform_to_deviation_helper,
+                                                                                                                 matrix_arr_sz);
 
             stdx::smp_guard smp_grd(cuda_management::kernel_dispatch::get_semaphore());
 

@@ -16,9 +16,6 @@ namespace sip_hasher
             uint64_t m;
             uint32_t mlen;
         
-            static constexpr uint64_t SIPROUND_ITERATIONS = 2;
-            static constexpr uint64_t FINALIZATION_ROUNDS = 4;
-
             static constexpr uint64_t rotl(uint64_t x, int b)
             {
                 return (x << b) | (x >> (64 - b));
@@ -36,6 +33,7 @@ namespace sip_hasher
 
             constexpr void processBlock(uint64_t block)
             {
+                constexpr uint64_t SIPROUND_ITERATIONS = 2;
                 v3 ^= block;
 
                 for (size_t i = 0u; i < SIPROUND_ITERATIONS; ++i)
@@ -102,6 +100,8 @@ namespace sip_hasher
 
             constexpr uint64_t finalize()
             {
+                constexpr uint64_t FINALIZATION_ROUNDS = 4;
+
                 uint64_t finalBlock = m | (static_cast<uint64_t>(mlen) << 56);
                 processBlock(finalBlock);
         

@@ -1,8 +1,14 @@
+#define STRONG_MEMORY_ORDERING_FLAG true
+#define DEBUG_MODE_FLAG true
+
 #include "cuda_malloc.h"
 #include "generic_allocator.h"
 #include <global_config/cuda_memory_config.h>
 #include <stl_extension/stdx.h>
 #include <memory>
+#include <type_traits>
+#include <iostream>
+#include <cuda_management/local_exception.h>
 
 namespace cuda_management::cuda_malloc
 {
@@ -13,6 +19,14 @@ namespace cuda_management::cuda_malloc
     extern void init()
     {
         stdx::memtransaction_guard tx_grd;
+
+        cudaError_t status  = cudaDeviceSetLimit(cudaLimitStackSize,
+                                                 global_config::cuda_memory_config::CUDA_STACK_MEMORY_SZ);
+
+        if (status != cudaSuccess)
+        {
+            throw cuda_management::local_exception::cuda_invalid_argument(cudaGetErrorString(status));
+        }
 
         if (global_config::cuda_memory_config::CUDA_HAS_HEAP)
         {
@@ -41,7 +55,7 @@ namespace cuda_management::cuda_malloc
         SingletonContainer::get() = nullptr;
     }
 
-    auto get_instance() -> AllocatorInterface *
+    static auto get_instance() -> AllocatorInterface *
     {
         if (SingletonContainer::get() == nullptr)
         {

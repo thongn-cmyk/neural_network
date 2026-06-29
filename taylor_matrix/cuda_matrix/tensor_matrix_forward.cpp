@@ -1,3 +1,6 @@
+#define STRONG_MEMORY_ORDERING_FLAG true
+#define DEBUG_MODE_FLAG true
+
 #include <stdint.h>
 #include <stdlib.h>
 #include <matrix/tensor_model.h>
@@ -105,14 +108,12 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_forward
                     assert(false);
                 }
                 
-                size_t local_shape_coeff_arr_offset = {};
+                size_t local_shape_coeff_arr_offset = 0u;
 
                 if (shape_coeff_arr_offset == nullptr)
                 {
                     shape_coeff_arr_offset = &local_shape_coeff_arr_offset;
                 }
-
-                *shape_coeff_arr_offset = 0u;
 
                 Matrix * arg    = taylor_matrix::cuda_matrix::tensor_matrix_operation::allocate(matrix_shape_vec[0],
                                                                                                 matrix_shape_vec[1],
@@ -235,7 +236,10 @@ namespace taylor_matrix::cuda_matrix::tensor_matrix_forward
 
             std::shared_ptr<local_exception_t> cuda_err     = cuda_management::host_service::make_cuda_object<local_exception_t>(SUCCESS);
             std::shared_ptr<uint32_t> cuda_success_counter  = cuda_management::host_service::make_cuda_object<uint32_t>(0u);
-            std::tie(blk_per_grid_sz, thread_per_blk_sz)    = cuda_management::kernel_dispatch::get_block_thread(matrix_arr_sz);
+            std::tie(blk_per_grid_sz, thread_per_blk_sz)    = cuda_management::kernel_dispatch::get_block_thread(matrix_transform_helper,
+                                                                                                                 matrix_arr_sz);
+            // blk_per_grid_sz                                 = 1;
+            // thread_per_blk_sz                               = matrix_arr_sz;
 
             stdx::smp_guard smp_grd(cuda_management::kernel_dispatch::get_semaphore());
 

@@ -1,3 +1,7 @@
+//__GIT_INTEGRATION_TAG__
+#define STRONG_MEMORY_ORDERING_FLAG true
+#define DEBUG_MODE_FLAG true
+
 #include <stdint.h>
 #include <stdlib.h>
 #include <functional>
@@ -25,7 +29,7 @@ namespace cuda_management::host_service
     {
         #ifdef __CUDACC__
         {
-            cuda_mangement::cuda_malloc::init();
+            cuda_management::cuda_malloc::init();
         }
         #else
         {
@@ -38,7 +42,7 @@ namespace cuda_management::host_service
     {
         #ifdef __CUDACC__
         {
-            cuda_mangement::cuda_malloc::deinit();
+            cuda_management::cuda_malloc::deinit();
         }
         #else
         {
@@ -163,5 +167,3 @@ namespace cuda_management::host_service
         #endif
     }
 }
-
-#endif

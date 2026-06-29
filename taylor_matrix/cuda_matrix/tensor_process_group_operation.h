@@ -65,15 +65,15 @@ namespace taylor_matrix::cuda_matrix::tensor_process_group_operation
     template <class ShapeBaseCoeffSizeContainer,
               class ShapeBasePromotedFloatType = tensor_model::tensor_std_float_t,
               size_t BATCH_SZ = 64u>
-    __device__ constexpr __attribute__((noinline)) auto two_to_one_project(const ProcessGroup& lhs,
-                                                                           const ProcessGroup& rhs,
-                                                                           ShapeBaseCoeffSizeContainer base_shape_coeff_sz_container,
-                                                                           const tensor_model::tensor_std_float_t * shape_coeff_arr, size_t& shape_coeff_arr_offset, size_t shape_coeff_arr_cap,
-                                                                           const Tag<ShapeBasePromotedFloatType>& shape_base_promotion_tag = Tag<ShapeBasePromotedFloatType>{},
-                                                                           bool has_process_unit_logit_reuse_tag = true,
-                                                                           bool has_process_group_logit_reuse_tag = true,
-                                                                           local_exception_t * err = nullptr,
-                                                                           const std::integral_constant<size_t, BATCH_SZ>& batch_sz = std::integral_constant<size_t, BATCH_SZ>{}) -> ProcessGroup
+    __device__ constexpr auto two_to_one_project(const ProcessGroup& lhs,
+                                                 const ProcessGroup& rhs,
+                                                 ShapeBaseCoeffSizeContainer base_shape_coeff_sz_container,
+                                                 const tensor_model::tensor_std_float_t * shape_coeff_arr, size_t& shape_coeff_arr_offset, size_t shape_coeff_arr_cap,
+                                                 const Tag<ShapeBasePromotedFloatType>& shape_base_promotion_tag = Tag<ShapeBasePromotedFloatType>{},
+                                                 bool has_process_unit_logit_reuse_tag = true,
+                                                 bool has_process_group_logit_reuse_tag = true,
+                                                 local_exception_t * err = nullptr,
+                                                 const std::integral_constant<size_t, BATCH_SZ>& batch_sz = std::integral_constant<size_t, BATCH_SZ>{}) -> ProcessGroup
     {
         constexpr size_t TOTAL_ITERATION_SZ         = tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ * tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ;
         constexpr size_t REVOLUTION_SZ              = TOTAL_ITERATION_SZ / BATCH_SZ;

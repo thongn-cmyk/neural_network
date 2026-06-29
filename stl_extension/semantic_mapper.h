@@ -7,8 +7,8 @@
 namespace stdx
 {
     template <class ToType, class FromType, class BufferContainer = std::string>
-    __attribute__((noinline)) auto semantic_map(const FromType& fr_obj,
-                                                const stdx::Tag<BufferContainer>& tag = stdx::Tag<BufferContainer>{}) -> ToType
+    inline __attribute__((noinline)) auto semantic_map(const FromType& fr_obj,
+                                                       const stdx::Tag<BufferContainer>& tag = stdx::Tag<BufferContainer>{}) -> ToType
     {
         auto str_data   = dg::network_compact_serializer::dgstd_serialize<BufferContainer>(fr_obj);
         ToType rs       = dg::network_compact_serializer::dgstd_deserialize<ToType>(str_data);
@@ -25,18 +25,18 @@ namespace stdx
 
         public:
 
-            AutoMapperContainer(T obj): obj(std::move(obj)){}
+            inline AutoMapperContainer(T obj): obj(std::move(obj)){}
 
             template <class U>
-            operator U() const
+            inline operator U() const
             {
                 return semantic_map<U>(obj, stdx::Tag<BufferContainer>{});
             }
     };
 
     template <class FromType, class BufferContainer = std::string>
-    auto to_automap_object(FromType&& fr_obj,
-                           const stdx::Tag<BufferContainer>& tag = stdx::Tag<BufferContainer>{}) -> AutoMapperContainer<std::decay_t<FromType>, BufferContainer>
+    inline auto to_automap_object(FromType&& fr_obj,
+                                  const stdx::Tag<BufferContainer>& tag = stdx::Tag<BufferContainer>{}) -> AutoMapperContainer<std::decay_t<FromType>, BufferContainer>
     {
         return AutoMapperContainer<std::decay_t<FromType>, BufferContainer>(std::forward<FromType>(fr_obj));
     }

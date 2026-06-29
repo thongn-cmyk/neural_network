@@ -80,7 +80,7 @@ void test_coroutine_no_delay()
     size_t expected_value   = size_t{1} << 20;
 
     std::shared_ptr<Counter> counter_2 = std::make_shared<Counter>(&counter, expected_value);
-    coroutine_x::run_promise(counter_2, coroutine_x::COMPUTE_COROUTINE).wait();
+    coroutine_x::run_promise(counter_2, coroutine_x::COMPUTE_COROUTINE)->wait();
 
     std::cout << "counter > " << counter << " expected value > " << expected_value << std::endl;
 
@@ -101,7 +101,7 @@ void test_coroutine_random_delay()
     size_t expected_value   = size_t{1} << 10;
 
     std::shared_ptr<Counter2> counter_2 = std::make_shared<Counter2>(&counter, expected_value);
-    coroutine_x::run_promise(counter_2, coroutine_x::COMPUTE_COROUTINE).wait();
+    coroutine_x::run_promise(counter_2, coroutine_x::COMPUTE_COROUTINE)->wait();
 
     std::cout << "counter > " << counter << " expected value > " << expected_value << std::endl;
 
@@ -187,18 +187,25 @@ void test_one_coroutine_mixed()
         test_vec.push_back({coroutineable, counter});
     }
 
-    std::vector<std::pair<coroutine_x::CoroutineWaiter, std::shared_ptr<size_t>>> waiter_vec{};
+    std::vector<std::pair<std::shared_ptr<coroutine_x::CoroutineWaitableInterface>, std::shared_ptr<size_t>>> waiter_vec{};
 
     for (const auto& [coroutineable, counter]: test_vec)
     {
-        waiter_vec.push_back({coroutine_x::run_promise(coroutineable, get_random_coroutine_topic()), counter});
+        waiter_vec.push_back
+        (
+            std::make_pair
+            (
+                coroutine_x::run_promise(coroutineable, get_random_coroutine_topic()),
+                counter
+            )
+        );
     }
 
     std::shuffle(waiter_vec.begin(), waiter_vec.end(), std::mt19937_64{static_cast<uint32_t>(std::chrono::system_clock::now().time_since_epoch().count())});
 
     for (auto& [waitable, expected_value]: waiter_vec)
     {
-        waitable.wait();
+        waitable->wait();
 
         if (*expected_value != 0u)
         {

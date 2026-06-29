@@ -7,7 +7,7 @@
 #include <stdlib.h>
 #include <cuda_runtime.h>
 
-namespace cuda_mangement::cuda_malloc
+namespace cuda_management::cuda_malloc
 {
     struct NormalAllocatorConfig
     {

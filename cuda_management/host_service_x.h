@@ -52,6 +52,9 @@ namespace cuda_management::host_service_x
             inline PartialBumpAllocator(): PartialBumpAllocator(DEFAULT_BUMP_ALLOCATION_BUCKET_SZ,
                                                                 DEFAULT_BUMP_ALLOCATION_THRESHOLD){}
 
+            inline PartialBumpAllocator(const PartialBumpAllocator&) = delete;
+            inline PartialBumpAllocator& operator =(const PartialBumpAllocator&) = delete;
+
             inline auto allocate(size_t sz) -> std::shared_ptr<char[]>
             {
                 if (sz > this->bump_allocation_threshold)
