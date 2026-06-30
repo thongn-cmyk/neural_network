@@ -70,7 +70,6 @@ namespace taylor_matrix::host_matrix::the_host_matrix
             tensor_std_float_t pe_frequency_multiplier;
             tensor_std_float_t pe_amplitude_discrete_unit;
             size_t pe_dedicated_pe_sz;
-            std::optional<size_t> project_concurrent_sz;
 
         public:
 
@@ -96,25 +95,23 @@ namespace taylor_matrix::host_matrix::the_host_matrix
 
                           tensor_std_float_t pe_frequency_multiplier,
                           tensor_std_float_t pe_amplitude_discrete_unit,
-                          size_t pe_dedicated_pe_sz,
-                          std::optional<size_t> project_concurrent_sz) noexcept: shape_vec(std::move(shape_vec)),
-                                                                                 focal_sz_vec(std::move(focal_sz_vec)),
-                                                                                 focal_suffix_map(std::move(focal_suffix_map)),
-                                                                                 accum_suffix_map(std::move(accum_suffix_map)),
-                                                                                 rotation_sz_vec(std::move(rotation_sz_vec)),
-                                                                                 parameter_bound_ratio_vec(std::move(parameter_bound_ratio_vec)),
-                                                                                 has_process_unit_logit_reuse_tag(has_process_unit_logit_reuse_tag),
-                                                                                 has_process_group_logit_reuse_tag(has_process_group_logit_reuse_tag),
-                                                                                 has_being_logit_reuse_tag(has_being_logit_reuse_tag),
-                                                                                 has_base_matrix_logit_reuse_tag(has_base_matrix_logit_reuse_tag),
+                          size_t pe_dedicated_pe_sz) noexcept: shape_vec(std::move(shape_vec)),
+                                                               focal_sz_vec(std::move(focal_sz_vec)),
+                                                               focal_suffix_map(std::move(focal_suffix_map)),
+                                                               accum_suffix_map(std::move(accum_suffix_map)),
+                                                               rotation_sz_vec(std::move(rotation_sz_vec)),
+                                                               parameter_bound_ratio_vec(std::move(parameter_bound_ratio_vec)),
+                                                               has_process_unit_logit_reuse_tag(has_process_unit_logit_reuse_tag),
+                                                               has_process_group_logit_reuse_tag(has_process_group_logit_reuse_tag),
+                                                               has_being_logit_reuse_tag(has_being_logit_reuse_tag),
+                                                               has_base_matrix_logit_reuse_tag(has_base_matrix_logit_reuse_tag),
 
-                                                                                 taylor_coeff_2d_vec(std::move(taylor_coeff_2d_vec)),
-                                                                                 shape_coeff_2d_vec(std::move(shape_coeff_2d_vec)),
+                                                               taylor_coeff_2d_vec(std::move(taylor_coeff_2d_vec)),
+                                                               shape_coeff_2d_vec(std::move(shape_coeff_2d_vec)),
 
-                                                                                 pe_frequency_multiplier(pe_frequency_multiplier),
-                                                                                 pe_amplitude_discrete_unit(pe_amplitude_discrete_unit),
-                                                                                 pe_dedicated_pe_sz(pe_dedicated_pe_sz),
-                                                                                 project_concurrent_sz(project_concurrent_sz){}
+                                                               pe_frequency_multiplier(pe_frequency_multiplier),
+                                                               pe_amplitude_discrete_unit(pe_amplitude_discrete_unit),
+                                                               pe_dedicated_pe_sz(pe_dedicated_pe_sz){}
 
             auto project(const std::vector<std::shared_ptr<tensor_model::Matrix>>& matrix_vec) -> std::vector<std::shared_ptr<tensor_model::Matrix>>
             {
@@ -176,9 +173,9 @@ namespace taylor_matrix::host_matrix::the_host_matrix
                                                                                     this->has_base_matrix_logit_reuse_tag);
                 };
 
-                if (this->project_concurrent_sz.has_value())
+                if (true)
                 {
-                    async_x::sequential_parallel_group_launch_2(enumerated_matrix_vec.begin(), enumerated_matrix_vec.end(), par_func, this->project_concurrent_sz.value());
+                    async_x::sequential_parallel_launch(enumerated_matrix_vec.begin(), enumerated_matrix_vec.end(), par_func);
                 }
                 else
                 {
@@ -659,13 +656,6 @@ namespace taylor_matrix::host_matrix::the_host_matrix
             static inline const size_t MID_ENTROPY_HASH_TABLE_SZ    = 4;
             static inline const size_t HIGH_ENTROPY_HASH_TABLE_SZ   = 4;
 
-            static inline const std::unordered_map<uint8_t, std::optional<size_t>> CONCURRENT_WORKER_MAP =
-            {
-                {LOW_COMPUTE, std::optional<size_t>(std::nullopt)},
-                {MID_COMPUTE, std::optional<size_t>(std::nullopt)},
-                {HIGH_COMPUTE, std::optional<size_t>(std::nullopt)}
-            };
-
             template <size_t TAYLOR_BASE_COEFF_SZ, size_t SHAPE_BASE_COEFF_SZ,
                     class TaylorBasePromotedFloatType = tensor_std_float_t, class ShapeBasePromotedFloatType = tensor_std_float_t>
             static auto make_the_matrix(const std::vector<size_t>& matrix_shape,
@@ -685,8 +675,7 @@ namespace taylor_matrix::host_matrix::the_host_matrix
                                         bool has_process_unit_logit_reuse_tag = true,
                                         bool has_process_group_logit_reuse_tag = true,
                                         bool has_being_logit_reuse_tag = true,
-                                        bool has_base_matrix_logit_reuse_tag = true,
-                                        std::optional<size_t> project_concurrent_sz = 8u) -> std::unique_ptr<MatrixInterface>
+                                        bool has_base_matrix_logit_reuse_tag = true) -> std::unique_ptr<MatrixInterface>
             {
                 constexpr size_t INITIAL_LOGIT_VEC_CAPACITY = size_t{1} << 10;
                 constexpr size_t ITERATION_MULTIPLIER       = size_t{1} << 2;
@@ -746,8 +735,7 @@ namespace taylor_matrix::host_matrix::the_host_matrix
                                              stdx::make_2d_vector(hash_table_sz, coeff_vec_sz, 0.f),
                                              stdx::make_2d_vector(hash_table_sz, shape_coeff_vec_sz, 0.f),
 
-                                             pe_frequency_multiplier, pe_amplitude_discrete_unit, pe_dedicated_pe_sz,
-                                             project_concurrent_sz);
+                                             pe_frequency_multiplier, pe_amplitude_discrete_unit, pe_dedicated_pe_sz);
 
                         return std::make_unique<decltype(matrix)>(std::move(matrix));
                     }
@@ -887,8 +875,7 @@ namespace taylor_matrix::host_matrix::the_host_matrix
                                        this->get_has_process_logit_reuse_tag(),
                                        this->get_has_process_group_logit_reuse_tag(),
                                        this->get_has_being_logit_reuse_tag(),
-                                       this->get_has_base_matrix_logit_reuse_tag(),
-                                       this->get_projection_concurrent_size());
+                                       this->get_has_base_matrix_logit_reuse_tag());
             }
 
         private:
@@ -1201,11 +1188,6 @@ namespace taylor_matrix::host_matrix::the_host_matrix
             auto get_has_base_matrix_logit_reuse_tag() -> bool
             {
                 return true;
-            }
-
-            auto get_projection_concurrent_size() -> std::optional<size_t>
-            {
-                return CONCURRENT_WORKER_MAP.at(this->compute_option);
             }
 
             static auto shape_to_size(const std::vector<size_t>& shape) -> size_t

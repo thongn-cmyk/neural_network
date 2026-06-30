@@ -1,0 +1,33 @@
+=== TRAINING REPORT ===
+
+--- Configuration ---
+Matrix Configuration:
+  Operable Size: 16
+  Base Projection Size: 2
+
+Token Configuration:
+  Input Dimension: 16
+  Input Size: 64
+  Actual Dimension: 16
+  Input Distribution: 0
+  Training Strategy: 0
+
+--- Training Scores ---
+Total Scores: 10
+Minimum Score: 0.625000
+Maximum Score: 0.781250
+Average Score: 0.718750
+
+Detailed Scores (first 10 of 10):
+  [0]: 0.625000
+  [1]: 0.671875
+  [2]: 0.750000
+  [3]: 0.718750
+  [4]: 0.750000
+  [5]: 0.781250
+  [6]: 0.750000
+  [7]: 0.718750
+  [8]: 0.718750
+  [9]: 0.703125
+
+=== END REPORT ===
