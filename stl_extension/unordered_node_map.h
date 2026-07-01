@@ -44,7 +44,8 @@ namespace unordered_map_variants{
         }
         #else
         {
-            static_assert(FALSE_VAL<>);
+            assert(false);
+            // static_assert(FALSE_VAL<T>);
         }
         #endif
     }

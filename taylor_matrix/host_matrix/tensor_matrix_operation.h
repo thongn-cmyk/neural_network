@@ -511,6 +511,26 @@ namespace taylor_matrix::host_matrix::tensor_matrix_operation
     }
 
     template <class TaylorBaseCoeffSizeContainer,
+              class TaylorBasePromotedFloatType = tensor_model::tensor_std_float_t,
+              class Allocator = std::allocator<char>>
+    constexpr __attribute__((noinline)) auto feed_forward_transform(const std::shared_ptr<tensor_model::Matrix>& matrix,
+                                                                    TaylorBaseCoeffSizeContainer base_coeff_sz_container,
+                                                                    const tensor_model::tensor_std_float_t * coeff_arr, size_t& coeff_arr_offset, size_t coeff_arr_cap,
+                                                                    const stdx::Tag<TaylorBasePromotedFloatType>& taylor_base_promotion_tag = stdx::Tag<TaylorBasePromotedFloatType>{},
+                                                                    const Allocator& allocator = Allocator()) -> std::shared_ptr<tensor_model::Matrix>
+    {
+        std::shared_ptr<tensor_model::Matrix> y = mono_transform(matrix,
+                                                                 base_coeff_sz_container,
+                                                                 coeff_arr, coeff_arr_offset, coeff_arr_cap,
+                                                                 taylor_base_promotion_tag,
+                                                                 allocator);
+
+        std::shared_ptr<tensor_model::Matrix> avg_arr[]{matrix, y};
+
+        return avg(avg_arr, 2u, allocator);
+    }
+
+    template <class TaylorBaseCoeffSizeContainer,
               class ShapeBaseCoeffSizeContainer,
               class TaylorBasePromotedFloatType = tensor_model::tensor_std_float_t,
               class ShapeBasePromotedFloatType = tensor_model::tensor_std_float_t,
@@ -560,6 +580,7 @@ namespace taylor_matrix::host_matrix::tensor_matrix_operation
             const size_t saved_shape_coeff_arr_offset   = shape_coeff_arr_offset;
 
             size_t hash_idx                             = get_hash_index(matrix_0, transformed_counter, hash_table_sz);
+            transformed_counter                         += 1;
 
             std::shared_ptr<BeingUnit> lhs = tensor_being_unit_operation::left_major_intercourse_being_unit(matrix->being_vec[0],
                                                                                                             matrix->being_vec[1],
@@ -574,21 +595,14 @@ namespace taylor_matrix::host_matrix::tensor_matrix_operation
                                                                                                             has_being_logit_reuse_tag,
                                                                                                             allocator);
 
-            std::shared_ptr<BeingUnit> lhs_single   = tensor_being_unit_operation::mono_transform(matrix->being_vec[0],
-                                                                                                  base_coeff_sz_container,
-                                                                                                  coeff_arr[hash_idx], coeff_arr_offset, coeff_arr_cap,
-                                                                                                  taylor_base_promotion_tag,
-                                                                                                  allocator);
-
-            transformed_counter += 1;
-
             if (has_base_matrix_logit_reuse_tag)
             {
                 coeff_arr_offset        = saved_coeff_arr_offset;
                 shape_coeff_arr_offset  = saved_shape_coeff_arr_offset;
             }
 
-            hash_idx    = get_hash_index(matrix_0, transformed_counter, hash_table_sz);
+            hash_idx            = get_hash_index(matrix_0, transformed_counter, hash_table_sz);
+            transformed_counter += 1;
 
             std::shared_ptr<BeingUnit> rhs = tensor_being_unit_operation::left_major_intercourse_being_unit(matrix->being_vec[1],
                                                                                                             matrix->being_vec[0],
@@ -602,24 +616,24 @@ namespace taylor_matrix::host_matrix::tensor_matrix_operation
                                                                                                             has_logit_group_logit_reuse_tag,
                                                                                                             has_being_logit_reuse_tag,
                                                                                                             allocator);
-
-            std::shared_ptr<BeingUnit> rhs_single   = tensor_being_unit_operation::mono_transform(matrix->being_vec[1],
-                                                                                                  base_coeff_sz_container,
-                                                                                                  coeff_arr[hash_idx], coeff_arr_offset, coeff_arr_cap,
-                                                                                                  taylor_base_promotion_tag,
-                                                                                                  allocator);
-
+            hash_idx            = get_hash_index(matrix_0, transformed_counter, hash_table_sz);
             transformed_counter += 1;
-            
-            decltype(lhs) lhs_combined[]{lhs, lhs_single};
-            decltype(rhs) rhs_combined[]{rhs, rhs_single};
+
+            decltype(lhs) lhs_combined[]{lhs, matrix->being_vec[0]};
+            decltype(rhs) rhs_combined[]{rhs, matrix->being_vec[1]};
             
             auto final_lhs  = tensor_being_unit_operation::avg(lhs_combined, 2u, allocator);
             auto final_rhs  = tensor_being_unit_operation::avg(rhs_combined, 2u, allocator);
+            
+            std::shared_ptr<Matrix> tmp = std::allocate_shared<Matrix>(allocator,
+                                                                       Matrix{.being_vec       = to_shared_array(stdx::transparent_vector<std::shared_ptr<BeingUnit>, Allocator>{final_lhs, final_rhs}, allocator),
+                                                                               .being_vec_sz    = 2u});
 
-            return std::allocate_shared<Matrix>(allocator,
-                                                Matrix{.being_vec       = to_shared_array(stdx::transparent_vector<std::shared_ptr<BeingUnit>, Allocator>{final_lhs, final_rhs}, allocator),
-                                                       .being_vec_sz    = 2u});
+            return feed_forward_transform(tmp,
+                                          base_coeff_sz_container,
+                                          coeff_arr[hash_idx], coeff_arr_offset, coeff_arr_cap,
+                                          taylor_base_promotion_tag,
+                                          allocator);
         }
 
         if (focal_sz_vec.empty())
@@ -758,19 +772,15 @@ namespace taylor_matrix::host_matrix::tensor_matrix_operation
             }
         }
 
-        size_t hash_idx                     = get_hash_index(matrix_0, transformed_counter, hash_table_sz);
-        transformed_counter                 += 1;
+        size_t hash_idx             = get_hash_index(matrix_0, transformed_counter, hash_table_sz);
+        transformed_counter         += 1;
+        std::shared_ptr<Matrix> tmp = series_normalize(incremental_matrix_vec.data(), incremental_matrix_vec.size(), allocator);
 
-        std::shared_ptr<Matrix> tmp         = series_normalize(incremental_matrix_vec.data(), incremental_matrix_vec.size(), allocator);
-        std::shared_ptr<Matrix> mono_tmp    = mono_transform(tmp,
-                                                             base_coeff_sz_container,
-                                                             coeff_arr[hash_idx], coeff_arr_offset, coeff_arr_cap,
-                                                             taylor_base_promotion_tag,
-                                                             allocator);
-
-        std::shared_ptr<Matrix> tmp_arr[]{tmp, mono_tmp};
-
-        return avg(tmp_arr, 2u, allocator);
+        return feed_forward_transform(tmp,
+                                      base_coeff_sz_container,
+                                      coeff_arr[hash_idx], coeff_arr_offset, coeff_arr_cap,
+                                      taylor_base_promotion_tag,
+                                      allocator);
     }
 }
 

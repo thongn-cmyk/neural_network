@@ -2,32 +2,32 @@
 
 --- Configuration ---
 Matrix Configuration:
-  Operable Size: 16
-  Base Projection Size: 4
+  Operable Size: 64
+  Base Projection Size: 6
 
 Token Configuration:
   Input Dimension: 16
   Input Size: 64
-  Actual Dimension: 16
+  Actual Dimension: 64
   Input Distribution: 1
   Training Strategy: 1
 
 --- Training Scores ---
 Total Scores: 10
-Minimum Score: 0.609375
-Maximum Score: 0.625000
-Average Score: 0.615625
+Minimum Score: 0.671875
+Maximum Score: 0.734375
+Average Score: 0.726562
 
 Detailed Scores (first 10 of 10):
-  [0]: 0.609375
-  [1]: 0.625000
-  [2]: 0.625000
-  [3]: 0.625000
-  [4]: 0.625000
-  [5]: 0.609375
-  [6]: 0.609375
-  [7]: 0.609375
-  [8]: 0.609375
-  [9]: 0.609375
+  [0]: 0.671875
+  [1]: 0.718750
+  [2]: 0.734375
+  [3]: 0.734375
+  [4]: 0.734375
+  [5]: 0.734375
+  [6]: 0.734375
+  [7]: 0.734375
+  [8]: 0.734375
+  [9]: 0.734375
 
 === END REPORT ===

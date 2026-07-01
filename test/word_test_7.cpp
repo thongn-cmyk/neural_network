@@ -83,7 +83,7 @@ auto randomize_int(size_t first, size_t last) -> size_t
 
 auto randomize_bool() -> bool
 {
-    return randomize_int(0u, 2) == 1;
+    return randomize_int(0u, 32) < 16;
 }
 
 template <class T>
@@ -931,6 +931,38 @@ class TheHostMatrixFactory2
 
 //this is concluded after reasoning that the only deliverable in the case is to increase single string saturation (but not breaking string properties by using sin(x)/x waves or non-continuous hacks)
 
+//what we observed is that there are two distinct interferences:
+    //first is the operating dimension and training strategy
+    //second is the input distribution
+
+//it seems that more operating dimension => better
+//parity training strategy (a version of binary cross entropy) => better
+
+//if 000...111 => better (000 or 111 => closer in the matrix distance => amplify the comtext of the training logits)
+//the 0 and the 1 in 000...111 too far away => bad, because if I mean 1, 1 have to travel half the world to mean it
+    //counter strategy 000...111, 000...111, ... => optimal 
+    //number of regions becomes optimizable
+
+//input distribution
+//three representations:
+    //row-aligned
+    //or even-spaced
+    //or row-aligned and even-spaced
+
+//even-spaced => make room for other words to mean something first before combining them
+//there is a threshold before that has destructive interference
+
+//that is where row-aligned kicks in, to make sure that relevant inputs are stayed together
+
+//I rather think that instead of wasting time figuring things out
+//this can be run-time optimizable
+
+//we'd stick to the goal of finding configuration that can withhold 1024 high entropy tokens on a single string (this is the point)
+//single string optimization is important because we can apply dynamic programming on the string (whereas with hashing interpolation we can't)
+
+//ok, one more continuous optimzation
+//we are going to do cubic quantization + interpolation
+
 static inline const size_t INPUT_DIMENSION_SZ   = 16;
 static inline const size_t INPUT_SZ             = 64u;
 
@@ -967,7 +999,6 @@ static inline const std::unordered_map<size_t, std::vector<size_t>> SHAPE_MAP =
 
 static inline const std::vector<size_t> DIMENSION_SZ_OPTIMIZABLE_VEC =
 {
-    16,
     64,
     512
 };
@@ -985,7 +1016,7 @@ static inline const uint8_t TRAINING_STRATEGY_FOUR_ADJECENT_REGION_PARITY   = 2;
 
 static inline const std::vector<uint8_t> TRAINING_STRATEGY_VEC  =
 {
-    TRAINING_STRATEGY_GLOBAL_PARITY,
+    // TRAINING_STRATEGY_GLOBAL_PARITY,
     TRAINING_STRATEGY_TWO_ADJECENT_REGION_PARITY,
     TRAINING_STRATEGY_FOUR_ADJECENT_REGION_PARITY
 };
@@ -1339,7 +1370,7 @@ auto get_parity_distance(const std::shared_ptr<tensor_model::Matrix>& lhs,
 
     for (size_t i = 0u; i < rhs_flat_tensor_vec.size(); ++i)
     {
-        if (rhs_flat_tensor_vec[i])
+        if (rhs_flat_tensor_vec[i] == 1)
         {
             rhs_true_sum    += 1;
             lhs_true_sum    += lhs_flat_tensor_vec[i];
@@ -1395,7 +1426,7 @@ auto is_same_parity(const std::shared_ptr<tensor_model::Matrix>& lhs,
     double lhs_parity       = lhs_true_sum - lhs_false_sum;
     double rhs_parity       = rhs_true_sum - rhs_false_sum;
     
-    return lhs_parity >= 0;
+    return lhs_parity > 0;
 }
 
 auto get_optimizer() -> std::unique_ptr<matrix_optimizer_subsystem::CoordinatedSearchOptimizerEngine>
@@ -1442,7 +1473,7 @@ class PointPullMatrixEvaluator: public virtual matrix_evaluator::MatrixEvaluator
                 rs += get_parity_distance(out, expected_out);
             }
 
-            return rs;
+            return rs / std::pow(get_score(matrix), 2);
         }
 
         auto get_score(the_matrix::MatrixInterface& matrix) -> double
@@ -1486,6 +1517,13 @@ auto optimize(const TrainingConfig& config,
     std::unique_ptr<PointPullMatrixEvaluator> matrix_evaluator                              = std::make_unique<PointPullMatrixEvaluator>(projection_pair_vec);
     common_exception::CancellationToken cancellation_token                                  = {};
     TrainingReport training_report                                                          = {};
+
+    {
+        double optimized_deviation  = matrix_evaluator->get_deviation(*matrix);
+        double score                = matrix_evaluator->get_score(*matrix);
+        
+        std::cout << "i > " << -1 << " deviation > " << optimized_deviation << " score > " << score << "\n";
+    }
 
     for (size_t i = 0u; i < epoch_sz; ++i)
     {
