@@ -964,7 +964,7 @@ class TheHostMatrixFactory2
 //we are going to do cubic quantization + interpolation
 
 static inline const size_t INPUT_DIMENSION_SZ   = 16;
-static inline const size_t INPUT_SZ             = 64u;
+static inline const size_t INPUT_SZ             = 64;
 
 static inline const std::unordered_map<size_t, std::vector<size_t>> SHAPE_MAP = 
 {
@@ -1068,7 +1068,7 @@ struct TrainingReport
     std::vector<Score> score_vec;
 };
 
-static inline const size_t TRAINING_OPTIMIZATION_SZ     = 10;
+static inline const size_t TRAINING_OPTIMIZATION_SZ     = 20;
 static inline const std::filesystem::path OUTPUT_FOLDER = "/Users/megazone/Downloads/SeriousBillionDollarProject/src/test/word_test_output";
 
 auto get_matrix_config_vector() -> std::vector<MatrixConfig>
@@ -1297,13 +1297,13 @@ auto get_training_pair_vector(const TrainingTokenConfig& training_token_config) 
         throw std::invalid_argument("bad token unit size, 0");
     }
 
-    size_t replica_sz       = token_sz / token_unit_sz;
+    size_t replica_sz       = token_sz / 1;
     auto rs                 = std::vector<std::pair<std::shared_ptr<tensor_model::Matrix>,
                                                     std::shared_ptr<tensor_model::Matrix>>>();
 
     for (size_t i = 0u; i < replica_sz; ++i)
     {
-        std::vector<std::vector<bool>> token_vec    = to_one_bit_different_set(randomize_bit_vector(token_unit_sz));
+        std::vector<std::vector<bool>> token_vec    = {randomize_bit_vector(token_unit_sz)};
 
         for (const std::vector<bool>& token: token_vec)
         {
@@ -1347,6 +1347,33 @@ auto get_training_pair_vector(const TrainingTokenConfig& training_token_config) 
     return rs;
 }
 
+auto get_deviation(const std::vector<tensor_std_float_t>& arg) -> double
+{
+    if (arg.size() == 0u)
+    {
+        std::abort();
+    }
+
+    double total_value  = 0;
+
+    for (const auto& e: arg)
+    {
+        total_value += e;
+    }
+
+    double mean_value   = total_value / arg.size();
+    double deviation    = 0;
+
+    for (const auto& e: arg)
+    {
+        deviation += std::pow(e - mean_value, 2);
+    }
+
+    deviation   /= arg.size();
+
+    return deviation;
+}
+
 auto get_parity_distance(const std::shared_ptr<tensor_model::Matrix>& lhs,
                          const std::shared_ptr<tensor_model::Matrix>& rhs) -> double
 {
@@ -1368,24 +1395,33 @@ auto get_parity_distance(const std::shared_ptr<tensor_model::Matrix>& lhs,
     double rhs_false_sum    = 0;
     double rhs_true_sum     = 0;
 
+    std::vector<tensor_std_float_t> true_vec{};
+    std::vector<tensor_std_float_t> false_vec{};
+
     for (size_t i = 0u; i < rhs_flat_tensor_vec.size(); ++i)
     {
         if (rhs_flat_tensor_vec[i] == 1)
         {
             rhs_true_sum    += 1;
             lhs_true_sum    += lhs_flat_tensor_vec[i];
+
+            true_vec.push_back(rhs_flat_tensor_vec[i]);
         }
         else
         {
             rhs_false_sum   += 0;
             lhs_false_sum   += lhs_flat_tensor_vec[i];
+
+            false_vec.push_back(lhs_flat_tensor_vec[i]);
         }
     }
 
-    double lhs_parity       = lhs_true_sum - lhs_false_sum;
-    double rhs_parity       = rhs_true_sum - rhs_false_sum;
+    double lhs_parity       = lhs_true_sum / true_vec.size() - lhs_false_sum / false_vec.size();
+    double rhs_parity       = 1;
 
-    return std::pow(lhs_parity - rhs_parity, 2);
+    double deviation        = get_deviation(true_vec) + get_deviation(false_vec);
+
+    return std::pow(lhs_parity - rhs_parity, 2) * deviation;  //I suspect that we are most likely stuck at the 3d projection (2 -> 1), we'd work on this later, this is very important
 }
 
 auto is_same_parity(const std::shared_ptr<tensor_model::Matrix>& lhs,
@@ -1437,8 +1473,8 @@ auto get_optimizer() -> std::unique_ptr<matrix_optimizer_subsystem::CoordinatedS
         {
             .matrix_cache_map_cap                       = randomize_optional_int<uint64_t>(0, size_t{1} << 4),
             .time_machine_cache_map_cap                 = randomize_optional_int<uint64_t>(0, size_t{1} << 4),
-            .optimization_epoch_sz                      = 128ULL,
-            .optimization_step_sz                       = 4ULL,
+            .optimization_epoch_sz                      = 32ULL,
+            .optimization_step_sz                       = 16ULL,
             .optimization_loop_sz                       = 2ULL
         }
     );

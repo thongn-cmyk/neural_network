@@ -9,7 +9,7 @@
 #include <numbers>
 #include <stdexcept>
 #include <bit>
-#include "quantization_machine.h"
+#include "exponential_quantization_machine.h"
 
 namespace taylor_matrix::host_matrix::shape_projection
 {
@@ -108,6 +108,8 @@ namespace taylor_matrix::host_matrix::shape_projection
         return std::copysign(std::bit_cast<double>(u_val), x);
     }
 
+    //
+
     template <class FloatType, class SzContainer, class PromotedFloatType = FloatType, bool HasBoundCheck = true>
     constexpr auto base_taylor_raw_shape_project(FloatType x,
                                                  const FloatType * coeff_arr, SzContainer coeff_arr_sz_container,
@@ -152,9 +154,9 @@ namespace taylor_matrix::host_matrix::shape_projection
         return base_taylor_raw_shape_project(x, coeff_arr, coeff_arr_sz_container, promotion_tag, std::integral_constant<bool, true>{});
     }
 
-    template <class FloatType, class BatchSizeContainer, class SzContainer, class PromotedFloatType, bool HasBoundCheck = false>
+    template <class FloatType, class BatchSizeContainer, class CoeffArrSizeContainer, class PromotedFloatType, bool HasBoundCheck = false>
     constexpr void base_batch_taylor_raw_shape_project(const FloatType * x_arr, BatchSizeContainer x_arr_sz_container,
-                                                       const FloatType * coeff_arr, SzContainer coeff_arr_sz_container,
+                                                       const FloatType * coeff_arr, CoeffArrSizeContainer coeff_arr_sz_container,
                                                        PromotedFloatType * y_arr,
                                                        const std::integral_constant<bool, HasBoundCheck>& bound_check = std::integral_constant<bool, HasBoundCheck>{})
     {
@@ -163,9 +165,95 @@ namespace taylor_matrix::host_matrix::shape_projection
 
         for (size_t i = 0u; i < x_arr_sz_container.get(); ++i)
         {
-            y_arr[i] = base_taylor_raw_shape_project(x_arr[i], coeff_arr, coeff_arr_sz_container, stdx::Tag<PromotedFloatType>{}, bound_check);
+            y_arr[i] = base_taylor_raw_shape_project(x_arr[i],
+                                                     coeff_arr, coeff_arr_sz_container,
+                                                     stdx::Tag<PromotedFloatType>{},
+                                                     bound_check);
         }
     }
+
+    //
+
+    //I'd get this proof of concept done today, I guarantee yall to have 10000 random tokens/ string, but we'd need heavy interpolation, uniformly and exponentially
+
+    constexpr auto get_cubic_interpolated_taylor_raw_shape_projection_size(size_t base_coeff_sz) -> size_t
+    {
+        using QuantizationMachine   = taylor_matrix::host_matrix::quantization_machine::StandardCubicInterpolationExponentialQuantizationMachine;
+
+        return base_coeff_sz * QuantizationMachine{}.quantization_size();
+    }
+
+    template <class FloatType, class CoeffArrBaseSizeContainer, class PromotedFloatType = FloatType, bool HasBoundCheck = true>
+    constexpr auto base_cubic_interpolated_taylor_raw_shape_project(FloatType x, CoeffArrBaseSizeContainer coeff_arr_base_sz_container,
+                                                                    const FloatType * coeff_arr, size_t& coeff_arr_offset, size_t coeff_arr_cap,
+                                                                    const stdx::Tag<PromotedFloatType>& promotion_tag = stdx::Tag<PromotedFloatType>{},
+                                                                    const std::integral_constant<bool, HasBoundCheck>& bound_check = std::integral_constant<bool, HasBoundCheck>{}) -> PromotedFloatType
+    {
+        using QuantizationMachine   = taylor_matrix::host_matrix::quantization_machine::StandardCubicInterpolationExponentialQuantizationMachine;
+
+        QuantizationMachine quant_machine{};
+
+        constexpr double ALPHA      = 1;
+
+        size_t required_sz          = coeff_arr_base_sz_container.get() * quant_machine.quantization_size();
+        size_t next_offset          = coeff_arr_offset + required_sz;
+
+        if constexpr(HasBoundCheck)
+        {
+            if (next_offset > coeff_arr_cap)
+            {
+                throw std::invalid_argument("insufficient remaning coefficient size");
+            }
+        }
+
+        intmax_t quant_slot         = quant_machine.quantitize(x);
+        intmax_t prev_quant_slot    = std::max(intmax_t{0}, quant_slot - 1);
+
+        PromotedFloatType hinge_x   = quant_machine.template region_first<PromotedFloatType>(quant_slot);
+
+        PromotedFloatType prev_y    = base_taylor_raw_shape_project(x,
+                                                                    std::next(coeff_arr, coeff_arr_base_sz_container.get() * prev_quant_slot), coeff_arr_base_sz_container,
+                                                                    promotion_tag,
+                                                                    bound_check);
+
+        PromotedFloatType cur_y     = base_taylor_raw_shape_project(x,
+                                                                    std::next(coeff_arr, coeff_arr_base_sz_container.get() * quant_slot), coeff_arr_base_sz_container,
+                                                                    promotion_tag,
+                                                                    bound_check);
+
+        PromotedFloatType delta_x   = x - hinge_x;
+        PromotedFloatType prev_perc = 1 / std::scalbn(static_cast<PromotedFloatType>(1), ALPHA * delta_x);
+
+        PromotedFloatType result_y  = prev_perc * prev_y + (1 - prev_perc) * cur_y;
+        coeff_arr_offset            = next_offset;
+
+        return result_y;
+    }
+
+    template <class FloatType, class BatchSizeContainer, class CoeffArrBaseSizeContainer, class PromotedFloatType = FloatType, bool HasBoundCheck = true>
+    constexpr auto base_batch_cubic_interpolated_taylor_raw_shape_project(const FloatType * x_arr, BatchSizeContainer x_arr_sz_container,
+                                                                          CoeffArrBaseSizeContainer coeff_arr_base_sz_container,
+                                                                          const FloatType * coeff_arr, size_t& coeff_arr_offset, size_t coeff_arr_cap,
+                                                                          PromotedFloatType * y_arr,
+                                                                          const std::integral_constant<bool, HasBoundCheck>& bound_check = std::integral_constant<bool, HasBoundCheck>{})
+    {
+        static_assert(std::is_floating_point_v<FloatType>);
+        static_assert(std::is_floating_point_v<PromotedFloatType>);
+
+        const size_t saved_coeff_arr_offset = coeff_arr_offset;
+
+        for (size_t i = 0u; i < x_arr_sz_container.get(); ++i)
+        {
+            coeff_arr_offset    = saved_coeff_arr_offset;
+            y_arr[i]            = base_cubic_interpolated_taylor_raw_shape_project(x_arr[i],
+                                                                                   coeff_arr_base_sz_container,
+                                                                                   coeff_arr, coeff_arr_offset, coeff_arr_cap,
+                                                                                   stdx::Tag<PromotedFloatType>{},
+                                                                                   bound_check);
+        }
+    }
+
+    //
 
     template <class FloatType, class PromotedFloatType = FloatType>
     constexpr auto radian_normalize(FloatType x,
@@ -271,94 +359,10 @@ namespace taylor_matrix::host_matrix::shape_projection
 
     //
 
-    //after a certain time of understanding, exponential quantization is not runtime-configable
-    //uniform quantization can be runtime-configable, we'd have to make ways of the configuration propagation if this proved successful
-
-    constexpr auto get_cubic_interpolated_taylor_raw_shape_projection_size(size_t base_coeff_sz) -> size_t
-    {
-        using ExponentialQuantizationMachine    = taylor_matrix::host_matrix::quantization_machine::StandardCubicInterpolationExponentialQuantizationMachine;
-        using UniformQuantizationMachine        = taylor_matrix::host_matrix::quantization_machine::StandardCubicInterpolationUniformQuantizationMachine;
-
-        return base_coeff_sz * (ExponentialQuantizationMachine{}.quantization_size());
-    }
-
-    template <class FloatType, class CoeffArrBaseSizeContainer, class PromotedFloatType = FloatType, bool HasBoundCheck = true>
-    constexpr auto base_cubic_interpolated_taylor_raw_shape_project(FloatType x, CoeffArrBaseSizeContainer coeff_arr_base_sz_container,
-                                                                    const FloatType * coeff_arr, size_t& coeff_arr_offset, size_t coeff_arr_cap,
-                                                                    const stdx::Tag<PromotedFloatType>& promotion_tag = stdx::Tag<PromotedFloatType>{},
-                                                                    const std::integral_constant<bool, HasBoundCheck>& bound_check = std::integral_constant<bool, HasBoundCheck>{}) -> PromotedFloatType
-    {
-        using ExponentialQuantizationMachine    = taylor_matrix::host_matrix::quantization_machine::StandardCubicInterpolationExponentialQuantizationMachine;
-        using UniformQuantizationMachine        = taylor_matrix::host_matrix::quantization_machine::StandardCubicInterpolationUniformQuantizationMachine;
-
-        constexpr double ALPHA          = 4;
-        PromotedFloatType result_y0     = 0;
-
-        {
-            ExponentialQuantizationMachine exp_quant_machine{};
-
-            size_t required_sz          = coeff_arr_base_sz_container.get() * exp_quant_machine.quantization_size();
-            size_t next_offset          = coeff_arr_offset + required_sz;
-
-            if constexpr(HasBoundCheck)
-            {
-                if (next_offset > coeff_arr_cap)
-                {
-                    throw std::invalid_argument("insufficient remaning coefficient size");
-                }
-            }
-
-            intmax_t quant_slot         = exp_quant_machine.quantitize(x);
-            intmax_t prev_quant_slot    = std::max(intmax_t{0}, quant_slot - 1);
-
-            PromotedFloatType hinge_x   = exp_quant_machine.template region_first<PromotedFloatType>(quant_slot);
-
-            PromotedFloatType prev_y    = base_taylor_raw_shape_project(x,
-                                                                        std::next(coeff_arr, coeff_arr_base_sz_container.get() * prev_quant_slot), coeff_arr_base_sz_container,
-                                                                        promotion_tag,
-                                                                        bound_check);
-
-            PromotedFloatType cur_y     = base_taylor_raw_shape_project(x,
-                                                                        std::next(coeff_arr, coeff_arr_base_sz_container.get() * quant_slot), coeff_arr_base_sz_container,
-                                                                        promotion_tag,
-                                                                        bound_check);
-
-            PromotedFloatType delta_x   = x - hinge_x;
-            PromotedFloatType prev_perc = 1 / std::scalbn(static_cast<PromotedFloatType>(1), ALPHA * delta_x);
-
-            PromotedFloatType result_y0 = prev_perc * prev_y + (1 - prev_perc) * cur_y;
-            coeff_arr_offset            = next_offset;
-        }
-
-        return result_y0;
-    }
-
-    template <class FloatType, class BatchSizeContainer, class CoeffArrBaseSizeContainer, class PromotedFloatType = FloatType, bool HasBoundCheck = true>
-    constexpr auto base_batch_cubic_interpolated_taylor_raw_shape_project(const FloatType * x_arr, BatchSizeContainer x_arr_sz_container,
-                                                                          CoeffArrBaseSizeContainer coeff_arr_base_sz_container,
-                                                                          const FloatType * coeff_arr, size_t& coeff_arr_offset, size_t coeff_arr_cap,
-                                                                          PromotedFloatType * y_arr,
-                                                                          const std::integral_constant<bool, HasBoundCheck>& bound_check = std::integral_constant<bool, HasBoundCheck>{})
-    {
-        static_assert(std::is_floating_point_v<FloatType>);
-        static_assert(std::is_floating_point_v<PromotedFloatType>);
-
-        const size_t saved_coeff_arr_offset = coeff_arr_offset;
-
-        for (size_t i = 0u; i < x_arr_sz_container.get(); ++i)
-        {
-            coeff_arr_offset    = saved_coeff_arr_offset;
-            y_arr[i]            = base_cubic_interpolated_taylor_raw_shape_project(x_arr[i],
-                                                                                   coeff_arr_base_sz_container,
-                                                                                   coeff_arr, coeff_arr_offset, coeff_arr_cap,
-                                                                                   stdx::Tag<PromotedFloatType>{},
-                                                                                   bound_check);
-        }
-    }
-
-    //
     constexpr auto get_multivariate_taylor_shape_projection_coefficient_size(size_t in_feature_sz, size_t base_coeff_sz) -> size_t
     {
+        using QuantizationMachine   = taylor_matrix::host_matrix::quantization_machine::StandardCubicInterpolationExponentialQuantizationMachine;
+
         if (in_feature_sz == 0u)
         {
             throw std::invalid_argument("bad in feature size, 0");
@@ -369,7 +373,7 @@ namespace taylor_matrix::host_matrix::shape_projection
             throw std::invalid_argument("bad base coefficient size, max reached");
         }
 
-        return std::pow(base_coeff_sz, in_feature_sz);
+        return std::pow(base_coeff_sz, in_feature_sz) * QuantizationMachine{}.quantization_size();
     }
 
     template <class FloatType, class XArrSizeContainer, class CoeffSizeContainer, class PromotedFloatType>
@@ -420,20 +424,10 @@ namespace taylor_matrix::host_matrix::shape_projection
 
         if (x_arr_sz_container.get() == 1u)
         {
-            const size_t tentative_nxt_offset = coeff_arr_offset + base_coeff_sz_container.get();
-
-            if constexpr(HasBoundCheck)
-            {
-                if (tentative_nxt_offset > coeff_arr_cap) [[unlikely]]
-                {
-                    throw std::runtime_error("coefficient vector ran out of space");
-                }
-            }
-
-            const FloatType * coeff_arr_arg = std::next(coeff_arr, coeff_arr_offset);
-            coeff_arr_offset                = tentative_nxt_offset;
-
-            return base_taylor_shape_project(x_arr[0], coeff_arr_arg, base_coeff_sz_container, promotion_tag, bound_check);
+            return base_cubic_interpolated_taylor_raw_shape_project(x_arr[0], base_coeff_sz_container,
+                                                                    coeff_arr, coeff_arr_offset, coeff_arr_cap,
+                                                                    promotion_tag,
+                                                                    bound_check);
         }
 
         PromotedFloatType projected_result  = 0;
@@ -517,6 +511,8 @@ namespace taylor_matrix::host_matrix::shape_projection
                                                                                    size_t base_coeff_sz,
                                                                                    size_t batch_sz) -> size_t
     {
+        using QuantizationMachine   = taylor_matrix::host_matrix::quantization_machine::StandardCubicInterpolationExponentialQuantizationMachine;
+
         if (in_feature_sz == 0u)
         {
             throw std::invalid_argument("bad input feature size, 0");
@@ -532,7 +528,7 @@ namespace taylor_matrix::host_matrix::shape_projection
             throw std::invalid_argument("bad batch size, 0");
         }
 
-        return std::pow(base_coeff_sz, in_feature_sz);
+        return std::pow(base_coeff_sz, in_feature_sz) * QuantizationMachine{}.quantization_size();
     }
 
     template <class FloatType, class XArrSizeContainer, class BatchSizeContainer, class CoeffSizeContainer, class PromotedFloatType>
@@ -600,23 +596,11 @@ namespace taylor_matrix::host_matrix::shape_projection
 
         if (x_arr_sz_container.get() == 1u)
         {
-            const size_t tentative_nxt_offset   = radian_coeff_arr_offset + base_coeff_sz_container.get();
-
-            if constexpr(HasBoundCheck)
-            {
-                if (tentative_nxt_offset > radian_coeff_arr_cap) [[unlikely]]
-                {
-                    throw std::runtime_error("coefficient vector ran out of space");
-                }
-            }
-
-            const FloatType * radian_coeff_arr_arg  = std::next(radian_coeff_arr, radian_coeff_arr_offset);
-            radian_coeff_arr_offset                 = tentative_nxt_offset;
-
-            base_batch_taylor_shape_project(flat_x_arr_arr, batch_sz_container,
-                                            radian_coeff_arr_arg, base_coeff_sz_container,
-                                            y_arr,
-                                            bound_check);
+            base_batch_cubic_interpolated_taylor_raw_shape_project(flat_x_arr_arr, batch_sz_container,
+                                                                   base_coeff_sz_container,
+                                                                   radian_coeff_arr, radian_coeff_arr_offset, radian_coeff_arr_cap,
+                                                                   y_arr,
+                                                                   bound_check);
 
             return;
         }

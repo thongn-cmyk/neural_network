@@ -71,15 +71,53 @@ auto randomize_double(double first, double last) -> double
 
 auto get_random_point_bag(size_t sz) -> std::vector<std::pair<tensor_std_float_t, tensor_std_float_t>>
 {
-    std::vector<std::pair<tensor_std_float_t, tensor_std_float_t>> rs{};
-
-    for (size_t i = 0u; i < sz; ++i)
+    return
     {
-        rs.push_back(std::make_pair(randomize_double(0, 2), randomize_double(0, 2)));
-    }
-
-    return rs;
+        {0,     1},
+        {0.1,   0},
+        {0.2,   1},
+        {0.3,   0},
+        {0.4,   1},
+        {0.5,   0},
+        {0.6,   1},
+        {0.7,   0},
+        {0.8,   1},
+        {0.9,   0},
+        {1,     1}
+    };
 }
+
+//ok, interpolation works
+
+//let's do the cheating scheme where the next equation integrates with the previous equation with an exponentially decay interval
+//exponential quantization is already done in the float representation, so let's also leverage that
+
+//I'm hopeful, are you hopeful, we have two discretization schemes, one is exponential to cover all ranges
+//second is uniform in the [-10, 10] range
+
+//so let me think how this should work
+
+//normalization in the [0, 1] range, where the normalization value indicates percentage of the previous function effect on the current value
+//and the otherwise (1 - value) indicates the effect of the current function on the current value
+
+//the effect is linearly dependent or exponentially dependent from the hinge?
+//exponentially dependent from the hinge
+
+//1 / e^0 == 1 meaning that at the hinge, we are 100% previous function
+//1 / e^1 == e^-1 meaning that we are 0.36787944117 previous function
+
+//so there is a scalar value 1 / e^(a * x) for a is the scalar of the exponential scheme
+
+//the result is sound, the implementation is careful and close to optimality, for an extension of mono_transform, this should suffice
+
+//I'm trying to approx 2 dimensional projection, it's more complicated than we think
+//this requires nxn quantization and base_taylor as the end function
+
+//our goal is to put 10.000 tokens on a string, and after an extensive time of research, we realized that we can only mutate some coefficients without Runge's phenomenon
+//our approach of search should be near-optimal in the sense
+
+//it's incredibly hard to crunch flops via serialization, and branchless programming, so there is that
+//I tried this on Python, it did not run
 
 class ExponentialQuantizationMachine
 {
@@ -137,8 +175,8 @@ class ExponentialQuantizationMachine
             for (size_t i = 0u; i < quantization_sz; ++i)
             {
                 size_t rev_i        = quantization_sz - i - 1;
-                float local_first   = first_last_tmp_vec[rev_i].second;
-                float local_last    = first_last_tmp_vec[rev_i].first;
+                float local_first   = -first_last_tmp_vec[rev_i].second;
+                float local_last    = -first_last_tmp_vec[rev_i].first;
 
                 if (i == 0u)
                 {
@@ -209,7 +247,7 @@ class Projector
     private:
 
         std::vector<float> coeff_vec;
-    
+
     public:
 
         Projector(std::vector<float> coeff_vec): coeff_vec(std::move(coeff_vec)){}
@@ -234,7 +272,7 @@ class Projector
         {
             return this->coeff_vec;
         }
-    
+
     private:
 
         template <class FloatType, class SzContainer, class PromotedFloatType = FloatType, bool HasBoundCheck = true>
@@ -529,7 +567,7 @@ class SplineProjectorMatrixWrapper: public virtual the_matrix::MatrixInterface
 
 auto get_quantization_machine() -> std::unique_ptr<ExponentialQuantizationMachine>
 {
-    const float EXP_BASE            = 1.2;
+    const float EXP_BASE            = 1.1;
     const float MULTIPLIER_BASE     = 0.1;
     const size_t QUANTIZATION_SZ    = 30;
 

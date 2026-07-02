@@ -205,18 +205,9 @@ namespace taylor_matrix::host_matrix::tensor_process_unit_operation
 
         for (size_t i = 0u; i < PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ; ++i)
         {
-            size_t required_sz  = coeff_arr_offset + base_coeff_sz_container.get();
-
-            if (required_sz > coeff_arr_cap)
-            {
-                throw std::invalid_argument("bad operation, insufficient remaining logit size");
-            }
-
-            rs.logit_vec[i]     = taylor_projection::taylor_project(arg.logit_vec[i],
-                                                                    std::next(coeff_arr, coeff_arr_offset), base_coeff_sz_container,
-                                                                    taylor_base_promotion_tag);
-
-            coeff_arr_offset    = required_sz;
+            rs.logit_vec[i]     = shape_projection::base_cubic_interpolated_taylor_raw_shape_project(arg.logit_vec[i], base_coeff_sz_container,
+                                                                                                     coeff_arr, coeff_arr_offset, coeff_arr_cap,
+                                                                                                     taylor_base_promotion_tag);
         }
 
         return rs;
