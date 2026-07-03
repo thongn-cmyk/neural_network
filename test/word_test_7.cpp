@@ -62,7 +62,7 @@
 
 //can we project 10 for one? yes, without loss of generality. But this scheme is only possible for x^1 + x^0.9 + x^0.8 + ... + C
 
-//Am i pro interpolation - yes, but that is not in the continuous scheme, I rather think that continuous is one business, interpolation is another
+//Do i pro interpolation - yes, but that is not in the continuous scheme, I rather think that continuous is one business, interpolation is another
 //how many rotation times? (very important) I have absolutely no clue, but we'd be there within a week
 
 using namespace taylor_matrix::host_matrix::the_host_matrix;
@@ -1005,9 +1005,9 @@ static inline const std::vector<size_t> DIMENSION_SZ_OPTIMIZABLE_VEC =
 
 static inline const std::vector<size_t> BASE_SZ_OPTIMIZABLE_VEC   =
 {
-    2,
     4,
-    6
+    6,
+    8
 };
 
 static inline const uint8_t TRAINING_STRATEGY_GLOBAL_PARITY                 = 0;
@@ -1421,7 +1421,7 @@ auto get_parity_distance(const std::shared_ptr<tensor_model::Matrix>& lhs,
 
     double deviation        = get_deviation(true_vec) + get_deviation(false_vec);
 
-    return std::pow(lhs_parity - rhs_parity, 2) * deviation;  //I suspect that we are most likely stuck at the 3d projection (2 -> 1), we'd work on this later, this is very important
+    return std::pow(lhs_parity - rhs_parity, 2);  //I suspect that we are most likely stuck at the 3d projection (2 -> 1), we'd work on this later, this is very important
 }
 
 auto is_same_parity(const std::shared_ptr<tensor_model::Matrix>& lhs,
@@ -1473,8 +1473,8 @@ auto get_optimizer() -> std::unique_ptr<matrix_optimizer_subsystem::CoordinatedS
         {
             .matrix_cache_map_cap                       = randomize_optional_int<uint64_t>(0, size_t{1} << 4),
             .time_machine_cache_map_cap                 = randomize_optional_int<uint64_t>(0, size_t{1} << 4),
-            .optimization_epoch_sz                      = 32ULL,
-            .optimization_step_sz                       = 16ULL,
+            .optimization_epoch_sz                      = 32LL,
+            .optimization_step_sz                       = 16LL,
             .optimization_loop_sz                       = 2ULL
         }
     );

@@ -135,17 +135,17 @@ namespace taylor_matrix::host_matrix::tensor_process_group_operation
             coeff_arr_offset        = saved_coeff_arr_offset;
             shape_coeff_arr_offset  = saved_shape_coeff_arr_offset;
 
-            tensor_process_unit_operation::batch_intercourse_process_unit(lhs_tensor_arr,
-                                                                          rhs_tensor_arr,
-                                                                          batch_sz,
-                                                                          out_tensor_arr,
-                                                                          base_coeff_sz_container,
-                                                                          coeff_arr, coeff_arr_offset, coeff_arr_cap,
-                                                                          base_shape_coeff_sz_container,
-                                                                          shape_coeff_arr, shape_coeff_arr_offset, shape_coeff_arr_cap,
-                                                                          taylor_base_promotion_tag,
-                                                                          shape_base_promotion_tag,
-                                                                          has_process_unit_logit_reuse_tag);
+            tensor_process_unit_operation::batch_intercourse_process_unit_experimental(lhs_tensor_arr,
+                                                                                       rhs_tensor_arr,
+                                                                                       batch_sz,
+                                                                                       out_tensor_arr,
+                                                                                       base_coeff_sz_container,
+                                                                                       coeff_arr, coeff_arr_offset, coeff_arr_cap,
+                                                                                       base_shape_coeff_sz_container,
+                                                                                       shape_coeff_arr, shape_coeff_arr_offset, shape_coeff_arr_cap,
+                                                                                       taylor_base_promotion_tag,
+                                                                                       shape_base_promotion_tag,
+                                                                                       has_process_unit_logit_reuse_tag);
 
             for (size_t j = 0u; j < BATCH_SZ; ++j)
             {

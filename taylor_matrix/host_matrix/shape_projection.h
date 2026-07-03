@@ -9,7 +9,6 @@
 #include <numbers>
 #include <stdexcept>
 #include <bit>
-#include "quantization_machine.h"
 
 namespace taylor_matrix::host_matrix::shape_projection
 {
@@ -267,93 +266,6 @@ namespace taylor_matrix::host_matrix::shape_projection
                                   radian_coeff_arr, coeff_arr_sz_container,
                                   promotion_tag,
                                   std::integral_constant<bool, true>{});
-    }
-
-    //
-
-    //after a certain time of understanding, exponential quantization is not runtime-configable
-    //uniform quantization can be runtime-configable, we'd have to make ways of the configuration propagation if this proved successful
-
-    constexpr auto get_cubic_interpolated_taylor_raw_shape_projection_size(size_t base_coeff_sz) -> size_t
-    {
-        using ExponentialQuantizationMachine    = taylor_matrix::host_matrix::quantization_machine::StandardCubicInterpolationExponentialQuantizationMachine;
-        using UniformQuantizationMachine        = taylor_matrix::host_matrix::quantization_machine::StandardCubicInterpolationUniformQuantizationMachine;
-
-        return base_coeff_sz * (ExponentialQuantizationMachine{}.quantization_size());
-    }
-
-    template <class FloatType, class CoeffArrBaseSizeContainer, class PromotedFloatType = FloatType, bool HasBoundCheck = true>
-    constexpr auto base_cubic_interpolated_taylor_raw_shape_project(FloatType x, CoeffArrBaseSizeContainer coeff_arr_base_sz_container,
-                                                                    const FloatType * coeff_arr, size_t& coeff_arr_offset, size_t coeff_arr_cap,
-                                                                    const stdx::Tag<PromotedFloatType>& promotion_tag = stdx::Tag<PromotedFloatType>{},
-                                                                    const std::integral_constant<bool, HasBoundCheck>& bound_check = std::integral_constant<bool, HasBoundCheck>{}) -> PromotedFloatType
-    {
-        using ExponentialQuantizationMachine    = taylor_matrix::host_matrix::quantization_machine::StandardCubicInterpolationExponentialQuantizationMachine;
-        using UniformQuantizationMachine        = taylor_matrix::host_matrix::quantization_machine::StandardCubicInterpolationUniformQuantizationMachine;
-
-        constexpr double ALPHA          = 4;
-        PromotedFloatType result_y0     = 0;
-
-        {
-            ExponentialQuantizationMachine exp_quant_machine{};
-
-            size_t required_sz          = coeff_arr_base_sz_container.get() * exp_quant_machine.quantization_size();
-            size_t next_offset          = coeff_arr_offset + required_sz;
-
-            if constexpr(HasBoundCheck)
-            {
-                if (next_offset > coeff_arr_cap)
-                {
-                    throw std::invalid_argument("insufficient remaning coefficient size");
-                }
-            }
-
-            intmax_t quant_slot         = exp_quant_machine.quantitize(x);
-            intmax_t prev_quant_slot    = std::max(intmax_t{0}, quant_slot - 1);
-
-            PromotedFloatType hinge_x   = exp_quant_machine.template region_first<PromotedFloatType>(quant_slot);
-
-            PromotedFloatType prev_y    = base_taylor_raw_shape_project(x,
-                                                                        std::next(coeff_arr, coeff_arr_base_sz_container.get() * prev_quant_slot), coeff_arr_base_sz_container,
-                                                                        promotion_tag,
-                                                                        bound_check);
-
-            PromotedFloatType cur_y     = base_taylor_raw_shape_project(x,
-                                                                        std::next(coeff_arr, coeff_arr_base_sz_container.get() * quant_slot), coeff_arr_base_sz_container,
-                                                                        promotion_tag,
-                                                                        bound_check);
-
-            PromotedFloatType delta_x   = x - hinge_x;
-            PromotedFloatType prev_perc = 1 / std::scalbn(static_cast<PromotedFloatType>(1), ALPHA * delta_x);
-
-            PromotedFloatType result_y0 = prev_perc * prev_y + (1 - prev_perc) * cur_y;
-            coeff_arr_offset            = next_offset;
-        }
-
-        return result_y0;
-    }
-
-    template <class FloatType, class BatchSizeContainer, class CoeffArrBaseSizeContainer, class PromotedFloatType = FloatType, bool HasBoundCheck = true>
-    constexpr auto base_batch_cubic_interpolated_taylor_raw_shape_project(const FloatType * x_arr, BatchSizeContainer x_arr_sz_container,
-                                                                          CoeffArrBaseSizeContainer coeff_arr_base_sz_container,
-                                                                          const FloatType * coeff_arr, size_t& coeff_arr_offset, size_t coeff_arr_cap,
-                                                                          PromotedFloatType * y_arr,
-                                                                          const std::integral_constant<bool, HasBoundCheck>& bound_check = std::integral_constant<bool, HasBoundCheck>{})
-    {
-        static_assert(std::is_floating_point_v<FloatType>);
-        static_assert(std::is_floating_point_v<PromotedFloatType>);
-
-        const size_t saved_coeff_arr_offset = coeff_arr_offset;
-
-        for (size_t i = 0u; i < x_arr_sz_container.get(); ++i)
-        {
-            coeff_arr_offset    = saved_coeff_arr_offset;
-            y_arr[i]            = base_cubic_interpolated_taylor_raw_shape_project(x_arr[i],
-                                                                                   coeff_arr_base_sz_container,
-                                                                                   coeff_arr, coeff_arr_offset, coeff_arr_cap,
-                                                                                   stdx::Tag<PromotedFloatType>{},
-                                                                                   bound_check);
-        }
     }
 
     //

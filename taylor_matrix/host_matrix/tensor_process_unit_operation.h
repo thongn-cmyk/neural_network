@@ -12,6 +12,8 @@
 #include "taylor_projection.h"
 #include "shape_projection.h"
 #include <array>
+#include "one_dimensional_cubic_interpolation.h"
+#include "two_dimensional_cubic_interpolation.h"
 
 namespace taylor_matrix::host_matrix::tensor_process_unit_operation
 {
@@ -114,9 +116,40 @@ namespace taylor_matrix::host_matrix::tensor_process_unit_operation
         return {.logit_vec = child};
     }
 
+    template <class TaylorBaseCoeffSizeContainer, class ShapeBaseCoeffSizeContainer,
+              class TaylorBasePromotedFloatType = tensor_model::tensor_std_float_t, class ShapeBasePromotedFloatType = tensor_model::tensor_std_float_t>
+    constexpr __attribute__((noinline)) auto intercourse_process_unit_experimental(const tensor_model::ProcessUnit& lhs,
+                                                                                   const tensor_model::ProcessUnit& rhs,
+                                                                                   TaylorBaseCoeffSizeContainer base_coeff_sz_container,
+                                                                                   const tensor_model::tensor_std_float_t * coeff_arr, size_t& coeff_arr_offset, size_t coeff_arr_cap,
+                                                                                   ShapeBaseCoeffSizeContainer base_shape_coeff_sz_container,
+                                                                                   const tensor_model::tensor_std_float_t * shape_coeff_arr, size_t& shape_coeff_arr_offset, size_t shape_coeff_arr_cap,
+                                                                                   const stdx::Tag<TaylorBasePromotedFloatType>& taylor_base_promotion_tag = stdx::Tag<TaylorBasePromotedFloatType>{},
+                                                                                   const stdx::Tag<ShapeBasePromotedFloatType>& shape_base_promotion_tag = stdx::Tag<ShapeBasePromotedFloatType>{},
+                                                                                   bool has_logit_reuse_tag = true) -> tensor_model::ProcessUnit
+    {
+        using namespace taylor_matrix::host_matrix::two_dimensional_cubic_interpolation;
+
+        std::array<tensor_model::tensor_std_float_t, PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ> child{};
+
+        for (size_t i = 0u; i < PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ; ++i)
+        {
+            for (size_t j = 0u; j < PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ; ++j)
+            {
+                child[i]    += cubic_exp_interpolated_2d_project(lhs.logit_vec[i], rhs.logit_vec[j],
+                                                                 shape_coeff_arr, shape_coeff_arr_offset, shape_coeff_arr_cap,
+                                                                 shape_base_promotion_tag);
+            }
+
+            child[i] /= PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ;
+        }
+
+        return {.logit_vec = child};
+    }
+
     template <class TaylorBaseCoeffSizeContainer, class ShapeBaseCoeffSizeContainer, size_t BATCH_SZ,
               class TaylorBasePromotedFloatType = tensor_model::tensor_std_float_t, class ShapeBasePromotedFloatType = tensor_model::tensor_std_float_t>
-    constexpr __attribute__((noinline)) auto batch_intercourse_process_unit(const tensor_model::ProcessUnit * lhs_arr,
+    constexpr __attribute__((noinline)) void batch_intercourse_process_unit(const tensor_model::ProcessUnit * lhs_arr,
                                                                             const tensor_model::ProcessUnit * rhs_arr,
                                                                             const std::integral_constant<size_t, BATCH_SZ> batch_sz,
                                                                             tensor_model::ProcessUnit * out_arr,
@@ -194,6 +227,38 @@ namespace taylor_matrix::host_matrix::tensor_process_unit_operation
         }
     }
 
+    template <class TaylorBaseCoeffSizeContainer, class ShapeBaseCoeffSizeContainer, size_t BATCH_SZ,
+              class TaylorBasePromotedFloatType = tensor_model::tensor_std_float_t, class ShapeBasePromotedFloatType = tensor_model::tensor_std_float_t>
+    constexpr __attribute__((noinline)) void batch_intercourse_process_unit_experimental(const tensor_model::ProcessUnit * lhs_arr,
+                                                                                         const tensor_model::ProcessUnit * rhs_arr,
+                                                                                         const std::integral_constant<size_t, BATCH_SZ> batch_sz,
+                                                                                         tensor_model::ProcessUnit * out_arr,
+                                                                                         TaylorBaseCoeffSizeContainer base_coeff_sz_container,
+                                                                                         const tensor_model::tensor_std_float_t * coeff_arr, size_t& coeff_arr_offset, size_t coeff_arr_cap,
+                                                                                         ShapeBaseCoeffSizeContainer base_shape_coeff_sz_container,
+                                                                                         const tensor_model::tensor_std_float_t * shape_coeff_arr, size_t& shape_coeff_arr_offset, size_t shape_coeff_arr_cap,
+                                                                                         const stdx::Tag<TaylorBasePromotedFloatType>& taylor_base_promotion_tag = stdx::Tag<TaylorBasePromotedFloatType>{},
+                                                                                         const stdx::Tag<ShapeBasePromotedFloatType>& shape_base_promotion_tag = stdx::Tag<ShapeBasePromotedFloatType>{},
+                                                                                         bool has_logit_reuse_tag = true)
+    {
+        const size_t saved_coeff_arr_offset = coeff_arr_offset;
+
+        for (size_t i = 0u; i < BATCH_SZ; ++i)
+        {
+            coeff_arr_offset = saved_coeff_arr_offset;
+
+            out_arr[i] = intercourse_process_unit_experimental(lhs_arr[i],
+                                                               rhs_arr[i],
+                                                               base_coeff_sz_container,
+                                                               coeff_arr, coeff_arr_offset, coeff_arr_cap,
+                                                               base_shape_coeff_sz_container,
+                                                               shape_coeff_arr, shape_coeff_arr_offset, shape_coeff_arr_cap,
+                                                               taylor_base_promotion_tag,
+                                                               shape_base_promotion_tag,
+                                                               has_logit_reuse_tag);
+        }
+    }
+
     template <class TaylorBaseCoeffSizeContainer,
               class TaylorBasePromotedFloatType = tensor_model::tensor_std_float_t>
     constexpr auto mono_transform(const tensor_model::ProcessUnit& arg,
@@ -201,13 +266,15 @@ namespace taylor_matrix::host_matrix::tensor_process_unit_operation
                                   const tensor_model::tensor_std_float_t * coeff_arr, size_t& coeff_arr_offset, size_t coeff_arr_cap,
                                   const stdx::Tag<TaylorBasePromotedFloatType>& taylor_base_promotion_tag = stdx::Tag<TaylorBasePromotedFloatType>()) -> tensor_model::ProcessUnit
     {
+        using namespace taylor_matrix::host_matrix::one_dimensional_cubic_interpolation;
+
         tensor_model::ProcessUnit rs{};
 
         for (size_t i = 0u; i < PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ; ++i)
         {
-            rs.logit_vec[i]     = shape_projection::base_cubic_interpolated_taylor_raw_shape_project(arg.logit_vec[i], base_coeff_sz_container,
-                                                                                                     coeff_arr, coeff_arr_offset, coeff_arr_cap,
-                                                                                                     taylor_base_promotion_tag);
+            rs.logit_vec[i]     = cubic_exp_interpolated_project(arg.logit_vec[i],
+                                                                 coeff_arr, coeff_arr_offset, coeff_arr_cap,
+                                                                 taylor_base_promotion_tag);
         }
 
         return rs;

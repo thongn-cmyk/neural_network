@@ -1,12 +1,12 @@
-#ifndef __TAYLOR_MATRIX_HOST_MATRIX_EXPONENTIAL_QUANTIZATION_MACHINE_H__
-#define __TAYLOR_MATRIX_HOST_MATRIX_EXPONENTIAL_QUANTIZATION_MACHINE_H__
+#ifndef __TAYLOR_MATRIX_HOST_MATRIX_CUBIC_QUANTIZATION_MACHINE_H__
+#define __TAYLOR_MATRIX_HOST_MATRIX_CUBIC_QUANTIZATION_MACHINE_H__
 
 #include <stdint.h>
 #include <stdlib.h>
 #include "utility.h"
 #include <float.h>
 
-namespace taylor_matrix::host_matrix::quantization_machine
+namespace taylor_matrix::host_matrix::cubic_quantization_machine
 {
     //this is so fundamentally important that without this our equation could not run
     //
@@ -95,58 +95,58 @@ namespace taylor_matrix::host_matrix::quantization_machine
             }
     };
 
-class StandardCubicInterpolationUniformQuantizationMachine
-{
-    private:
+    class StandardCubicInterpolationUniformQuantizationMachine
+    {
+        private:
 
-        static inline constexpr double RANGE_FIRST      = -1;
-        static inline constexpr double RANGE_LAST       = 1;
+            static inline constexpr double RANGE_FIRST      = -1;
+            static inline constexpr double RANGE_LAST       = 1;
 
-        static inline constexpr size_t QUANTIZATION_SZ  = 32;
+            static inline constexpr size_t QUANTIZATION_SZ  = 32;
 
-        static inline constexpr double STEP = (RANGE_LAST - RANGE_FIRST)
-                                             / static_cast<double>(QUANTIZATION_SZ);
+            static inline constexpr double STEP = (RANGE_LAST - RANGE_FIRST)
+                                                / static_cast<double>(QUANTIZATION_SZ);
 
-    public:
+        public:
 
-        template <class T>
-        constexpr auto quantitize(T x) const noexcept -> size_t
-        {
-            static_assert(std::is_floating_point_v<T>);
+            template <class T>
+            constexpr auto quantitize(T x) const noexcept -> size_t
+            {
+                static_assert(std::is_floating_point_v<T>);
 
-            // normalize into [0, QUANTIZATION_SZ) as a real number
-            double normalized = (static_cast<double>(x) - RANGE_FIRST) / STEP;
+                // normalize into [0, QUANTIZATION_SZ) as a real number
+                double normalized = (static_cast<double>(x) - RANGE_FIRST) / STEP;
 
-            // clamp to [0, QUANTIZATION_SZ - 1] in the *continuous* domain first,
-            // so flooring afterward can't push an in-range value out of bounds
-            double clamped = std::min(std::max(normalized, 0.0),
-                                       static_cast<double>(QUANTIZATION_SZ - 1));
+                // clamp to [0, QUANTIZATION_SZ - 1] in the *continuous* domain first,
+                // so flooring afterward can't push an in-range value out of bounds
+                double clamped = std::min(std::max(normalized, 0.0),
+                                        static_cast<double>(QUANTIZATION_SZ - 1));
 
-            return std::min(static_cast<size_t>(clamped),
-                            static_cast<size_t>(QUANTIZATION_SZ - 1));
-        }
+                return std::min(static_cast<size_t>(clamped),
+                                static_cast<size_t>(QUANTIZATION_SZ - 1));
+            }
 
-        constexpr auto quantization_size() const noexcept -> size_t
-        {
-            return QUANTIZATION_SZ;
-        }
+            constexpr auto quantization_size() const noexcept -> size_t
+            {
+                return QUANTIZATION_SZ;
+            }
 
-        template <class T = float>
-        constexpr auto region_first(size_t idx) const noexcept -> T
-        {
-            static_assert(std::is_floating_point_v<T>);
+            template <class T = float>
+            constexpr auto region_first(size_t idx) const noexcept -> T
+            {
+                static_assert(std::is_floating_point_v<T>);
 
-            return static_cast<T>(RANGE_FIRST + static_cast<double>(idx) * STEP);
-        }
+                return static_cast<T>(RANGE_FIRST + static_cast<double>(idx) * STEP);
+            }
 
-        template <class T = float>
-        constexpr auto region_last(size_t idx) const noexcept -> T
-        {
-            static_assert(std::is_floating_point_v<T>);
+            template <class T = float>
+            constexpr auto region_last(size_t idx) const noexcept -> T
+            {
+                static_assert(std::is_floating_point_v<T>);
 
-            return static_cast<T>(RANGE_FIRST + static_cast<double>(idx + 1) * STEP);
-        }
-};
+                return static_cast<T>(RANGE_FIRST + static_cast<double>(idx + 1) * STEP);
+            }
+    };
 }
 
 #endif

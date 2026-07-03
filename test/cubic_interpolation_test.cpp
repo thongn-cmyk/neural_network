@@ -26,6 +26,7 @@
 #include <exception>
 #include <utility>
 #include <vector>
+#include <taylor_matrix/host_matrix/shape_projection.h>
 
 using tensor_std_float_t = tensor_model::tensor_std_float_t;
 
@@ -646,6 +647,8 @@ void run_one_test(const size_t point_pull_sz,
     std::cout << "__END_OPTIMIZATION_TEST__\n";
 }
 
+//I will run the 2d interpolation, and 1d interpolation with the exponential hinge, I need to test the feasibility with static points first
+//I think 2d interpolation will make a huge difference, let's see
 
 void run_test()
 {
