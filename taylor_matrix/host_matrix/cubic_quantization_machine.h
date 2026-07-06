@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include "utility.h"
 #include <float.h>
+#include <assert.h>
 
 namespace taylor_matrix::host_matrix::cubic_quantization_machine
 {
@@ -95,58 +96,131 @@ namespace taylor_matrix::host_matrix::cubic_quantization_machine
             }
     };
 
-    class StandardCubicInterpolationUniformQuantizationMachine
+    template <class FloatType = double>
+    class GenericCubicInterpolationExponentialQuantizationMachine
     {
         private:
 
-            static inline constexpr double RANGE_FIRST      = -1;
-            static inline constexpr double RANGE_LAST       = 1;
-
-            static inline constexpr size_t QUANTIZATION_SZ  = 32;
-
-            static inline constexpr double STEP = (RANGE_LAST - RANGE_FIRST)
-                                                / static_cast<double>(QUANTIZATION_SZ);
+            size_t discretization_sz;
+            FloatType exp_base;
+            FloatType multiplier_base;
 
         public:
 
-            template <class T>
-            constexpr auto quantitize(T x) const noexcept -> size_t
+            constexpr GenericCubicInterpolationExponentialQuantizationMachine(size_t discretization_sz,
+                                                                              FloatType exp_base,
+                                                                              FloatType multiplier_base)
             {
-                static_assert(std::is_floating_point_v<T>);
+                if (!stdx::is_pow2(discretization_sz))
+                {
+                    throw std::invalid_argument("bad discretization size, not pow 2");
+                }
 
-                // normalize into [0, QUANTIZATION_SZ) as a real number
-                double normalized = (static_cast<double>(x) - RANGE_FIRST) / STEP;
+                if (discretization_sz < 4)
+                {
+                    throw std::invalid_argument("bad discretization size, < 4");
+                }
 
-                // clamp to [0, QUANTIZATION_SZ - 1] in the *continuous* domain first,
-                // so flooring afterward can't push an in-range value out of bounds
-                double clamped = std::min(std::max(normalized, 0.0),
-                                        static_cast<double>(QUANTIZATION_SZ - 1));
+                if (std::isnan(exp_base))
+                {
+                    throw std::invalid_argument("bad exp base, NaN");
+                }
 
-                return std::min(static_cast<size_t>(clamped),
-                                static_cast<size_t>(QUANTIZATION_SZ - 1));
+                if (exp_base <= 1)
+                {
+                    throw std::invalid_argument("bad exp base, <= 1");
+                }
+
+                if (std::isnan(multiplier_base))
+                {
+                    throw std::invalid_argument("bad multiplier base, NaN");
+                }
+
+                if (multiplier_base <= 0)
+                {
+                    throw std::invalid_argument("bad multiplier base, <= 0");
+                }
+
+                this->discretization_sz = discretization_sz;
+                this->exp_base          = exp_base;
+                this->multiplier_base   = multiplier_base;
+            }
+
+            constexpr auto quantitize(FloatType x_arg) const noexcept -> size_t
+            {
+                const intmax_t FIRST_EXPONENT       = -static_cast<intmax_t>(this->discretization_sz / 4);
+                const intmax_t LAST_EXPONENT        = static_cast<intmax_t>(this->discretization_sz / 4);
+                const size_t HALF_SZ                = this->discretization_sz / 2;
+
+                FloatType x                         = std::abs(x_arg);
+                FloatType y                         = x / this->multiplier_base;
+                FloatType exponent                  = std::log(y) / std::log(this->exp_base);
+                FloatType upround                   = std::ceil(exponent);
+
+                //it's fine if we treat 0 as a special bounded value, either in the positive or negative range
+                //recall that this is a relative operation, we simply dont have the instrument to perfect all of these guys
+
+                intmax_t upround_i                  = static_cast<intmax_t>(upround);
+                intmax_t slot_i                     = upround_i - 1;
+                intmax_t actual_slot_i              = std::min(std::max(slot_i, FIRST_EXPONENT), LAST_EXPONENT - 1);
+
+                size_t signed_normalized_slot_i     = actual_slot_i - FIRST_EXPONENT;
+
+                if (x_arg < 0)
+                {
+                    return HALF_SZ - signed_normalized_slot_i - 1;
+                }
+                else
+                {
+                    return HALF_SZ + signed_normalized_slot_i;
+                }
             }
 
             constexpr auto quantization_size() const noexcept -> size_t
             {
-                return QUANTIZATION_SZ;
+                return this->discretization_sz;
             }
 
-            template <class T = float>
-            constexpr auto region_first(size_t idx) const noexcept -> T
+            //relative, not strong-guarantee
+            constexpr auto region_first(size_t idx) const noexcept -> FloatType
             {
-                static_assert(std::is_floating_point_v<T>);
+                const auto [is_negative, exponent] = slot_of(idx);
 
-                return static_cast<T>(RANGE_FIRST + static_cast<double>(idx) * STEP);
+                const FloatType lo = this->multiplier_base * std::pow(this->exp_base, static_cast<FloatType>(exponent));
+                const FloatType hi = this->multiplier_base * std::pow(this->exp_base, static_cast<FloatType>(exponent + 1));
+
+                return is_negative ? -hi : lo;
             }
 
-            template <class T = float>
-            constexpr auto region_last(size_t idx) const noexcept -> T
+            //relative, not strong-guanratee
+            constexpr auto region_last(size_t idx) const noexcept -> FloatType
             {
-                static_assert(std::is_floating_point_v<T>);
+                const auto [is_negative, exponent] = slot_of(idx);
 
-                return static_cast<T>(RANGE_FIRST + static_cast<double>(idx + 1) * STEP);
+                const FloatType lo = this->multiplier_base * std::pow(this->exp_base, static_cast<FloatType>(exponent));
+                const FloatType hi = this->multiplier_base * std::pow(this->exp_base, static_cast<FloatType>(exponent + 1));
+
+                return is_negative ? -lo : hi;
+            }
+
+        private:
+
+            constexpr auto slot_of(size_t idx) const noexcept -> std::pair<bool, intmax_t>
+            {
+                assert(idx < this->discretization_sz);
+
+                const intmax_t FIRST_EXPONENT   = -static_cast<intmax_t>(this->discretization_sz / 4);
+                const size_t   HALF_SZ          =  this->discretization_sz / 2;
+                const bool is_negative          = idx < HALF_SZ;
+
+                const intmax_t signed_normalized_slot_i = is_negative
+                    ? static_cast<intmax_t>(HALF_SZ) - static_cast<intmax_t>(idx) - 1
+                    : static_cast<intmax_t>(idx) - static_cast<intmax_t>(HALF_SZ);
+
+                return {is_negative, FIRST_EXPONENT + signed_normalized_slot_i};
             }
     };
+
 }
 
 #endif

@@ -14,9 +14,12 @@
 #include <general_definition/float_def.h>
 #include <stl_extension/hasher.h>
 #include <matrix/matrix_serializer.h>
+#include "dispatch_code_generator.h"
 
 namespace taylor_matrix::host_matrix::tensor_matrix_operation
 {
+    using DispatchCodeGenerator = taylor_matrix::host_matrix::dispatch_code_generator::DispatchCodeGenerator;
+
     template <class T, class ...Args, class Allocator = std::allocator<char>>
     constexpr auto to_shared_array(const std::vector<T, Args...>& arg,
                                    const Allocator& allocator = Allocator()) -> std::shared_ptr<T[]>
@@ -531,11 +534,9 @@ namespace taylor_matrix::host_matrix::tensor_matrix_operation
     }
 
     template <class TaylorBaseCoeffSizeContainer,
-              class ShapeBaseCoeffSizeContainer,
               class TaylorBasePromotedFloatType = tensor_model::tensor_std_float_t,
-              class ShapeBasePromotedFloatType = tensor_model::tensor_std_float_t,
               class Allocator = std::allocator<char>>
-    constexpr __attribute__((noinline)) auto matrix_transform(const std::shared_ptr<tensor_model::Matrix>& matrix, const std::shared_ptr<tensor_model::Matrix>& matrix_0,
+    constexpr __attribute__((noinline)) auto matrix_transform(const std::shared_ptr<tensor_model::Matrix>& matrix,
                                                               const stdx::transparent_vector<size_t, Allocator>& focal_sz_vec,
                                                               const stdx::transparent_unordered_map<size_t, stdx::transparent_unordered_map<size_t, stdx::transparent_vector<stdx::transparent_vector<size_t, Allocator>, Allocator>, Allocator>, Allocator>& focal_suffix_map,
                                                               const stdx::transparent_unordered_map<size_t, stdx::transparent_unordered_map<size_t, stdx::transparent_vector<stdx::transparent_vector<size_t, Allocator>, Allocator>, Allocator>, Allocator>& accum_suffix_map,
@@ -544,14 +545,10 @@ namespace taylor_matrix::host_matrix::tensor_matrix_operation
                                                               const stdx::transparent_vector<double, Allocator>& parameter_bound_ratio_vec,
                                                               TaylorBaseCoeffSizeContainer base_coeff_sz_container,
                                                               const std::add_pointer_t<tensor_model::tensor_std_float_t> * coeff_arr, size_t& coeff_arr_offset, size_t coeff_arr_cap,
-                                                              ShapeBaseCoeffSizeContainer base_shape_coeff_sz_container,
-                                                              const std::add_pointer_t<tensor_model::tensor_std_float_t> * shape_coeff_arr, size_t& shape_coeff_arr_offset, size_t shape_coeff_arr_cap,
-                                                              tensor_model::tensor_std_float_t pe_frequency_multiplier, tensor_model::tensor_std_float_t pe_amplitude_discrete_unit, size_t pe_stack_offset, size_t pe_dedicated_pe_sz,
 
-                                                              size_t& transformed_counter, size_t hash_table_sz,
+                                                              DispatchCodeGenerator& dispatch_code_gen,
 
                                                               const stdx::Tag<TaylorBasePromotedFloatType>& taylor_base_promotion_tag = stdx::Tag<TaylorBasePromotedFloatType>{},
-                                                              const stdx::Tag<ShapeBasePromotedFloatType>& shape_base_promotion_tag = stdx::Tag<ShapeBasePromotedFloatType>{},
 
                                                               bool has_logit_unit_reuse_tag = true,
                                                               bool has_logit_group_logit_reuse_tag = true,
@@ -577,19 +574,12 @@ namespace taylor_matrix::host_matrix::tensor_matrix_operation
         if (matrix->being_vec_sz == 2u)
         {
             const size_t saved_coeff_arr_offset         = coeff_arr_offset;
-            const size_t saved_shape_coeff_arr_offset   = shape_coeff_arr_offset;
-
-            size_t hash_idx                             = get_hash_index(matrix_0, transformed_counter, hash_table_sz);
-            transformed_counter                         += 1;
 
             std::shared_ptr<BeingUnit> lhs = tensor_being_unit_operation::left_major_intercourse_being_unit(matrix->being_vec[0],
                                                                                                             matrix->being_vec[1],
                                                                                                             base_coeff_sz_container,
-                                                                                                            coeff_arr[hash_idx], coeff_arr_offset, coeff_arr_cap,
-                                                                                                            base_shape_coeff_sz_container,
-                                                                                                            shape_coeff_arr[hash_idx], shape_coeff_arr_offset, shape_coeff_arr_cap,
+                                                                                                            coeff_arr[dispatch_code_gen.get_dispatch_code()], coeff_arr_offset, coeff_arr_cap,
                                                                                                             taylor_base_promotion_tag,
-                                                                                                            shape_base_promotion_tag,
                                                                                                             has_logit_unit_reuse_tag,
                                                                                                             has_logit_group_logit_reuse_tag,
                                                                                                             has_being_logit_reuse_tag,
@@ -598,26 +588,17 @@ namespace taylor_matrix::host_matrix::tensor_matrix_operation
             if (has_base_matrix_logit_reuse_tag)
             {
                 coeff_arr_offset        = saved_coeff_arr_offset;
-                shape_coeff_arr_offset  = saved_shape_coeff_arr_offset;
             }
-
-            hash_idx            = get_hash_index(matrix_0, transformed_counter, hash_table_sz);
-            transformed_counter += 1;
 
             std::shared_ptr<BeingUnit> rhs = tensor_being_unit_operation::left_major_intercourse_being_unit(matrix->being_vec[1],
                                                                                                             matrix->being_vec[0],
                                                                                                             base_coeff_sz_container,
-                                                                                                            coeff_arr[hash_idx], coeff_arr_offset, coeff_arr_cap,
-                                                                                                            base_shape_coeff_sz_container,
-                                                                                                            shape_coeff_arr[hash_idx], shape_coeff_arr_offset, shape_coeff_arr_cap,
+                                                                                                            coeff_arr[dispatch_code_gen.get_dispatch_code()], coeff_arr_offset, coeff_arr_cap,
                                                                                                             taylor_base_promotion_tag,
-                                                                                                            shape_base_promotion_tag,
                                                                                                             has_logit_unit_reuse_tag,
                                                                                                             has_logit_group_logit_reuse_tag,
                                                                                                             has_being_logit_reuse_tag,
                                                                                                             allocator);
-            hash_idx            = get_hash_index(matrix_0, transformed_counter, hash_table_sz);
-            transformed_counter += 1;
 
             decltype(lhs) lhs_combined[]{lhs, matrix->being_vec[0]};
             decltype(rhs) rhs_combined[]{rhs, matrix->being_vec[1]};
@@ -627,11 +608,11 @@ namespace taylor_matrix::host_matrix::tensor_matrix_operation
             
             std::shared_ptr<Matrix> tmp = std::allocate_shared<Matrix>(allocator,
                                                                        Matrix{.being_vec       = to_shared_array(stdx::transparent_vector<std::shared_ptr<BeingUnit>, Allocator>{final_lhs, final_rhs}, allocator),
-                                                                               .being_vec_sz    = 2u});
+                                                                              .being_vec_sz    = 2u});
 
             return feed_forward_transform(tmp,
                                           base_coeff_sz_container,
-                                          coeff_arr[hash_idx], coeff_arr_offset, coeff_arr_cap,
+                                          coeff_arr[dispatch_code_gen.get_dispatch_code()], coeff_arr_offset, coeff_arr_cap,
                                           taylor_base_promotion_tag,
                                           allocator);
         }
@@ -666,9 +647,9 @@ namespace taylor_matrix::host_matrix::tensor_matrix_operation
             if (i != 0u)
             {
                 stdx::transparent_vector<std::shared_ptr<Matrix>, Allocator> focused_deparameterized_matrix_vec = matrix_to_focal(deparameterize(up_to_point_matrix, parameter_bound_ratio, allocator),
-                                                                                                                                i,
-                                                                                                                                accum_suffix_map,
-                                                                                                                                allocator);
+                                                                                                                                  i,
+                                                                                                                                  accum_suffix_map,
+                                                                                                                                  allocator);
                 stdx::transparent_vector<std::shared_ptr<Matrix>, Allocator> accum_matrix_vec(allocator);
 
                 for (const auto& focused_matrix: focused_deparameterized_matrix_vec)
@@ -676,15 +657,13 @@ namespace taylor_matrix::host_matrix::tensor_matrix_operation
                     stdx::transparent_vector<std::shared_ptr<Matrix>, Allocator> focal_deparamed_matrix_vec = focal_split_matrix(focused_matrix, focal_sz, allocator);
                     stdx::transparent_vector<std::shared_ptr<Matrix>, Allocator> incremental_vec(allocator);
                     const size_t saved_coeff_arr_offset_1                                                   = coeff_arr_offset;
-                    const size_t saved_shape_coeff_arr_offset_1                                             = shape_coeff_arr_offset;
                     size_t positional_idx                                                                   = 0u;
 
                     for (const auto& focal: focal_deparamed_matrix_vec)
                     {
                         coeff_arr_offset        = saved_coeff_arr_offset_1;
-                        shape_coeff_arr_offset  = saved_shape_coeff_arr_offset_1;
 
-                        std::shared_ptr<Matrix> transformed_focal = matrix_transform(focal, matrix_0,
+                        std::shared_ptr<Matrix> transformed_focal = matrix_transform(focal,
                                                                                     {std::next(focal_sz_vec.begin()), focal_sz_vec.end()},
                                                                                     focal_suffix_map,
                                                                                     accum_suffix_map,
@@ -692,12 +671,8 @@ namespace taylor_matrix::host_matrix::tensor_matrix_operation
                                                                                     {std::next(parameter_bound_ratio_vec.begin()), parameter_bound_ratio_vec.end()},
                                                                                     base_coeff_sz_container,
                                                                                     coeff_arr, coeff_arr_offset, coeff_arr_cap,
-                                                                                    base_shape_coeff_sz_container,
-                                                                                    shape_coeff_arr, shape_coeff_arr_offset, shape_coeff_arr_cap,
-                                                                                    pe_frequency_multiplier, pe_amplitude_discrete_unit, pe_stack_offset + 1, pe_dedicated_pe_sz,
-                                                                                    transformed_counter, hash_table_sz,
+                                                                                    dispatch_code_gen,
                                                                                     taylor_base_promotion_tag,
-                                                                                    shape_base_promotion_tag,
                                                                                     has_logit_unit_reuse_tag,
                                                                                     has_logit_group_logit_reuse_tag,
                                                                                     has_being_logit_reuse_tag,
@@ -730,15 +705,13 @@ namespace taylor_matrix::host_matrix::tensor_matrix_operation
                     stdx::transparent_vector<std::shared_ptr<Matrix>, Allocator> focal_matrix_vec       = focal_split_matrix(focused_matrix, focal_sz, allocator);
                     stdx::transparent_vector<std::shared_ptr<Matrix>, Allocator> transformed_focal_vec(allocator);
                     const size_t saved_coeff_arr_offset_0                                               = coeff_arr_offset;
-                    const size_t saved_shape_coeff_arr_offset_0                                         = shape_coeff_arr_offset;
                     size_t positional_idx                                                               = 0u;
 
                     for (const auto& focal: focal_matrix_vec)
                     {
                         coeff_arr_offset        = saved_coeff_arr_offset_0;
-                        shape_coeff_arr_offset  = saved_shape_coeff_arr_offset_0;
 
-                        std::shared_ptr<Matrix> transformed_focal = matrix_transform(focal, matrix_0,
+                        std::shared_ptr<Matrix> transformed_focal = matrix_transform(focal,
                                                                                      {std::next(focal_sz_vec.begin()), focal_sz_vec.end()},
                                                                                      focal_suffix_map,
                                                                                      accum_suffix_map,
@@ -746,12 +719,8 @@ namespace taylor_matrix::host_matrix::tensor_matrix_operation
                                                                                      {std::next(parameter_bound_ratio_vec.begin()), parameter_bound_ratio_vec.end()},
                                                                                      base_coeff_sz_container,
                                                                                      coeff_arr, coeff_arr_offset, coeff_arr_cap,
-                                                                                     base_shape_coeff_sz_container,
-                                                                                     shape_coeff_arr, shape_coeff_arr_offset, shape_coeff_arr_cap,
-                                                                                     pe_frequency_multiplier, pe_amplitude_discrete_unit, pe_stack_offset + 1, pe_dedicated_pe_sz,
-                                                                                     transformed_counter, hash_table_sz,
+                                                                                     dispatch_code_gen,
                                                                                      taylor_base_promotion_tag,
-                                                                                     shape_base_promotion_tag,
                                                                                      has_logit_unit_reuse_tag,
                                                                                      has_logit_group_logit_reuse_tag,
                                                                                      has_being_logit_reuse_tag,
@@ -772,13 +741,11 @@ namespace taylor_matrix::host_matrix::tensor_matrix_operation
             }
         }
 
-        size_t hash_idx             = get_hash_index(matrix_0, transformed_counter, hash_table_sz);
-        transformed_counter         += 1;
         std::shared_ptr<Matrix> tmp = series_normalize(incremental_matrix_vec.data(), incremental_matrix_vec.size(), allocator);
 
         return feed_forward_transform(tmp,
                                       base_coeff_sz_container,
-                                      coeff_arr[hash_idx], coeff_arr_offset, coeff_arr_cap,
+                                      coeff_arr[dispatch_code_gen.get_dispatch_code()], coeff_arr_offset, coeff_arr_cap,
                                       taylor_base_promotion_tag,
                                       allocator);
     }

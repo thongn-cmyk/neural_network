@@ -41,6 +41,9 @@
 #include <format>
 #include <limits.h>
 #include <sstream>
+#include <taylor_matrix/host_matrix/dispatch_code_generator.h>
+#include <taylor_matrix/host_matrix/generic_one_dimensional_cubic_interpolation.h>
+#include <taylor_matrix/host_matrix/generic_two_dimensional_cubic_interpolation.h>
 
 //there isn't other optimizables (this point of code is so insanely tiny that I've spent the last 6 months to reach, I'm telling you that this is no easy job)
 //I've been investigating the continuous optimization scheme longer than I have wanted
@@ -68,6 +71,8 @@
 using namespace taylor_matrix::host_matrix::the_host_matrix;
 using namespace taylor_matrix::host_matrix::tensor_matrix_operation;
 using namespace float_def;
+
+using DispatchCodeGenerator = taylor_matrix::host_matrix::dispatch_code_generator::DispatchCodeGenerator;
 
 auto randomize_int(size_t first, size_t last) -> size_t
 {
@@ -319,57 +324,50 @@ class TheHostMatrixFactory2
         {
             {},
             {4},
-            {4, 2},
-            {4, 2, 2},
-            {4, 2, 2, 2}
+            {4, 4},
+            {4, 2, 4},
+            {4, 2, 2, 4}
         };
 
         static inline const std::vector<std::vector<size_t>> MID_TRANSFORMATION_ROTATION_VEC = 
         {
             {},
             {4},
-            {4, 2},
-            {4, 2, 2},
-            {4, 2, 2, 2}
+            {4, 4},
+            {4, 2, 4},
+            {4, 2, 2, 4}
         };
 
         static inline const std::vector<std::vector<size_t>> HIGH_TRANSFORMATION_ROTATION_VEC = 
         {
             {},
             {4},
-            {4, 2},
-            {4, 2, 2},
-            {4, 2, 2, 2}
+            {4, 4},
+            {4, 2, 4},
+            {4, 2, 2, 4}
         };
 
         static inline const double PARAMETER_BOUND_RATIO        = 0.0;
-        static inline const double PE_AMPLITUDE_DISCRETE_UNIT   = 0.1;
-        static inline const size_t TENTATIVE_PE_SZ              = 4;
 
         static inline const size_t LOW_ENTROPY_HASH_TABLE_SZ    = 1;
         static inline const size_t MID_ENTROPY_HASH_TABLE_SZ    = 1;
         static inline const size_t HIGH_ENTROPY_HASH_TABLE_SZ   = 1;
 
-        template <size_t TAYLOR_BASE_COEFF_SZ, size_t SHAPE_BASE_COEFF_SZ,
-                class TaylorBasePromotedFloatType = tensor_std_float_t, class ShapeBasePromotedFloatType = tensor_std_float_t>
+        template <size_t TAYLOR_BASE_COEFF_SZ,
+                    class TaylorBasePromotedFloatType = tensor_std_float_t>
         static auto make_the_matrix(const std::vector<size_t>& matrix_shape,
                                     const std::vector<size_t>& focal_sz_vec,
                                     const std::unordered_map<size_t, std::unordered_map<size_t, std::vector<std::vector<size_t>>>>& focal_suffix_map,
                                     const std::unordered_map<size_t, std::unordered_map<size_t, std::vector<std::vector<size_t>>>>& accum_suffix_map,
                                     const std::vector<size_t>& rotation_sz_vec,
                                     const std::vector<double>& parameter_bound_ratio_vec,
-                                    tensor_std_float_t pe_frequency_multiplier,
-                                    tensor_std_float_t pe_amplitude_discrete_unit,
-                                    size_t pe_dedicated_pe_sz,
                                     size_t hash_table_sz,
                                     const std::integral_constant<size_t, TAYLOR_BASE_COEFF_SZ>& taylor_base_coeff_sz,
-                                    const std::integral_constant<size_t, SHAPE_BASE_COEFF_SZ>& shape_base_coeff_sz,
                                     const stdx::Tag<TaylorBasePromotedFloatType>& taylor_base_promotion_tag = stdx::Tag<TaylorBasePromotedFloatType>{},
-                                    const stdx::Tag<ShapeBasePromotedFloatType>& shape_base_promotion_tag = stdx::Tag<ShapeBasePromotedFloatType>{},
                                     bool has_process_unit_logit_reuse_tag = true,
                                     bool has_process_group_logit_reuse_tag = true,
                                     bool has_being_logit_reuse_tag = true,
-                                    bool has_base_matrix_logit_reuse_tag = true) -> std::unique_ptr<the_matrix::MatrixInterface>
+                                    bool has_base_matrix_logit_reuse_tag = true) -> std::unique_ptr<MatrixInterface>
         {
             constexpr size_t INITIAL_LOGIT_VEC_CAPACITY = size_t{1} << 10;
             constexpr size_t ITERATION_MULTIPLIER       = size_t{1} << 2;
@@ -381,35 +379,29 @@ class TheHostMatrixFactory2
                 try
                 {
                     std::vector<std::vector<tensor_std_float_t>> coeff_vec          = stdx::make_2d_vector<tensor_std_float_t>(hash_table_sz, current_logit_vec_capacity);
-                    std::vector<std::vector<tensor_std_float_t>> shape_coeff_vec    = stdx::make_2d_vector<tensor_std_float_t>(hash_table_sz, current_logit_vec_capacity);
-                    
                     auto coeff_arr                                                  = to_2d_array(coeff_vec);
-                    auto shape_coeff_arr                                            = to_2d_array(shape_coeff_vec);
 
                     size_t coeff_vec_sz         = 0u;
-                    size_t shape_coeff_vec_sz   = 0u;
                     size_t transformed_counter  = 0u;
 
-                    matrix_transform(make_matrix_from_shape_vec(matrix_shape), make_matrix_from_shape_vec(matrix_shape),
-                                                                focal_sz_vec,
-                                                                focal_suffix_map,
-                                                                accum_suffix_map,
-                                                                rotation_sz_vec,
-                                                                parameter_bound_ratio_vec,
-                                                                stdx::to_size_container(taylor_base_coeff_sz),
-                                                                coeff_arr.get(), coeff_vec_sz, current_logit_vec_capacity,
-                                                                stdx::to_size_container(shape_base_coeff_sz),
-                                                                shape_coeff_arr.get(), shape_coeff_vec_sz, current_logit_vec_capacity,
-                                                                pe_frequency_multiplier, pe_amplitude_discrete_unit, 0u, pe_dedicated_pe_sz,
+                    DispatchCodeGenerator generator(make_matrix_from_shape_vec(matrix_shape), hash_table_sz);
 
-                                                                transformed_counter, hash_table_sz,
+                    matrix_transform(make_matrix_from_shape_vec(matrix_shape),
+                                    focal_sz_vec,
+                                    focal_suffix_map,
+                                    accum_suffix_map,
+                                    rotation_sz_vec,
+                                    parameter_bound_ratio_vec,
+                                    stdx::to_size_container(taylor_base_coeff_sz),
+                                    coeff_arr.get(), coeff_vec_sz, current_logit_vec_capacity,
 
-                                                                taylor_base_promotion_tag,
-                                                                shape_base_promotion_tag,
-                                                                has_process_unit_logit_reuse_tag,
-                                                                has_process_group_logit_reuse_tag,
-                                                                has_being_logit_reuse_tag,
-                                                                has_base_matrix_logit_reuse_tag);
+                                    generator,
+
+                                    taylor_base_promotion_tag,
+                                    has_process_unit_logit_reuse_tag,
+                                    has_process_group_logit_reuse_tag,
+                                    has_being_logit_reuse_tag,
+                                    has_base_matrix_logit_reuse_tag);
 
                     TheHostMatrix matrix(matrix_shape,
                                             focal_sz_vec,
@@ -418,18 +410,12 @@ class TheHostMatrixFactory2
                                             rotation_sz_vec,
                                             parameter_bound_ratio_vec,
                                             taylor_base_coeff_sz,
-                                            shape_base_coeff_sz,
                                             taylor_base_promotion_tag,
-                                            shape_base_promotion_tag,
                                             has_process_unit_logit_reuse_tag,
                                             has_process_group_logit_reuse_tag,
                                             has_being_logit_reuse_tag,
                                             has_base_matrix_logit_reuse_tag,
-
-                                            stdx::make_2d_vector(hash_table_sz, coeff_vec_sz, 0.f),
-                                            stdx::make_2d_vector(hash_table_sz, shape_coeff_vec_sz, 0.f),
-
-                                            pe_frequency_multiplier, pe_amplitude_discrete_unit, pe_dedicated_pe_sz);
+                                            stdx::make_2d_vector(hash_table_sz, coeff_vec_sz, 0.f));
 
                     return std::make_unique<decltype(matrix)>(std::move(matrix));
                 }
@@ -442,8 +428,9 @@ class TheHostMatrixFactory2
     public:
 
         TheHostMatrixFactory2(): compute_option(LOW_COMPUTE),
-                                entropy_option(LOW_ENTROPY),
-                                vector_sz(std::nullopt){}
+                                 entropy_option(LOW_ENTROPY),
+                                 vector_sz(std::nullopt),
+                                 base_transformation_sz(std::nullopt){}
 
         auto set_entropy(uint8_t entropy_option) -> TheHostMatrixFactory2&
         {
@@ -577,14 +564,9 @@ class TheHostMatrixFactory2
                                           this->get_accum_suffix_map(),
                                           this->get_rotation_size_vector(),
                                           this->get_parameter_bound_ratio_vector(),
-                                          this->get_pe_frequency_multiplier(),
-                                          this->get_pe_amplitude_discrete_unit(),
-                                          this->get_pe_dedicated_pe_size(),
                                           this->get_hash_table_size(),
-                                          std::integral_constant<size_t, 2>{},
-                                          std::integral_constant<size_t, SZ>{},
+                                          this->get_taylor_base_coefficient_size(),
                                           this->get_taylor_base_promotion_tag(),
-                                          this->get_shape_base_promotion_tag(),
                                           this->get_has_process_logit_reuse_tag(),
                                           this->get_has_process_group_logit_reuse_tag(),
                                           this->get_has_being_logit_reuse_tag(),
@@ -854,39 +836,12 @@ class TheHostMatrixFactory2
             return std::vector<double>(this->get_focal_size_vector().size(), PARAMETER_BOUND_RATIO);
         }
 
-        auto get_pe_frequency_multiplier() -> tensor_model::tensor_std_float_t
-        {
-            return std::numbers::pi_v<tensor_model::tensor_std_float_t>;
-        }
-
-        auto get_pe_amplitude_discrete_unit() -> tensor_model::tensor_std_float_t
-        {
-            return PE_AMPLITUDE_DISCRETE_UNIT;
-        }
-
-        auto get_pe_dedicated_pe_size() -> size_t
-        {
-            constexpr size_t PROCESS_GROUP_LOGIT_SZ = tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ * tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ;
-
-            return std::min(TENTATIVE_PE_SZ, PROCESS_GROUP_LOGIT_SZ);
-        }
-
         auto get_taylor_base_coefficient_size() -> std::integral_constant<size_t, 2u>
         {
             return {};
         }
 
-        auto get_shape_base_coefficient_size() -> std::integral_constant<size_t, 4u> //ideally, we'd want 16 for the spikyness of the chart, such is that we won't actually push the responsibility of transformation from the former layer to the latter layer
-        {                                                                            //the power series would be out of range after 1 or 2 transformation, which is precisely why we want to just change certain logits
-            return {};
-        }
-
         auto get_taylor_base_promotion_tag() -> stdx::Tag<self::promoted_float_t>
-        {
-            return {};
-        }
-
-        auto get_shape_base_promotion_tag() -> stdx::Tag<self::promoted_float_t>
         {
             return {};
         }
@@ -969,7 +924,7 @@ static inline const size_t INPUT_SZ             = 64;
 static inline const std::unordered_map<size_t, std::vector<size_t>> SHAPE_MAP = 
 {
     {
-        16,
+        32,
         {
             size_t{1} << 1,
             1,
@@ -978,7 +933,7 @@ static inline const std::unordered_map<size_t, std::vector<size_t>> SHAPE_MAP =
         }
     },
     {
-        64,
+        128,
         {
             size_t{1} << 2,
             2,
@@ -987,7 +942,7 @@ static inline const std::unordered_map<size_t, std::vector<size_t>> SHAPE_MAP =
         }
     },
     {
-        512,
+        1024,
         {
             size_t{1} << 4,
             4,
@@ -999,15 +954,15 @@ static inline const std::unordered_map<size_t, std::vector<size_t>> SHAPE_MAP =
 
 static inline const std::vector<size_t> DIMENSION_SZ_OPTIMIZABLE_VEC =
 {
-    64,
-    512
+    128,
+    1024
 };
 
 static inline const std::vector<size_t> BASE_SZ_OPTIMIZABLE_VEC   =
 {
-    4,
-    6,
-    8
+    2,
+    2,
+    2
 };
 
 static inline const uint8_t TRAINING_STRATEGY_GLOBAL_PARITY                 = 0;
@@ -1403,25 +1358,24 @@ auto get_parity_distance(const std::shared_ptr<tensor_model::Matrix>& lhs,
         if (rhs_flat_tensor_vec[i] == 1)
         {
             rhs_true_sum    += 1;
-            lhs_true_sum    += lhs_flat_tensor_vec[i];
-
-            true_vec.push_back(rhs_flat_tensor_vec[i]);
+            lhs_true_sum    += std::exp(lhs_flat_tensor_vec[i]);
         }
         else
         {
             rhs_false_sum   += 0;
-            lhs_false_sum   += lhs_flat_tensor_vec[i];
-
-            false_vec.push_back(lhs_flat_tensor_vec[i]);
+            lhs_false_sum   += std::exp(lhs_flat_tensor_vec[i]);
         }
     }
 
-    double lhs_parity       = lhs_true_sum / true_vec.size() - lhs_false_sum / false_vec.size();
-    double rhs_parity       = 1;
+    double lhs_parity       = lhs_true_sum - lhs_false_sum;
+    double rhs_parity       = rhs_true_sum - rhs_false_sum;
 
-    double deviation        = get_deviation(true_vec) + get_deviation(false_vec);
+    if (lhs_parity > 0)
+    {
+        return 0;
+    }
 
-    return std::pow(lhs_parity - rhs_parity, 2);  //I suspect that we are most likely stuck at the 3d projection (2 -> 1), we'd work on this later, this is very important
+    return std::pow(lhs_parity - rhs_parity, 2); 
 }
 
 auto is_same_parity(const std::shared_ptr<tensor_model::Matrix>& lhs,
@@ -1450,12 +1404,12 @@ auto is_same_parity(const std::shared_ptr<tensor_model::Matrix>& lhs,
         if (rhs_flat_tensor_vec[i] == 1)
         {
             rhs_true_sum    += 1;
-            lhs_true_sum    += lhs_flat_tensor_vec[i];
+            lhs_true_sum    += std::exp(lhs_flat_tensor_vec[i]);
         }
         else
         {
             rhs_false_sum   += 0;
-            lhs_false_sum   += lhs_flat_tensor_vec[i];
+            lhs_false_sum   += std::exp(lhs_flat_tensor_vec[i]);
         }
     }
 
@@ -1473,8 +1427,8 @@ auto get_optimizer() -> std::unique_ptr<matrix_optimizer_subsystem::CoordinatedS
         {
             .matrix_cache_map_cap                       = randomize_optional_int<uint64_t>(0, size_t{1} << 4),
             .time_machine_cache_map_cap                 = randomize_optional_int<uint64_t>(0, size_t{1} << 4),
-            .optimization_epoch_sz                      = 32LL,
-            .optimization_step_sz                       = 16LL,
+            .optimization_epoch_sz                      = 128ULL,
+            .optimization_step_sz                       = 4ULL,
             .optimization_loop_sz                       = 2ULL
         }
     );

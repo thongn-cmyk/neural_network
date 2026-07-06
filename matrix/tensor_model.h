@@ -14,7 +14,7 @@ namespace tensor_model
 
     //I reckoned that this is compatible and it's better to just ... 
 
-    static inline constexpr size_t PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ      = 1u;
+    static inline constexpr size_t PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ      = 2u;
     static inline constexpr size_t PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ  = 8u;
 
     struct ProcessUnit

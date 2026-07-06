@@ -42,6 +42,16 @@ namespace taylor_matrix::host_matrix::shape_projection
     }
 
     template <class T, std::enable_if_t<std::is_same_v<T, float>, bool> = true>
+    constexpr auto fast_approx_one_half(T x) -> T
+    {
+        float abs_x     = std::abs(x);
+        uint32_t u_val  = std::bit_cast<uint32_t>(abs_x);
+        u_val           = (u_val >> 1) + 0x1FC00000;
+
+        return std::copysign(std::bit_cast<float>(u_val), x);
+    }
+
+    template <class T, std::enable_if_t<std::is_same_v<T, float>, bool> = true>
     constexpr auto fast_approx_three_quarters(T x) -> T
     {
         float abs_x     = std::abs(x);
@@ -125,7 +135,7 @@ namespace taylor_matrix::host_matrix::shape_projection
         }
 
         PromotedFloatType projected_result  = 0;
-        PromotedFloatType x_multiplier      = x;
+        PromotedFloatType x_multiplier      = fast_approx_one_half(x);
 
         for (size_t i = 0u; i < coeff_arr_sz_container.get(); ++i)
         {
@@ -136,7 +146,7 @@ namespace taylor_matrix::host_matrix::shape_projection
             else
             {
                 projected_result    += static_cast<PromotedFloatType>(coeff_arr[i]) * x_multiplier;
-                x_multiplier        = fast_approx_power_7_8(x_multiplier);
+                x_multiplier        = fast_approx_one_half(x_multiplier);
             }
         }
 
@@ -349,7 +359,7 @@ namespace taylor_matrix::host_matrix::shape_projection
         }
 
         PromotedFloatType projected_result  = 0;
-        PromotedFloatType x_multiplier      = x_arr[0];
+        PromotedFloatType x_multiplier      = fast_approx_one_half(x_arr[0]);
 
         for (size_t i = 0u; i < base_coeff_sz_container.get(); ++i)
         {
@@ -366,7 +376,7 @@ namespace taylor_matrix::host_matrix::shape_projection
             else
             {
                 projected_result    += coeff * x_multiplier;
-                x_multiplier        = fast_approx_power_7_8(x_multiplier);
+                x_multiplier        = fast_approx_one_half(x_multiplier);
             }
         }
 
@@ -536,7 +546,11 @@ namespace taylor_matrix::host_matrix::shape_projection
         alignas(alignof(std::max_align_t)) PromotedFloatType projected_arr[batch_sz_container.get()];
         alignas(alignof(std::max_align_t)) PromotedFloatType x_multiplier_arr[batch_sz_container.get()];
 
-        std::copy(flat_x_arr_arr, std::next(flat_x_arr_arr, batch_sz_container.get()), x_multiplier_arr);
+        for (size_t i = 0u; i < batch_sz_container.get(); ++i)
+        {
+            x_multiplier_arr[i]   = fast_approx_one_half(flat_x_arr_arr[i]);
+        }
+
         std::fill(y_arr, std::next(y_arr, batch_sz_container.get()), 0);
 
         for (size_t i = 0u; i < base_coeff_sz_container.get(); ++i)
@@ -559,7 +573,7 @@ namespace taylor_matrix::host_matrix::shape_projection
                 for (size_t j = 0u; j < batch_sz_container.get(); ++j)
                 {
                     y_arr[j]            += projected_arr[j] * x_multiplier_arr[j];
-                    x_multiplier_arr[j] = fast_approx_power_7_8(x_multiplier_arr[j]);
+                    x_multiplier_arr[j] = fast_approx_one_half(x_multiplier_arr[j]);
                 }
             }
         }

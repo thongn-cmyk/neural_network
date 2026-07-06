@@ -79,111 +79,6 @@ namespace taylor_matrix::host_matrix::tensor_being_unit_operation
                                                                                  .process_group_vec_sz  = being->process_group_vec_sz});
     }
 
-    template <class TaylorBaseCoeffSizeContainer,
-              class ShapeBaseCoeffSizeContainer,
-              class TaylorBasePromotedFloatType = tensor_model::tensor_std_float_t,
-              class ShapeBasePromotedFloatType = tensor_model::tensor_std_float_t,
-              class Allocator = std::allocator<char>>
-    constexpr __attribute__((noinline)) auto left_major_intercourse_being_unit(const std::shared_ptr<tensor_model::BeingUnit>& lhs,
-                                                                               const std::shared_ptr<tensor_model::BeingUnit>& rhs,
-                                                                               TaylorBaseCoeffSizeContainer base_coeff_sz_container,
-                                                                               const tensor_model::tensor_std_float_t * coeff_arr, size_t& coeff_arr_offset, size_t coeff_arr_cap,
-                                                                               ShapeBaseCoeffSizeContainer base_shape_coeff_sz_container,
-                                                                               const tensor_model::tensor_std_float_t * shape_coeff_arr, size_t& shape_coeff_arr_offset, size_t shape_coeff_arr_cap,
-                                                                               const stdx::Tag<TaylorBasePromotedFloatType>& taylor_base_promotion_tag = stdx::Tag<TaylorBasePromotedFloatType>{},
-                                                                               const stdx::Tag<ShapeBasePromotedFloatType>& shape_base_promotion_tag = stdx::Tag<ShapeBasePromotedFloatType>{},
-                                                                               bool has_process_unit_logit_reuse_tag = true,
-                                                                               bool has_process_group_logit_reuse_tag = true,
-                                                                               bool has_being_logit_reuse_tag = true,
-                                                                               const Allocator& allocator = Allocator()) -> std::shared_ptr<tensor_model::BeingUnit>
-    {
-        stdx::safe_ptr_access(lhs.get());
-        stdx::safe_ptr_access(rhs.get());
-
-        std::shared_ptr<std::shared_ptr<tensor_model::ProcessGroup>[]> rs = std::allocate_shared<std::shared_ptr<tensor_model::ProcessGroup>[]>(allocator, lhs->process_group_vec_sz);
-
-        const size_t saved_coeff_arr_offset         = coeff_arr_offset;
-        const size_t saved_shape_coeff_arr_offset   = shape_coeff_arr_offset;
-
-        for (size_t i = 0u; i < lhs->process_group_vec_sz; ++i)
-        {
-            if (has_being_logit_reuse_tag)
-            {
-                coeff_arr_offset        = saved_coeff_arr_offset;
-                shape_coeff_arr_offset  = saved_shape_coeff_arr_offset;
-            }
-
-            std::shared_ptr<std::shared_ptr<tensor_model::ProcessGroup>[]> accum_arr = std::allocate_shared<std::shared_ptr<tensor_model::ProcessGroup>[]>(allocator, rhs->process_group_vec_sz);
-
-            for (size_t j = 0u; j < rhs->process_group_vec_sz; ++j)
-            {
-                accum_arr[j]     = tensor_process_group_operation::left_major_intercourse_process_group(lhs->process_group_vec[i],
-                                                                                                        rhs->process_group_vec[j],
-                                                                                                        base_coeff_sz_container,
-                                                                                                        coeff_arr, coeff_arr_offset, coeff_arr_cap,
-                                                                                                        base_shape_coeff_sz_container,
-                                                                                                        shape_coeff_arr, shape_coeff_arr_offset, shape_coeff_arr_cap,
-                                                                                                        taylor_base_promotion_tag,
-                                                                                                        shape_base_promotion_tag,
-                                                                                                        has_process_unit_logit_reuse_tag,
-                                                                                                        has_process_group_logit_reuse_tag,
-                                                                                                        allocator);
-            }
-
-            rs[i] = tensor_process_group_operation::avg(accum_arr.get(), rhs->process_group_vec_sz, allocator);
-        }
-
-        return std::allocate_shared<tensor_model::BeingUnit>(allocator,
-                                                             tensor_model::BeingUnit{.process_group_vec     = std::move(rs),
-                                                                                     .process_group_vec_sz  = lhs->process_group_vec_sz});
-    }
-
-    template <class TaylorBaseCoeffSizeContainer,
-              class TaylorBasePromotedFloatType = tensor_model::tensor_std_float_t,
-              class Allocator = std::allocator<char>>
-    constexpr __attribute__((noinline)) auto mono_transform(const std::shared_ptr<tensor_model::BeingUnit>& arg,
-                                                            TaylorBaseCoeffSizeContainer base_coeff_sz_container,
-                                                            const tensor_model::tensor_std_float_t * coeff_arr, size_t& coeff_arr_offset, size_t coeff_arr_cap,
-                                                            const stdx::Tag<TaylorBasePromotedFloatType>& taylor_base_promotion_tag = stdx::Tag<TaylorBasePromotedFloatType>(),
-                                                            const Allocator& allocator = Allocator()) -> std::shared_ptr<tensor_model::BeingUnit>
-    {
-        stdx::safe_ptr_access(arg.get());
-
-        std::shared_ptr<std::shared_ptr<tensor_model::ProcessGroup>[]> rs = std::allocate_shared<std::shared_ptr<tensor_model::ProcessGroup>[]>(allocator, arg->process_group_vec_sz);
-
-        for (size_t i = 0u; i < arg->process_group_vec_sz; ++i)
-        {
-            rs[i]   = tensor_process_group_operation::mono_transform(arg->process_group_vec[i],
-                                                                     base_coeff_sz_container,
-                                                                     coeff_arr, coeff_arr_offset, coeff_arr_cap,
-                                                                     taylor_base_promotion_tag,
-                                                                     allocator);
-        }
-
-        return std::allocate_shared<tensor_model::BeingUnit>(allocator,
-                                                             tensor_model::BeingUnit{.process_group_vec     = std::move(rs),
-                                                                                     .process_group_vec_sz  = arg->process_group_vec_sz});
-    }
-
-    template <class Allocator = std::allocator<char>>
-    constexpr auto deparameterize(const std::shared_ptr<tensor_model::BeingUnit>& being,
-                                  double perc,
-                                  const Allocator& allocator = Allocator()) -> std::shared_ptr<tensor_model::BeingUnit>
-    {
-        stdx::safe_ptr_access(being.get());
-
-        std::shared_ptr<std::shared_ptr<tensor_model::ProcessGroup>[]> rs = std::allocate_shared<std::shared_ptr<tensor_model::ProcessGroup>[]>(allocator, being->process_group_vec_sz);
-
-        for (size_t i = 0u; i < being->process_group_vec_sz; ++i)
-        {
-            rs[i] = tensor_process_group_operation::deparameterize(being->process_group_vec[i], perc, allocator);
-        }
-
-        return std::allocate_shared<tensor_model::BeingUnit>(allocator,
-                                                             tensor_model::BeingUnit{.process_group_vec     = std::move(rs),
-                                                                                     .process_group_vec_sz  = being->process_group_vec_sz});
-    }
-
     template <class Allocator = std::allocator<char>>
     constexpr auto accumulate(const std::shared_ptr<tensor_model::BeingUnit>& lhs,
                               const std::shared_ptr<tensor_model::BeingUnit>& rhs,
@@ -229,6 +124,158 @@ namespace taylor_matrix::host_matrix::tensor_being_unit_operation
         return rs;
     }
 
+    template <class ValueType,
+              class Allocator = std::allocator<char>>
+    constexpr auto div(const std::shared_ptr<tensor_model::BeingUnit>& being_unit,
+                       const ValueType& value,
+                       const Allocator& allocator = Allocator()) -> std::shared_ptr<tensor_model::BeingUnit>
+    {
+        stdx::safe_ptr_access(being_unit.get());
+
+        std::shared_ptr<std::shared_ptr<tensor_model::ProcessGroup>[]> rs = std::allocate_shared<std::shared_ptr<tensor_model::ProcessGroup>[]>(allocator, being_unit->process_group_vec_sz);
+
+        for (size_t i = 0u; i < being_unit->process_group_vec_sz; ++i)
+        {
+            rs[i] = tensor_process_group_operation::div(being_unit->process_group_vec[i], value, allocator);
+        }
+
+        return std::allocate_shared<tensor_model::BeingUnit>(allocator,
+                                                             tensor_model::BeingUnit{.process_group_vec     = std::move(rs),
+                                                                                     .process_group_vec_sz  = being_unit->process_group_vec_sz});
+    }
+
+    template <class Allocator = std::allocator<char>>
+    constexpr auto avg(const std::shared_ptr<tensor_model::BeingUnit> * being_unit_arr,
+                       size_t being_unit_arr_sz,
+                       const Allocator& allocator = Allocator()) -> std::shared_ptr<tensor_model::BeingUnit>
+    {
+        return div(accumulate(being_unit_arr, being_unit_arr_sz, allocator),
+                   stdx::safe_non_zero_access(being_unit_arr_sz),
+                   allocator);
+    }
+
+    template <class TaylorBaseCoeffSizeContainer,
+              class TaylorBasePromotedFloatType = tensor_model::tensor_std_float_t,
+              class Allocator = std::allocator<char>>
+    constexpr __attribute__((noinline)) auto left_major_intercourse_being_unit(const std::shared_ptr<tensor_model::BeingUnit>& lhs,
+                                                                               const std::shared_ptr<tensor_model::BeingUnit>& rhs,
+                                                                               TaylorBaseCoeffSizeContainer base_coeff_sz_container,
+                                                                               const tensor_model::tensor_std_float_t * coeff_arr, size_t& coeff_arr_offset, size_t coeff_arr_cap,
+                                                                               const stdx::Tag<TaylorBasePromotedFloatType>& taylor_base_promotion_tag = stdx::Tag<TaylorBasePromotedFloatType>{},
+                                                                               bool has_process_unit_logit_reuse_tag = true,
+                                                                               bool has_process_group_logit_reuse_tag = true,
+                                                                               bool has_being_logit_reuse_tag = true,
+                                                                               const Allocator& allocator = Allocator()) -> std::shared_ptr<tensor_model::BeingUnit>
+    {
+        stdx::safe_ptr_access(lhs.get());
+        stdx::safe_ptr_access(rhs.get());
+
+        std::shared_ptr<std::shared_ptr<tensor_model::ProcessGroup>[]> rs = std::allocate_shared<std::shared_ptr<tensor_model::ProcessGroup>[]>(allocator, lhs->process_group_vec_sz);
+
+        const size_t saved_coeff_arr_offset         = coeff_arr_offset;
+
+        for (size_t i = 0u; i < lhs->process_group_vec_sz; ++i)
+        {
+            if (has_being_logit_reuse_tag)
+            {
+                coeff_arr_offset        = saved_coeff_arr_offset;
+            }
+
+            std::shared_ptr<std::shared_ptr<tensor_model::ProcessGroup>[]> accum_arr = std::allocate_shared<std::shared_ptr<tensor_model::ProcessGroup>[]>(allocator, rhs->process_group_vec_sz);
+
+            for (size_t j = 0u; j < rhs->process_group_vec_sz; ++j)
+            {
+                accum_arr[j]     = tensor_process_group_operation::left_major_intercourse_process_group(lhs->process_group_vec[i],
+                                                                                                        rhs->process_group_vec[j],
+                                                                                                        base_coeff_sz_container,
+                                                                                                        coeff_arr, coeff_arr_offset, coeff_arr_cap,
+                                                                                                        taylor_base_promotion_tag,
+                                                                                                        has_process_unit_logit_reuse_tag,
+                                                                                                        has_process_group_logit_reuse_tag,
+                                                                                                        allocator);
+            }
+
+            rs[i] = tensor_process_group_operation::avg(accum_arr.get(), rhs->process_group_vec_sz, allocator);
+        }
+
+        return std::allocate_shared<tensor_model::BeingUnit>(allocator,
+                                                             tensor_model::BeingUnit{.process_group_vec     = std::move(rs),
+                                                                                     .process_group_vec_sz  = lhs->process_group_vec_sz});
+    }
+
+    template <class TaylorBaseCoeffSizeContainer,
+              class TaylorBasePromotedFloatType = tensor_model::tensor_std_float_t,
+              class Allocator = std::allocator<char>>
+    constexpr __attribute__((noinline)) auto mono_transform(const std::shared_ptr<tensor_model::BeingUnit>& arg,
+                                                            TaylorBaseCoeffSizeContainer base_coeff_sz_container,
+                                                            const tensor_model::tensor_std_float_t * coeff_arr, size_t& coeff_arr_offset, size_t coeff_arr_cap,
+                                                            const stdx::Tag<TaylorBasePromotedFloatType>& taylor_base_promotion_tag = stdx::Tag<TaylorBasePromotedFloatType>(),
+                                                            const Allocator& allocator = Allocator()) -> std::shared_ptr<tensor_model::BeingUnit>
+    {
+        stdx::safe_ptr_access(arg.get());
+
+        std::shared_ptr<tensor_model::BeingUnit> rs0    = {};
+
+        {
+            std::shared_ptr<tensor_model::BeingUnit> xx = left_major_intercourse_being_unit(arg,
+                                                                                            arg,
+                                                                                            base_coeff_sz_container,
+                                                                                            coeff_arr, coeff_arr_offset, coeff_arr_cap,
+                                                                                            taylor_base_promotion_tag,
+                                                                                            false,
+                                                                                            false,
+                                                                                            false,
+                                                                                            allocator);
+
+            std::shared_ptr<tensor_model::BeingUnit> avg_arr[]{arg, xx};
+            rs0 = avg(avg_arr, 2u, allocator);
+        }
+
+        std::shared_ptr<tensor_model::BeingUnit> rs1    = {};
+
+        {
+            std::shared_ptr<std::shared_ptr<tensor_model::ProcessGroup>[]> process_group_vec = std::allocate_shared<std::shared_ptr<tensor_model::ProcessGroup>[]>(allocator,
+                                                                                                                                                                   rs0->process_group_vec_sz);
+
+            for (size_t i = 0u; i < rs0->process_group_vec_sz; ++i)
+            {
+                process_group_vec[i]   = tensor_process_group_operation::mono_transform(rs0->process_group_vec[i],
+                                                                                        base_coeff_sz_container,
+                                                                                        coeff_arr, coeff_arr_offset, coeff_arr_cap,
+                                                                                        taylor_base_promotion_tag,
+                                                                                        allocator);
+            }
+
+            std::shared_ptr<tensor_model::BeingUnit> sub_xx =  std::allocate_shared<tensor_model::BeingUnit>(allocator,
+                                                                                                             tensor_model::BeingUnit{.process_group_vec     = std::move(process_group_vec),
+                                                                                                                                     .process_group_vec_sz  = rs0->process_group_vec_sz});
+
+            std::shared_ptr<tensor_model::BeingUnit> avg_arr[]{rs0, sub_xx};
+            rs1 = avg(avg_arr, 2u, allocator);
+        }
+
+        return rs1;
+    }
+
+    template <class Allocator = std::allocator<char>>
+    constexpr auto deparameterize(const std::shared_ptr<tensor_model::BeingUnit>& being,
+                                  double perc,
+                                  const Allocator& allocator = Allocator()) -> std::shared_ptr<tensor_model::BeingUnit>
+    {
+        stdx::safe_ptr_access(being.get());
+
+        std::shared_ptr<std::shared_ptr<tensor_model::ProcessGroup>[]> rs = std::allocate_shared<std::shared_ptr<tensor_model::ProcessGroup>[]>(allocator, being->process_group_vec_sz);
+
+        for (size_t i = 0u; i < being->process_group_vec_sz; ++i)
+        {
+            rs[i] = tensor_process_group_operation::deparameterize(being->process_group_vec[i], perc, allocator);
+        }
+
+        return std::allocate_shared<tensor_model::BeingUnit>(allocator,
+                                                             tensor_model::BeingUnit{.process_group_vec     = std::move(rs),
+                                                                                     .process_group_vec_sz  = being->process_group_vec_sz});
+    }
+
     template <class FloatType,
               class Allocator = std::allocator<char>>
     constexpr auto positional_encode(const std::shared_ptr<tensor_model::BeingUnit>& being_unit,
@@ -260,36 +307,6 @@ namespace taylor_matrix::host_matrix::tensor_being_unit_operation
         return std::allocate_shared<tensor_model::BeingUnit>(allocator,
                                                              tensor_model::BeingUnit{.process_group_vec     = std::move(rs),
                                                                                      .process_group_vec_sz  = being_unit->process_group_vec_sz});
-    }
-
-    template <class ValueType,
-              class Allocator = std::allocator<char>>
-    constexpr auto div(const std::shared_ptr<tensor_model::BeingUnit>& being_unit,
-                       const ValueType& value,
-                       const Allocator& allocator = Allocator()) -> std::shared_ptr<tensor_model::BeingUnit>
-    {
-        stdx::safe_ptr_access(being_unit.get());
-
-        std::shared_ptr<std::shared_ptr<tensor_model::ProcessGroup>[]> rs = std::allocate_shared<std::shared_ptr<tensor_model::ProcessGroup>[]>(allocator, being_unit->process_group_vec_sz);
-
-        for (size_t i = 0u; i < being_unit->process_group_vec_sz; ++i)
-        {
-            rs[i] = tensor_process_group_operation::div(being_unit->process_group_vec[i], value, allocator);
-        }
-
-        return std::allocate_shared<tensor_model::BeingUnit>(allocator,
-                                                             tensor_model::BeingUnit{.process_group_vec     = std::move(rs),
-                                                                                     .process_group_vec_sz  = being_unit->process_group_vec_sz});
-    }
-
-    template <class Allocator = std::allocator<char>>
-    constexpr auto avg(const std::shared_ptr<tensor_model::BeingUnit> * being_unit_arr,
-                       size_t being_unit_arr_sz,
-                       const Allocator& allocator = Allocator()) -> std::shared_ptr<tensor_model::BeingUnit>
-    {
-        return div(accumulate(being_unit_arr, being_unit_arr_sz, allocator),
-                   stdx::safe_non_zero_access(being_unit_arr_sz),
-                   allocator);
     }
 
     template <class ...Args>

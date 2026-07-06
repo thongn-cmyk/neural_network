@@ -1,32 +1,32 @@
-#ifndef __TAYLOR_MATRIX_HOST_MATRIX_TWO_DIMENSIONAL_CUBIC_INTERPOLATION_H__
-#define __TAYLOR_MATRIX_HOST_MATRIX_TWO_DIMENSIONAL_CUBIC_INTERPOLATION_H__
+#ifndef __TAYLOR_MATRIX_HOST_MATRIX_GENERIC_TWO_DIMENSIONAL_CUBIC_INTERPOLATION_H__
+#define __TAYLOR_MATRIX_HOST_MATRIX_GENERIC_TWO_DIMENSIONAL_CUBIC_INTERPOLATION_H__
 
 #include <stdint.h>
 #include <stdlib.h>
 #include "shape_projection.h"
-#include "cubic_quantization_machine.h"
 
-namespace taylor_matrix::host_matrix::two_dimensional_cubic_interpolation
+namespace taylor_matrix::host_matrix::generic_two_dimensional_cubic_interpolation
 {
     consteval auto get_cubic_exp_interpolated_2d_projection_base_size() -> size_t
     {
         return 2u;
     }
 
-    constexpr auto get_cubic_exp_interpolated_2d_projection_size() -> size_t
+    template <class QuantizationMachine>
+    constexpr auto get_cubic_exp_interpolated_2d_projection_size(QuantizationMachine&& quant_machine)
     {
-        using ExponentialQuantizationMachine    = taylor_matrix::host_matrix::cubic_quantization_machine::StandardCubicInterpolationExponentialQuantizationMachine;
-        
         constexpr size_t BASE_SZ    = get_cubic_exp_interpolated_2d_projection_base_size();
-        const size_t ARRAY_SZ       = ExponentialQuantizationMachine{}.quantization_size() * ExponentialQuantizationMachine{}.quantization_size();
+        const size_t ARRAY_SZ       = quant_machine.quantization_size() * quant_machine.quantization_size();
 
         return BASE_SZ * ARRAY_SZ;
     }
 
     template <class FloatType,
+              class QuantizationMachine,
               class PromotedFloatType = FloatType,
               bool HasBoundCheck = true>
     constexpr auto cubic_exp_interpolated_2d_project(FloatType x0, FloatType x1,
+                                                     QuantizationMachine&& quant_machine,
                                                      const FloatType * coeff_arr, size_t& coeff_arr_offset, size_t coeff_arr_cap,
                                                      const stdx::Tag<PromotedFloatType>& promotion_tag = stdx::Tag<PromotedFloatType>(),
                                                      const std::integral_constant<bool, HasBoundCheck>& bound_check = std::integral_constant<bool, HasBoundCheck>{}) -> PromotedFloatType
@@ -37,10 +37,8 @@ namespace taylor_matrix::host_matrix::two_dimensional_cubic_interpolation
 
         constexpr double ALPHA      = 20u;
         constexpr size_t BASE_SZ    = get_cubic_exp_interpolated_2d_projection_base_size();
-        
-        ExponentialQuantizationMachine exp_quant_machine{};
 
-        const size_t REQUIRED_SZ    = get_cubic_exp_interpolated_2d_projection_size();
+        const size_t REQUIRED_SZ    = get_cubic_exp_interpolated_2d_projection_size(quant_machine);
         size_t next_offset          = coeff_arr_offset + REQUIRED_SZ;
 
         if constexpr(HasBoundCheck)
@@ -51,18 +49,18 @@ namespace taylor_matrix::host_matrix::two_dimensional_cubic_interpolation
             }
         }
 
-        size_t quant_d_sz           = exp_quant_machine.quantization_size();
+        size_t quant_d_sz           = quant_machine.quantization_size();
 
-        intmax_t x0_quant_slot      = exp_quant_machine.quantitize(x0);
+        intmax_t x0_quant_slot      = quant_machine.quantitize(x0);
         intmax_t x0_prev_quant_slot = std::max(intmax_t{0}, x0_quant_slot - 1);
 
-        intmax_t x1_quant_slot      = exp_quant_machine.quantitize(x1);
+        intmax_t x1_quant_slot      = quant_machine.quantitize(x1);
         intmax_t x1_prev_quant_slot = std::max(intmax_t{0}, x1_quant_slot - 1);
 
         FloatType x_arr[]{x0, x1};
 
-        PromotedFloatType hinge_x0  = exp_quant_machine.template region_first<PromotedFloatType>(x0_quant_slot);
-        PromotedFloatType hinge_x1  = exp_quant_machine.template region_first<PromotedFloatType>(x1_quant_slot);
+        PromotedFloatType hinge_x0  = quant_machine.template region_first<PromotedFloatType>(x0_quant_slot);
+        PromotedFloatType hinge_x1  = quant_machine.template region_first<PromotedFloatType>(x1_quant_slot);
 
         size_t offset_0_1           = x0_quant_slot * quant_d_sz + x1_quant_slot;
         size_t global_offset_0_1    = coeff_arr_offset + offset_0_1;
