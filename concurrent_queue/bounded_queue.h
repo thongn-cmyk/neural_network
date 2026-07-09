@@ -59,7 +59,7 @@ namespace concurrent_queue::bounded_queue
 
                     if (this->is_poisoned)
                     {
-                        throw std::runtime_error("container poisoned");
+                        throw std::invalid_argument("container poisoned");
                     }
 
                     if (!this->waiting_arg_vec.empty())

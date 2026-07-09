@@ -203,13 +203,62 @@ namespace taylor_matrix::host_matrix::tensor_being_unit_operation
                                                                                      .process_group_vec_sz  = lhs->process_group_vec_sz});
     }
 
-    template <class TaylorBaseCoeffSizeContainer,
-              class TaylorBasePromotedFloatType = tensor_model::tensor_std_float_t,
+    template <class QuantizationMachine,
+              class PromotedFloatType = tensor_model::tensor_std_float_t,
+              class Allocator = std::allocator<char>>
+    constexpr __attribute__((noinline)) auto left_major_interpolate_being_unit(const std::shared_ptr<tensor_model::BeingUnit>& lhs,
+                                                                               const std::shared_ptr<tensor_model::BeingUnit>& rhs,
+                                                                               QuantizationMachine&& quant_machine,
+                                                                               const tensor_model::tensor_std_float_t * coeff_arr, size_t& coeff_arr_offset, size_t coeff_arr_cap,
+                                                                               const stdx::Tag<PromotedFloatType>& taylor_base_promotion_tag = stdx::Tag<PromotedFloatType>{},
+                                                                               bool has_process_unit_logit_reuse_tag = true,
+                                                                               bool has_process_group_logit_reuse_tag = true,
+                                                                               bool has_being_logit_reuse_tag = true,
+                                                                               const Allocator& allocator = Allocator()) -> std::shared_ptr<tensor_model::BeingUnit>
+    {
+        stdx::safe_ptr_access(lhs.get());
+        stdx::safe_ptr_access(rhs.get());
+
+        std::shared_ptr<std::shared_ptr<tensor_model::ProcessGroup>[]> rs = std::allocate_shared<std::shared_ptr<tensor_model::ProcessGroup>[]>(allocator, lhs->process_group_vec_sz);
+
+        const size_t saved_coeff_arr_offset         = coeff_arr_offset;
+
+        for (size_t i = 0u; i < lhs->process_group_vec_sz; ++i)
+        {
+            if (has_being_logit_reuse_tag)
+            {
+                coeff_arr_offset        = saved_coeff_arr_offset;
+            }
+
+            std::shared_ptr<std::shared_ptr<tensor_model::ProcessGroup>[]> accum_arr = std::allocate_shared<std::shared_ptr<tensor_model::ProcessGroup>[]>(allocator, rhs->process_group_vec_sz);
+
+            for (size_t j = 0u; j < rhs->process_group_vec_sz; ++j)
+            {
+                accum_arr[j]     = tensor_process_group_operation::left_major_interpolate_process_group(lhs->process_group_vec[i],
+                                                                                                        rhs->process_group_vec[j],
+                                                                                                        quant_machine,
+                                                                                                        coeff_arr, coeff_arr_offset, coeff_arr_cap,
+                                                                                                        taylor_base_promotion_tag,
+                                                                                                        has_process_unit_logit_reuse_tag,
+                                                                                                        has_process_group_logit_reuse_tag,
+                                                                                                        allocator);
+            }
+
+            rs[i] = tensor_process_group_operation::avg(accum_arr.get(), rhs->process_group_vec_sz, allocator);
+        }
+
+        return std::allocate_shared<tensor_model::BeingUnit>(allocator,
+                                                             tensor_model::BeingUnit{.process_group_vec     = std::move(rs),
+                                                                                     .process_group_vec_sz  = lhs->process_group_vec_sz});
+    }
+
+    template <class QuantizationMachine,
+              class PromotedFloatType = tensor_model::tensor_std_float_t,
               class Allocator = std::allocator<char>>
     constexpr __attribute__((noinline)) auto mono_transform(const std::shared_ptr<tensor_model::BeingUnit>& arg,
-                                                            TaylorBaseCoeffSizeContainer base_coeff_sz_container,
+                                                            QuantizationMachine&& quant_machine,
                                                             const tensor_model::tensor_std_float_t * coeff_arr, size_t& coeff_arr_offset, size_t coeff_arr_cap,
-                                                            const stdx::Tag<TaylorBasePromotedFloatType>& taylor_base_promotion_tag = stdx::Tag<TaylorBasePromotedFloatType>(),
+                                                            const stdx::Tag<PromotedFloatType>& taylor_base_promotion_tag = stdx::Tag<PromotedFloatType>(),
                                                             const Allocator& allocator = Allocator()) -> std::shared_ptr<tensor_model::BeingUnit>
     {
         stdx::safe_ptr_access(arg.get());
@@ -217,9 +266,9 @@ namespace taylor_matrix::host_matrix::tensor_being_unit_operation
         std::shared_ptr<tensor_model::BeingUnit> rs0    = {};
 
         {
-            std::shared_ptr<tensor_model::BeingUnit> xx = left_major_intercourse_being_unit(arg,
+            std::shared_ptr<tensor_model::BeingUnit> xx = left_major_interpolate_being_unit(arg,
                                                                                             arg,
-                                                                                            base_coeff_sz_container,
+                                                                                            quant_machine,
                                                                                             coeff_arr, coeff_arr_offset, coeff_arr_cap,
                                                                                             taylor_base_promotion_tag,
                                                                                             false,
@@ -240,7 +289,7 @@ namespace taylor_matrix::host_matrix::tensor_being_unit_operation
             for (size_t i = 0u; i < rs0->process_group_vec_sz; ++i)
             {
                 process_group_vec[i]   = tensor_process_group_operation::mono_transform(rs0->process_group_vec[i],
-                                                                                        base_coeff_sz_container,
+                                                                                        quant_machine,
                                                                                         coeff_arr, coeff_arr_offset, coeff_arr_cap,
                                                                                         taylor_base_promotion_tag,
                                                                                         allocator);

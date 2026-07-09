@@ -61,7 +61,7 @@ namespace connection_based_manager
 
                 if (this->registered_healthcheckable_set.contains(reinterpret_cast<uintptr_t>(healthcheckable.get())))
                 {
-                    throw std::runtime_error("second healthcheckable");
+                    throw std::invalid_argument("second healthcheckable");
                 }
 
                 try

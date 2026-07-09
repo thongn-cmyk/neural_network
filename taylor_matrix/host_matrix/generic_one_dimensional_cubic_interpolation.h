@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include "taylor_projection.h"
 
-namespace taylor_matirx::host_matrix::generic_one_dimensional_cubic_interpolation
+namespace taylor_matrix::host_matrix::generic_one_dimensional_cubic_interpolation
 {
     consteval auto get_cubic_interpolated_projection_base_size() -> size_t
     {
@@ -46,27 +46,29 @@ namespace taylor_matirx::host_matrix::generic_one_dimensional_cubic_interpolatio
         }
 
         intmax_t quant_slot         = quant_machine.quantitize(x);
-        intmax_t prev_quant_slot    = std::max(intmax_t{0}, quant_slot - 1);
+        // intmax_t prev_quant_slot    = std::max(intmax_t{0}, quant_slot - 1);
 
-        PromotedFloatType hinge_x   = quant_machine.template region_first<PromotedFloatType>(quant_slot);
+        // PromotedFloatType hinge_x   = quant_machine.template region_first<PromotedFloatType>(quant_slot);
 
-        PromotedFloatType prev_y    = base_taylor_project(x,
-                                                          std::next(coeff_arr, BASE_SZ * prev_quant_slot), stdx::to_size_container(std::integral_constant<size_t, BASE_SZ>{}),
-                                                          promotion_tag,
-                                                          bound_check);
+        // PromotedFloatType prev_y    = base_taylor_project(x,
+        //                                                   std::next(coeff_arr, BASE_SZ * prev_quant_slot), stdx::to_size_container(std::integral_constant<size_t, BASE_SZ>{}),
+        //                                                   promotion_tag,
+        //                                                   bound_check);
 
         PromotedFloatType cur_y     = base_taylor_project(x,
                                                           std::next(coeff_arr, BASE_SZ * quant_slot), stdx::to_size_container(std::integral_constant<size_t, BASE_SZ>{}),
                                                           promotion_tag,
                                                           bound_check);
 
-        PromotedFloatType delta_x   = x - hinge_x;
-        PromotedFloatType prev_perc = 1 / std::scalbn(static_cast<PromotedFloatType>(1), ALPHA * delta_x);
+        // PromotedFloatType delta_x   = x - hinge_x;
+        // PromotedFloatType prev_perc = 1 / std::scalbn(static_cast<PromotedFloatType>(1), ALPHA * delta_x);
 
-        result_y0                   = prev_perc * prev_y + (1 - prev_perc) * cur_y;
+        // result_y0                   = prev_perc * prev_y + (1 - prev_perc) * cur_y;
         coeff_arr_offset            = next_offset;
 
-        return result_y0;
+        // return result_y0;
+
+        return cur_y;
     }
 }
 

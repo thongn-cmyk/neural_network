@@ -18,8 +18,13 @@ namespace taylor_matrix::host_matrix::the_host_matrix
 {
     using namespace the_matrix;
 
+    using std_float_t           = float_def::std_float_t;
     using tensor_std_float_t    = tensor_model::tensor_std_float_t;
+
     using DispatchCodeGenerator = taylor_matrix::host_matrix::dispatch_code_generator::DispatchCodeGenerator;
+
+    template <class PromotedFloatType>
+    using QuantizationMachine   = taylor_matrix::host_matrix::cubic_quantization_machine::GenericCubicInterpolationExponentialQuantizationMachine<PromotedFloatType>;
 
     template <class T>
     auto to_2d_array(const std::vector<std::vector<T>>& vec) -> std::shared_ptr<std::add_pointer_t<T>[]>
@@ -45,7 +50,7 @@ namespace taylor_matrix::host_matrix::the_host_matrix
         return std::unique_ptr<std::add_pointer_t<T>[], decltype(destructor)>(ptr, std::move(destructor));
     }
 
-    template <size_t TAYLOR_BASE_COEFF_SZ, class TaylorBasePromotedFloatType>
+    template <class PromotedFloatType>
     class TheHostMatrix: public virtual MatrixInterface
     {
         private:
@@ -61,6 +66,9 @@ namespace taylor_matrix::host_matrix::the_host_matrix
             bool has_being_logit_reuse_tag;
             bool has_base_matrix_logit_reuse_tag;
             std::vector<std::vector<tensor_std_float_t>> taylor_coeff_2d_vec;
+            size_t cubic_discretization_sz;
+            std_float_t cubic_exp_base;
+            std_float_t cubic_multiplier_base;
 
         public:
 
@@ -72,23 +80,28 @@ namespace taylor_matrix::host_matrix::the_host_matrix
                           std::unordered_map<size_t, std::unordered_map<size_t, std::vector<std::vector<size_t>>>> accum_suffix_map,
                           std::vector<size_t> rotation_sz_vec,
                           std::vector<double> parameter_bound_ratio_vec,
-                          const std::integral_constant<size_t, TAYLOR_BASE_COEFF_SZ>,
-                          const stdx::Tag<TaylorBasePromotedFloatType>,
+                          const stdx::Tag<PromotedFloatType>,
                           bool has_process_unit_logit_reuse_tag,
                           bool has_process_group_logit_reuse_tag,
                           bool has_being_logit_reuse_tag,
                           bool has_base_matrix_logit_reuse_tag,
-                          std::vector<std::vector<tensor_std_float_t>> taylor_coeff_2d_vec) noexcept: shape_vec(std::move(shape_vec)),
-                                                                                                      focal_sz_vec(std::move(focal_sz_vec)),
-                                                                                                      focal_suffix_map(std::move(focal_suffix_map)),
-                                                                                                      accum_suffix_map(std::move(accum_suffix_map)),
-                                                                                                      rotation_sz_vec(std::move(rotation_sz_vec)),
-                                                                                                      parameter_bound_ratio_vec(std::move(parameter_bound_ratio_vec)),
-                                                                                                      has_process_unit_logit_reuse_tag(has_process_unit_logit_reuse_tag),
-                                                                                                      has_process_group_logit_reuse_tag(has_process_group_logit_reuse_tag),
-                                                                                                      has_being_logit_reuse_tag(has_being_logit_reuse_tag),
-                                                                                                      has_base_matrix_logit_reuse_tag(has_base_matrix_logit_reuse_tag),
-                                                                                                      taylor_coeff_2d_vec(std::move(taylor_coeff_2d_vec)){}
+                          std::vector<std::vector<tensor_std_float_t>> taylor_coeff_2d_vec,                        
+                          size_t cubic_discretization_sz,
+                          std_float_t cubic_exp_base,
+                          std_float_t cubic_multiplier_base) noexcept: shape_vec(std::move(shape_vec)),
+                                                                       focal_sz_vec(std::move(focal_sz_vec)),
+                                                                       focal_suffix_map(std::move(focal_suffix_map)),
+                                                                       accum_suffix_map(std::move(accum_suffix_map)),
+                                                                       rotation_sz_vec(std::move(rotation_sz_vec)),
+                                                                       parameter_bound_ratio_vec(std::move(parameter_bound_ratio_vec)),
+                                                                       has_process_unit_logit_reuse_tag(has_process_unit_logit_reuse_tag),
+                                                                       has_process_group_logit_reuse_tag(has_process_group_logit_reuse_tag),
+                                                                       has_being_logit_reuse_tag(has_being_logit_reuse_tag),
+                                                                       has_base_matrix_logit_reuse_tag(has_base_matrix_logit_reuse_tag),
+                                                                       taylor_coeff_2d_vec(std::move(taylor_coeff_2d_vec)),
+                                                                       cubic_discretization_sz(cubic_discretization_sz),
+                                                                       cubic_exp_base(cubic_exp_base),
+                                                                       cubic_multiplier_base(cubic_multiplier_base){}
 
             auto project(const std::vector<std::shared_ptr<tensor_model::Matrix>>& matrix_vec) -> std::vector<std::shared_ptr<tensor_model::Matrix>>
             {
@@ -117,6 +130,9 @@ namespace taylor_matrix::host_matrix::the_host_matrix
                     size_t taylor_coeff_arr_offset  = 0u;
 
                     DispatchCodeGenerator generator(e.second, row_sz);
+                    QuantizationMachine<PromotedFloatType> quant_machine(this->cubic_discretization_sz,
+                                                                         this->cubic_exp_base,
+                                                                         this->cubic_multiplier_base);
 
                     result_vec[e.first] = tensor_matrix_operation::matrix_transform(e.second,
                                                                                     this->focal_sz_vec,
@@ -125,12 +141,12 @@ namespace taylor_matrix::host_matrix::the_host_matrix
                                                                                     this->rotation_sz_vec,
                                                                                     this->parameter_bound_ratio_vec,
 
-                                                                                    stdx::to_size_container(std::integral_constant<size_t, TAYLOR_BASE_COEFF_SZ>{}),
+                                                                                    quant_machine,
                                                                                     taylor_coeff_2d_arr.get(), taylor_coeff_arr_offset, this->taylor_coeff_2d_vec.front().size(),
 
                                                                                     generator,
 
-                                                                                    stdx::Tag<TaylorBasePromotedFloatType>{},
+                                                                                    stdx::Tag<PromotedFloatType>{},
                                                                                     this->has_process_unit_logit_reuse_tag,
                                                                                     this->has_process_group_logit_reuse_tag,
                                                                                     this->has_being_logit_reuse_tag,
@@ -253,8 +269,20 @@ namespace taylor_matrix::host_matrix::the_host_matrix
             }
     };
 
+    //we'd need to be specific about entropy in the name and etc.
+    //we can't do it like this
+
     class TheHostMatrixFactory
     {
+        private:
+
+            struct QuantizationData
+            {
+                size_t discretization_sz;
+                tensor_std_float_t exp_base;
+                tensor_std_float_t multiplier_base;
+            };
+
         public:
 
             static inline constexpr uint8_t LOW_COMPUTE     = 0u;
@@ -449,12 +477,32 @@ namespace taylor_matrix::host_matrix::the_host_matrix
 
             static inline const double PARAMETER_BOUND_RATIO        = 0.0;
 
-            static inline const size_t LOW_ENTROPY_HASH_TABLE_SZ    = 4;
-            static inline const size_t MID_ENTROPY_HASH_TABLE_SZ    = 4;
-            static inline const size_t HIGH_ENTROPY_HASH_TABLE_SZ   = 4;
+            static inline const size_t LOW_ENTROPY_HASH_TABLE_SZ    = 1;
+            static inline const size_t MID_ENTROPY_HASH_TABLE_SZ    = 1;
+            static inline const size_t HIGH_ENTROPY_HASH_TABLE_SZ   = 1;
 
-            template <size_t TAYLOR_BASE_COEFF_SZ,
-                      class TaylorBasePromotedFloatType = tensor_std_float_t>
+            static inline const QuantizationData LOW_ENTROPY_QUANTIZATION_DATA  = 
+            {
+                .discretization_sz  = 64,
+                .exp_base           = 1.2,
+                .multiplier_base    = 1.0
+            };
+
+            static inline const QuantizationData MID_ENTROPY_QUANTIZATION_DATA  = 
+            {
+                .discretization_sz  = 256,
+                .exp_base           = 1.1,
+                .multiplier_base    = 1.0
+            };
+
+            static inline const QuantizationData HIGH_ENTROPY_QUANTIZATION_DATA = 
+            {
+                .discretization_sz  = 1024,
+                .exp_base           = 1.02,
+                .multiplier_base    = 1.0
+            };
+
+            template <class PromotedFloatType = tensor_std_float_t>
             static auto make_the_matrix(const std::vector<size_t>& matrix_shape,
                                         const std::vector<size_t>& focal_sz_vec,
                                         const std::unordered_map<size_t, std::unordered_map<size_t, std::vector<std::vector<size_t>>>>& focal_suffix_map,
@@ -462,8 +510,8 @@ namespace taylor_matrix::host_matrix::the_host_matrix
                                         const std::vector<size_t>& rotation_sz_vec,
                                         const std::vector<double>& parameter_bound_ratio_vec,
                                         size_t hash_table_sz,
-                                        const std::integral_constant<size_t, TAYLOR_BASE_COEFF_SZ>& taylor_base_coeff_sz,
-                                        const stdx::Tag<TaylorBasePromotedFloatType>& taylor_base_promotion_tag = stdx::Tag<TaylorBasePromotedFloatType>{},
+                                        QuantizationData quant_data,
+                                        const stdx::Tag<PromotedFloatType>& taylor_base_promotion_tag = stdx::Tag<PromotedFloatType>{},
                                         bool has_process_unit_logit_reuse_tag = true,
                                         bool has_process_group_logit_reuse_tag = true,
                                         bool has_being_logit_reuse_tag = true,
@@ -486,13 +534,17 @@ namespace taylor_matrix::host_matrix::the_host_matrix
                         DispatchCodeGenerator generator(tensor_matrix_operation::make_matrix_from_shape_vec(matrix_shape),
                                                         hash_table_sz);
 
+                        QuantizationMachine<PromotedFloatType> quant_machine(quant_data.discretization_sz,
+                                                                             quant_data.exp_base,
+                                                                             quant_data.multiplier_base);
+
                         tensor_matrix_operation::matrix_transform(tensor_matrix_operation::make_matrix_from_shape_vec(matrix_shape),
                                                                   focal_sz_vec,
                                                                   focal_suffix_map,
                                                                   accum_suffix_map,
                                                                   rotation_sz_vec,
                                                                   parameter_bound_ratio_vec,
-                                                                  stdx::to_size_container(taylor_base_coeff_sz),
+                                                                  quant_machine,
                                                                   coeff_arr.get(), coeff_vec_sz, current_logit_vec_capacity,
                                                                   generator,
                                                                   taylor_base_promotion_tag,
@@ -507,13 +559,15 @@ namespace taylor_matrix::host_matrix::the_host_matrix
                                              accum_suffix_map,
                                              rotation_sz_vec,
                                              parameter_bound_ratio_vec,
-                                             taylor_base_coeff_sz,
                                              taylor_base_promotion_tag,
                                              has_process_unit_logit_reuse_tag,
                                              has_process_group_logit_reuse_tag,
                                              has_being_logit_reuse_tag,
                                              has_base_matrix_logit_reuse_tag,
-                                             stdx::make_2d_vector(hash_table_sz, coeff_vec_sz, 0.f));
+                                             stdx::make_2d_vector(hash_table_sz, coeff_vec_sz, 0.f),
+                                             quant_data.discretization_sz,
+                                             quant_data.exp_base,
+                                             quant_data.multiplier_base);
 
                         return std::make_unique<decltype(matrix)>(std::move(matrix));
                     }
@@ -643,7 +697,7 @@ namespace taylor_matrix::host_matrix::the_host_matrix
                                        this->get_rotation_size_vector(),
                                        this->get_parameter_bound_ratio_vector(),
                                        this->get_hash_table_size(),
-                                       this->get_taylor_base_coefficient_size(),
+                                       this->get_quantization_data(),
                                        this->get_taylor_base_promotion_tag(),
                                        this->get_has_process_logit_reuse_tag(),
                                        this->get_has_process_group_logit_reuse_tag(),
@@ -904,6 +958,29 @@ namespace taylor_matrix::host_matrix::the_host_matrix
             auto get_parameter_bound_ratio_vector() -> std::vector<double>
             {
                 return std::vector<double>(this->get_focal_size_vector().size(), PARAMETER_BOUND_RATIO);
+            }
+
+            auto get_quantization_data() -> QuantizationData
+            {
+                switch (this->entropy_option)
+                {
+                    case LOW_ENTROPY:
+                    {
+                        return self::LOW_ENTROPY_QUANTIZATION_DATA;
+                    }
+                    case MID_ENTROPY:
+                    {
+                        return self::MID_ENTROPY_QUANTIZATION_DATA;
+                    }
+                    case HIGH_ENTROPY:
+                    {
+                        return self::HIGH_ENTROPY_QUANTIZATION_DATA;
+                    }
+                    default:
+                    {
+                        std::abort();
+                    }
+                }
             }
 
             auto get_taylor_base_coefficient_size() -> std::integral_constant<size_t, 2u>

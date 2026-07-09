@@ -222,13 +222,88 @@ namespace taylor_matrix::host_matrix::tensor_process_group_operation
         return std::allocate_shared<tensor_model::ProcessGroup>(allocator, std::move(rs));
     }
 
-    template <class TaylorBaseCoeffSizeContainer,
-              class TaylorBasePromotedFloatType = tensor_model::tensor_std_float_t,
+    template <class QuantizationMachine,
+              class PromotedFloatType = tensor_model::tensor_std_float_t,
+              class Allocator = std::allocator<char>,
+              size_t BATCH_SZ = 64u>
+    constexpr __attribute__((noinline)) auto left_major_interpolate_process_group(const std::shared_ptr<tensor_model::ProcessGroup>& lhs,
+                                                                                  const std::shared_ptr<tensor_model::ProcessGroup>& rhs,
+                                                                                  QuantizationMachine&& quant_machine,
+                                                                                  const tensor_model::tensor_std_float_t * coeff_arr, size_t& coeff_arr_offset, size_t coeff_arr_cap,
+                                                                                  const stdx::Tag<PromotedFloatType>& taylor_base_promotion_tag = stdx::Tag<PromotedFloatType>{},
+                                                                                  bool has_process_unit_logit_reuse_tag = true,
+                                                                                  bool has_process_group_logit_reuse_tag = true,
+                                                                                  const Allocator& allocator = Allocator(),
+                                                                                  const std::integral_constant<size_t, BATCH_SZ>& batch_sz = std::integral_constant<size_t, BATCH_SZ>{}) -> std::shared_ptr<tensor_model::ProcessGroup>
+    {
+        stdx::safe_ptr_access(lhs.get());
+        stdx::safe_ptr_access(rhs.get());
+
+        tensor_model::ProcessGroup rs{};
+
+        constexpr size_t TOTAL_ITERATION_SZ = tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ * tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ;
+        constexpr size_t REVOLUTION_SZ      = TOTAL_ITERATION_SZ / BATCH_SZ;
+        constexpr size_t OFFSET_SZ          = REVOLUTION_SZ * BATCH_SZ;
+        constexpr size_t REM_SZ             = TOTAL_ITERATION_SZ - OFFSET_SZ;
+
+        static_assert(REM_SZ == 0u);
+
+        const size_t saved_coeff_arr_offset         = coeff_arr_offset;
+
+        tensor_model::ProcessGroup accum_vec[tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ];
+
+        for (size_t i = 0u; i < REVOLUTION_SZ; ++i)
+        {
+            tensor_model::ProcessUnit lhs_tensor_arr[BATCH_SZ];
+            tensor_model::ProcessUnit rhs_tensor_arr[BATCH_SZ];
+            tensor_model::ProcessUnit out_tensor_arr[BATCH_SZ];
+
+            for (size_t j = 0u; j < BATCH_SZ; ++j)
+            {
+                const size_t virtual_idx    = i * BATCH_SZ + j;
+                const size_t actual_i       = virtual_idx / tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ;
+                const size_t actual_j       = virtual_idx % tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ;
+
+                lhs_tensor_arr[j]           = lhs->process_vec[actual_i];
+                rhs_tensor_arr[j]           = rhs->process_vec[actual_j];
+            }
+
+            coeff_arr_offset        = saved_coeff_arr_offset;
+
+            tensor_process_unit_operation::batch_interpolate_process_unit(lhs_tensor_arr,
+                                                                          rhs_tensor_arr,
+                                                                          batch_sz,
+                                                                          out_tensor_arr,
+                                                                          quant_machine,
+                                                                          coeff_arr, coeff_arr_offset, coeff_arr_cap,
+                                                                          taylor_base_promotion_tag,
+                                                                          has_process_unit_logit_reuse_tag);
+
+            for (size_t j = 0u; j < BATCH_SZ; ++j)
+            {
+                const size_t virtual_idx    = i * BATCH_SZ + j;
+                const size_t actual_i       = virtual_idx / tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ;
+                const size_t actual_j       = virtual_idx % tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ;
+
+                accum_vec[actual_i].process_vec[actual_j] = out_tensor_arr[j];
+            }
+        }
+
+        for (size_t i = 0u; i < tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ; ++i)
+        {
+            rs.process_vec[i] = tensor_process_unit_operation::avg(accum_vec[i].process_vec.data(), accum_vec[i].process_vec.size());
+        }
+
+        return std::allocate_shared<tensor_model::ProcessGroup>(allocator, std::move(rs));
+    }
+
+    template <class QuantizationMachine,
+              class PromotedFloatType = tensor_model::tensor_std_float_t,
               class Allocator = std::allocator<char>>
     constexpr __attribute__((noinline)) auto mono_transform(const std::shared_ptr<tensor_model::ProcessGroup>& arg,
-                                                            TaylorBaseCoeffSizeContainer base_coeff_sz_container,
+                                                            QuantizationMachine&& quant_machine,
                                                             const tensor_model::tensor_std_float_t * coeff_arr, size_t& coeff_arr_offset, size_t coeff_arr_cap,
-                                                            const stdx::Tag<TaylorBasePromotedFloatType>& taylor_base_promotion_tag = stdx::Tag<TaylorBasePromotedFloatType>{},
+                                                            const stdx::Tag<PromotedFloatType>& taylor_base_promotion_tag = stdx::Tag<PromotedFloatType>{},
                                                             const Allocator& allocator = Allocator()) -> std::shared_ptr<tensor_model::ProcessGroup>
     {
         stdx::safe_ptr_access(arg.get());
@@ -236,9 +311,9 @@ namespace taylor_matrix::host_matrix::tensor_process_group_operation
         std::shared_ptr<tensor_model::ProcessGroup> rs0 = {};
 
         {
-            std::shared_ptr<tensor_model::ProcessGroup> xx  = left_major_intercourse_process_group(arg,
+            std::shared_ptr<tensor_model::ProcessGroup> xx  = left_major_interpolate_process_group(arg,
                                                                                                    arg,
-                                                                                                   base_coeff_sz_container,
+                                                                                                   quant_machine,
                                                                                                    coeff_arr, coeff_arr_offset, coeff_arr_cap,
                                                                                                    taylor_base_promotion_tag,
                                                                                                    false,
@@ -257,7 +332,7 @@ namespace taylor_matrix::host_matrix::tensor_process_group_operation
             for (size_t i = 0u; i < tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ; ++i)
             {
                 sub_xx.process_vec[i]   = tensor_process_unit_operation::mono_transform(rs0->process_vec[i],
-                                                                                        base_coeff_sz_container,
+                                                                                        quant_machine,
                                                                                         coeff_arr, coeff_arr_offset, coeff_arr_cap,
                                                                                         taylor_base_promotion_tag);
             }

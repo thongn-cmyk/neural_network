@@ -152,8 +152,19 @@ void to_integral_constant(Callback&& callback,
     }(std::make_index_sequence<SZ>{});
 }
 
+//it should work properly now
+
 class TheHostMatrixFactory2
 {
+    private:
+
+        struct QuantizationData
+        {
+            size_t discretization_sz;
+            tensor_std_float_t exp_base;
+            tensor_std_float_t multiplier_base;
+        };
+
     public:
 
         static inline constexpr uint8_t LOW_COMPUTE     = 0u;
@@ -324,27 +335,27 @@ class TheHostMatrixFactory2
         {
             {},
             {4},
-            {4, 4},
-            {4, 2, 4},
-            {4, 2, 2, 4}
+            {4, 2},
+            {4, 2, 2},
+            {4, 2, 2, 2}
         };
 
         static inline const std::vector<std::vector<size_t>> MID_TRANSFORMATION_ROTATION_VEC = 
         {
             {},
             {4},
-            {4, 4},
-            {4, 2, 4},
-            {4, 2, 2, 4}
+            {4, 2},
+            {4, 2, 2},
+            {4, 2, 2, 2}
         };
 
         static inline const std::vector<std::vector<size_t>> HIGH_TRANSFORMATION_ROTATION_VEC = 
         {
             {},
             {4},
-            {4, 4},
-            {4, 2, 4},
-            {4, 2, 2, 4}
+            {4, 2},
+            {4, 2, 2},
+            {4, 2, 2, 2}
         };
 
         static inline const double PARAMETER_BOUND_RATIO        = 0.0;
@@ -353,8 +364,28 @@ class TheHostMatrixFactory2
         static inline const size_t MID_ENTROPY_HASH_TABLE_SZ    = 1;
         static inline const size_t HIGH_ENTROPY_HASH_TABLE_SZ   = 1;
 
-        template <size_t TAYLOR_BASE_COEFF_SZ,
-                    class TaylorBasePromotedFloatType = tensor_std_float_t>
+        static inline const QuantizationData LOW_ENTROPY_QUANTIZATION_DATA  = 
+        {
+            .discretization_sz  = 64,
+            .exp_base           = 1.2,
+            .multiplier_base    = 1.0
+        };
+
+        static inline const QuantizationData MID_ENTROPY_QUANTIZATION_DATA  = 
+        {
+            .discretization_sz  = 256,
+            .exp_base           = 1.1,
+            .multiplier_base    = 1.0
+        };
+
+        static inline const QuantizationData HIGH_ENTROPY_QUANTIZATION_DATA = 
+        {
+            .discretization_sz  = 1024,
+            .exp_base           = 1.02,
+            .multiplier_base    = 1.0
+        };
+
+        template <class PromotedFloatType = tensor_std_float_t>
         static auto make_the_matrix(const std::vector<size_t>& matrix_shape,
                                     const std::vector<size_t>& focal_sz_vec,
                                     const std::unordered_map<size_t, std::unordered_map<size_t, std::vector<std::vector<size_t>>>>& focal_suffix_map,
@@ -362,8 +393,8 @@ class TheHostMatrixFactory2
                                     const std::vector<size_t>& rotation_sz_vec,
                                     const std::vector<double>& parameter_bound_ratio_vec,
                                     size_t hash_table_sz,
-                                    const std::integral_constant<size_t, TAYLOR_BASE_COEFF_SZ>& taylor_base_coeff_sz,
-                                    const stdx::Tag<TaylorBasePromotedFloatType>& taylor_base_promotion_tag = stdx::Tag<TaylorBasePromotedFloatType>{},
+                                    QuantizationData quant_data,
+                                    const stdx::Tag<PromotedFloatType>& taylor_base_promotion_tag = stdx::Tag<PromotedFloatType>{},
                                     bool has_process_unit_logit_reuse_tag = true,
                                     bool has_process_group_logit_reuse_tag = true,
                                     bool has_being_logit_reuse_tag = true,
@@ -382,26 +413,28 @@ class TheHostMatrixFactory2
                     auto coeff_arr                                                  = to_2d_array(coeff_vec);
 
                     size_t coeff_vec_sz         = 0u;
-                    size_t transformed_counter  = 0u;
 
-                    DispatchCodeGenerator generator(make_matrix_from_shape_vec(matrix_shape), hash_table_sz);
+                    DispatchCodeGenerator generator(make_matrix_from_shape_vec(matrix_shape),
+                                                    hash_table_sz);
+
+                    QuantizationMachine<PromotedFloatType> quant_machine(quant_data.discretization_sz,
+                                                                            quant_data.exp_base,
+                                                                            quant_data.multiplier_base);
 
                     matrix_transform(make_matrix_from_shape_vec(matrix_shape),
-                                    focal_sz_vec,
-                                    focal_suffix_map,
-                                    accum_suffix_map,
-                                    rotation_sz_vec,
-                                    parameter_bound_ratio_vec,
-                                    stdx::to_size_container(taylor_base_coeff_sz),
-                                    coeff_arr.get(), coeff_vec_sz, current_logit_vec_capacity,
-
-                                    generator,
-
-                                    taylor_base_promotion_tag,
-                                    has_process_unit_logit_reuse_tag,
-                                    has_process_group_logit_reuse_tag,
-                                    has_being_logit_reuse_tag,
-                                    has_base_matrix_logit_reuse_tag);
+                                                                focal_sz_vec,
+                                                                focal_suffix_map,
+                                                                accum_suffix_map,
+                                                                rotation_sz_vec,
+                                                                parameter_bound_ratio_vec,
+                                                                quant_machine,
+                                                                coeff_arr.get(), coeff_vec_sz, current_logit_vec_capacity,
+                                                                generator,
+                                                                taylor_base_promotion_tag,
+                                                                has_process_unit_logit_reuse_tag,
+                                                                has_process_group_logit_reuse_tag,
+                                                                has_being_logit_reuse_tag,
+                                                                has_base_matrix_logit_reuse_tag);
 
                     TheHostMatrix matrix(matrix_shape,
                                             focal_sz_vec,
@@ -409,13 +442,15 @@ class TheHostMatrixFactory2
                                             accum_suffix_map,
                                             rotation_sz_vec,
                                             parameter_bound_ratio_vec,
-                                            taylor_base_coeff_sz,
                                             taylor_base_promotion_tag,
                                             has_process_unit_logit_reuse_tag,
                                             has_process_group_logit_reuse_tag,
                                             has_being_logit_reuse_tag,
                                             has_base_matrix_logit_reuse_tag,
-                                            stdx::make_2d_vector(hash_table_sz, coeff_vec_sz, 0.f));
+                                            stdx::make_2d_vector(hash_table_sz, coeff_vec_sz, 0.f),
+                                            quant_data.discretization_sz,
+                                            quant_data.exp_base,
+                                            quant_data.multiplier_base);
 
                     return std::make_unique<decltype(matrix)>(std::move(matrix));
                 }
@@ -475,13 +510,6 @@ class TheHostMatrixFactory2
         auto set_vector_size(size_t sz) -> TheHostMatrixFactory2&
         {
             this->vector_sz = sz;
-
-            return *this;
-        }
-
-        auto set_base_transformation_size(size_t sz) -> TheHostMatrixFactory2&
-        {
-            this->base_transformation_sz = sz;
 
             return *this;
         }
@@ -546,39 +574,19 @@ class TheHostMatrixFactory2
         {
             this->compute();
 
-            if (!this->base_transformation_sz.has_value())
-            {
-                throw std::invalid_argument("bad base transformation size, null");
-            }
-
-            constexpr size_t BASE_TRANSFORMATION_SZ_FIRST   = 1;
-            constexpr size_t BASE_TRANSFORMATION_SZ_LAST    = 7u;
-
-            std::unique_ptr<the_matrix::MatrixInterface> matrix{};
-
-            auto callback = [&]<size_t SZ>(const std::integral_constant<size_t, SZ>)
-            {
-                matrix =  make_the_matrix(this->get_matrix_shape(),
-                                          this->get_focal_size_vector(),
-                                          this->get_focal_suffix_map(),
-                                          this->get_accum_suffix_map(),
-                                          this->get_rotation_size_vector(),
-                                          this->get_parameter_bound_ratio_vector(),
-                                          this->get_hash_table_size(),
-                                          this->get_taylor_base_coefficient_size(),
-                                          this->get_taylor_base_promotion_tag(),
-                                          this->get_has_process_logit_reuse_tag(),
-                                          this->get_has_process_group_logit_reuse_tag(),
-                                          this->get_has_being_logit_reuse_tag(),
-                                          this->get_has_base_matrix_logit_reuse_tag());
-            };
-
-            to_integral_constant(callback,
-                                 this->base_transformation_sz.value(),
-                                 std::integral_constant<size_t, BASE_TRANSFORMATION_SZ_FIRST>{},
-                                 std::integral_constant<size_t, BASE_TRANSFORMATION_SZ_LAST>{});
-
-            return matrix;
+            return make_the_matrix(this->get_matrix_shape(),
+                                    this->get_focal_size_vector(),
+                                    this->get_focal_suffix_map(),
+                                    this->get_accum_suffix_map(),
+                                    this->get_rotation_size_vector(),
+                                    this->get_parameter_bound_ratio_vector(),
+                                    this->get_hash_table_size(),
+                                    this->get_quantization_data(),
+                                    this->get_taylor_base_promotion_tag(),
+                                    this->get_has_process_logit_reuse_tag(),
+                                    this->get_has_process_group_logit_reuse_tag(),
+                                    this->get_has_being_logit_reuse_tag(),
+                                    this->get_has_base_matrix_logit_reuse_tag());
         }
 
     private:
@@ -834,6 +842,29 @@ class TheHostMatrixFactory2
         auto get_parameter_bound_ratio_vector() -> std::vector<double>
         {
             return std::vector<double>(this->get_focal_size_vector().size(), PARAMETER_BOUND_RATIO);
+        }
+
+        auto get_quantization_data() -> QuantizationData
+        {
+            switch (this->entropy_option)
+            {
+                case LOW_ENTROPY:
+                {
+                    return self::LOW_ENTROPY_QUANTIZATION_DATA;
+                }
+                case MID_ENTROPY:
+                {
+                    return self::MID_ENTROPY_QUANTIZATION_DATA;
+                }
+                case HIGH_ENTROPY:
+                {
+                    return self::HIGH_ENTROPY_QUANTIZATION_DATA;
+                }
+                default:
+                {
+                    std::abort();
+                }
+            }
         }
 
         auto get_taylor_base_coefficient_size() -> std::integral_constant<size_t, 2u>
@@ -1110,8 +1141,7 @@ auto get_training_config_vector() -> std::vector<TrainingConfig>
 auto get_matrix(const MatrixConfig& matrix_config) -> std::unique_ptr<the_matrix::MatrixInterface>
 {
     return TheHostMatrixFactory2{}.set_vector_size(matrix_config.matrix_operable_sz)
-                                 .set_base_transformation_size(matrix_config.base_projection_sz)
-                                 .get();
+                                  .get();
 }
 
 auto randomize_bit_vector(size_t sz) -> std::vector<bool>
@@ -1136,6 +1166,32 @@ auto to_one_bit_different_set(const std::vector<bool>& arg) -> std::vector<std::
         tmp[i]                  = !tmp[i];
 
         rs.push_back(std::move(tmp));
+    }
+
+    return rs;
+}
+
+auto get_hex_parity_vector(size_t sz,
+                           uint8_t val) -> std::vector<bool>
+{
+    if (sz % 16 != 0)
+    {
+        throw std::invalid_argument("bad sz, not multiplies of 16");
+    }
+
+    if (val >= 16)
+    {
+        throw std::invalid_argument("bad hex code, not within [0, 16) range");
+    }
+
+    size_t slot_width       = sz / 16;
+    std::vector<bool> rs    = {};
+
+    for (size_t i = 0u; i < sz; ++i)
+    {
+        size_t i_slot_idx       = i / slot_width;
+
+        rs.push_back(i_slot_idx == val);
     }
 
     return rs;
@@ -1241,6 +1297,11 @@ auto get_matrix(const std::vector<bool>& arg) -> std::shared_ptr<tensor_model::M
     return make_matrix_from_flat_vec(SHAPE_MAP.at(arg.size()), tensor_vec);
 }
 
+auto randomize_uhex() -> uint8_t
+{
+    return randomize_int(0u, 16u);
+}
+
 auto get_training_pair_vector(const TrainingTokenConfig& training_token_config) -> std::vector<std::pair<std::shared_ptr<tensor_model::Matrix>,
                                                                                                          std::shared_ptr<tensor_model::Matrix>>>
 {
@@ -1280,15 +1341,15 @@ auto get_training_pair_vector(const TrainingTokenConfig& training_token_config) 
 
             if (training_token_config.training_strategy == TRAINING_STRATEGY_GLOBAL_PARITY)
             {
-                out_token   = get_binary_parity_vector(training_token_config.actual_dimension_sz, randomize_bool());
+                out_token   = get_hex_parity_vector(training_token_config.actual_dimension_sz, randomize_uhex());
             }
             else if (training_token_config.training_strategy == TRAINING_STRATEGY_TWO_ADJECENT_REGION_PARITY)
             {
-                out_token   = multiply_vector(get_binary_parity_vector(even_unsigned_div(training_token_config.actual_dimension_sz, 2), randomize_bool()), 2);
+                out_token   = multiply_vector(get_hex_parity_vector(even_unsigned_div(training_token_config.actual_dimension_sz, 2), randomize_uhex()), 2);
             }
             else if (training_token_config.training_strategy == TRAINING_STRATEGY_FOUR_ADJECENT_REGION_PARITY)
             {
-                out_token   = multiply_vector(get_binary_parity_vector(even_unsigned_div(training_token_config.actual_dimension_sz, 4), randomize_bool()), 4);
+                out_token   = multiply_vector(get_hex_parity_vector(even_unsigned_div(training_token_config.actual_dimension_sz, 4), randomize_uhex()), 4);
             }
             else
             {
@@ -1344,36 +1405,47 @@ auto get_parity_distance(const std::shared_ptr<tensor_model::Matrix>& lhs,
         std::abort();
     }
 
-    double lhs_false_sum    = 0;
-    double lhs_true_sum     = 0;
-
-    double rhs_false_sum    = 0;
-    double rhs_true_sum     = 0;
-
-    std::vector<tensor_std_float_t> true_vec{};
-    std::vector<tensor_std_float_t> false_vec{};
+    double one_parity_score = 0;
+    size_t parity_sz        = 0u;
 
     for (size_t i = 0u; i < rhs_flat_tensor_vec.size(); ++i)
     {
         if (rhs_flat_tensor_vec[i] == 1)
         {
-            rhs_true_sum    += 1;
-            lhs_true_sum    = std::max(lhs_true_sum, static_cast<double>(std::exp(lhs_flat_tensor_vec[i])));
-        }
-        else
-        {
-            rhs_false_sum   += 0;
-            lhs_false_sum   = std::max(lhs_false_sum, static_cast<double>(std::exp(lhs_flat_tensor_vec[i])));
+            parity_sz           += 1;
+            one_parity_score    = std::max(one_parity_score, static_cast<double>(std::exp(lhs_flat_tensor_vec[i])));
         }
     }
 
-    double lhs_parity       = lhs_true_sum - lhs_false_sum;
-    double rhs_parity       = rhs_true_sum - rhs_false_sum;
+    size_t parity_hub_sz            = rhs_flat_tensor_vec.size() / parity_sz;
+    double max_round_parity_score   = 0;
 
-    if (lhs_parity > 0)
+    for (size_t i = 0u; i < parity_hub_sz; ++i)
+    {
+        double round_parity_score   = 0;
+
+        for (size_t j = 0u; j < parity_sz; ++j)
+        {
+            size_t idx  = i * parity_sz + j;
+            
+            if (rhs_flat_tensor_vec[idx] == 1)
+            {
+                continue;
+            }
+
+            round_parity_score  = std::max(round_parity_score, static_cast<double>(std::exp(lhs_flat_tensor_vec[idx])));
+        }
+
+        max_round_parity_score  = std::max(round_parity_score, max_round_parity_score);
+    }
+
+    if (one_parity_score > max_round_parity_score)
     {
         return 0;
     }
+
+    double lhs_parity   = one_parity_score - max_round_parity_score;
+    double rhs_parity   = parity_sz;
 
     return std::pow(lhs_parity - rhs_parity, 2); 
 }
@@ -1387,45 +1459,50 @@ auto is_same_parity(const std::shared_ptr<tensor_model::Matrix>& lhs,
     tensor_factory::flatten(lhs, lhs_flat_tensor_vec);
     tensor_factory::flatten(rhs, rhs_flat_tensor_vec);
 
+    //what we'd want is not parity distance, in this particular scenerio
+
     if (lhs_flat_tensor_vec.size() != rhs_flat_tensor_vec.size())
     {
         std::cout << "mayday, mismatched tensor logit vector\n";
         std::abort();
     }
 
-    double lhs_false_sum    = 0;
-    double lhs_true_sum     = 0;
-
-    double rhs_false_sum    = 0;
-    double rhs_true_sum     = 0;
+    double one_parity_score = 0;
+    size_t parity_sz        = 0u;
 
     for (size_t i = 0u; i < rhs_flat_tensor_vec.size(); ++i)
     {
         if (rhs_flat_tensor_vec[i] == 1)
         {
-            rhs_true_sum    += 1;
-            lhs_true_sum    = std::max(lhs_true_sum, static_cast<double>(std::exp(lhs_flat_tensor_vec[i])));
-        }
-        else
-        {
-            rhs_false_sum   += 0;
-            lhs_false_sum   = std::max(lhs_false_sum, static_cast<double>(std::exp(lhs_flat_tensor_vec[i])));
+            parity_sz           += 1;
+            one_parity_score    += std::exp(lhs_flat_tensor_vec[i]);
         }
     }
 
-    double lhs_parity       = lhs_true_sum - lhs_false_sum;
-    double rhs_parity       = rhs_true_sum - rhs_false_sum;
-    
-    return lhs_parity > 0;
+    size_t parity_hub_sz            = rhs_flat_tensor_vec.size() / parity_sz;
+    double max_round_parity_score   = 0;
+
+    for (size_t i = 0u; i < parity_hub_sz; ++i)
+    {
+        double round_parity_score   = 0;
+
+        for (size_t j = 0u; j < parity_sz; ++j)
+        {
+            size_t idx  = i * parity_sz + j;
+            
+            if (rhs_flat_tensor_vec[idx] == 1)
+            {
+                continue;
+            }
+
+            round_parity_score  += std::exp(lhs_flat_tensor_vec[idx]);
+        }
+
+        max_round_parity_score  = std::max(round_parity_score, max_round_parity_score);
+    }
+
+    return one_parity_score > max_round_parity_score;
 }
-
-//OK, it works fellas
-
-//our thesis remains, all the heavy lifting you mean A, I mean B, we mean C are entirely at the ProcessUnit layer, and we'd have to do heavy interpolation there
-
-//I want to see if certain techniques work, like punching through at saturation
-//it works OK, let's pray that we can pass the word_test_8
-//it's just a little difficult
 
 auto get_optimizer() -> std::unique_ptr<matrix_optimizer_subsystem::CoordinatedSearchOptimizerEngine>
 {
@@ -1441,6 +1518,14 @@ auto get_optimizer() -> std::unique_ptr<matrix_optimizer_subsystem::CoordinatedS
         }
     );
 }
+
+//we have so many optimizables that I dont think that we can do it as a human
+
+//first is token weights (w(token, time, deviation, convergence) = weight), we'd still use one value to do search
+//second is writing regions, we'd have to search the writing regions also, such is A * search, we'd base that on deviation and convergence
+//third is best-version improve or random re-run
+
+//for the neural network recursive definition, we are basis-compliant, I can't complain here
 
 class PointPullMatrixEvaluator: public virtual matrix_evaluator::MatrixEvaluatorInterface
 {
@@ -1472,6 +1557,28 @@ class PointPullMatrixEvaluator: public virtual matrix_evaluator::MatrixEvaluator
             }
 
             return rs / std::pow(get_score(matrix), 2);
+        }
+
+        auto get_unscaled_deviation(the_matrix::MatrixInterface& matrix) -> eval_float_t
+        {
+            std::vector<std::shared_ptr<tensor_model::Matrix>> inp_vec      = {};
+            std::vector<std::shared_ptr<tensor_model::Matrix>> out_vec_0    = {};
+
+            for (const auto& [inp, out]: this->training_pair_vec)
+            {
+                inp_vec.push_back(inp);
+                out_vec_0.push_back(out);
+            }
+
+            std::vector<std::shared_ptr<tensor_model::Matrix>> out_vec      = matrix.project(inp_vec);
+            double rs = 0;
+
+            for (const auto [out, expected_out]: stdx::zip(out_vec, out_vec_0))
+            {
+                rs += get_parity_distance(out, expected_out);
+            }
+
+            return rs;
         }
 
         auto get_score(the_matrix::MatrixInterface& matrix) -> double
@@ -1517,7 +1624,7 @@ auto optimize(const TrainingConfig& config,
     TrainingReport training_report                                                          = {};
 
     {
-        double optimized_deviation  = matrix_evaluator->get_deviation(*matrix);
+        double optimized_deviation  = matrix_evaluator->get_unscaled_deviation(*matrix);
         double score                = matrix_evaluator->get_score(*matrix);
         
         std::cout << "i > " << -1 << " deviation > " << optimized_deviation << " score > " << score << "\n";
@@ -1526,7 +1633,7 @@ auto optimize(const TrainingConfig& config,
     for (size_t i = 0u; i < epoch_sz; ++i)
     {
         matrix                      = optimizer->optimize(*matrix, *matrix_evaluator, cancellation_token);
-        double optimized_deviation  = matrix_evaluator->get_deviation(*matrix);
+        double optimized_deviation  = matrix_evaluator->get_unscaled_deviation(*matrix);
         double score                = matrix_evaluator->get_score(*matrix);
         
         std::cout << "i > " << i << " deviation > " << optimized_deviation << " score > " << score << "\n";
