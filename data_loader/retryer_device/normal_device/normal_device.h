@@ -27,6 +27,7 @@ namespace data_loader::retryer_device::normal_device
         private:
 
             std::chrono::nanoseconds base_wait_time;
+            std::chrono::nanoseconds max_wait_time;
             size_t exponential_base;
             size_t retry_idx;
             size_t max_retry_count;
@@ -40,6 +41,9 @@ namespace data_loader::retryer_device::normal_device
             static inline const std::chrono::nanoseconds MIN_BASE_WAIT_TIME = std::chrono::nanoseconds(0);
             static inline const std::chrono::nanoseconds MAX_BASE_WAIT_TIME = std::chrono::nanoseconds::max();
 
+            static inline const std::chrono::nanoseconds MIN_MAX_WAIT_TIME  = std::chrono::nanoseconds(0);
+            static inline const std::chrono::nanoseconds MAX_MAX_WAIT_TIME  = std::chrono::nanoseconds::max();
+
             static inline const std::chrono::nanoseconds MIN_BREAK_TIME     = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::milliseconds(10));
             static inline const std::chrono::nanoseconds MAX_BREAK_TIME     = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(1));
 
@@ -49,9 +53,14 @@ namespace data_loader::retryer_device::normal_device
             {
                 if (std::clamp(retry_config.base_wait_time, MIN_BASE_WAIT_TIME, MAX_BASE_WAIT_TIME) != retry_config.base_wait_time)
                 {
-                    throw invalid_argument_base("bad base wait time, base wait time is not in range, [0, max]");
+                    throw invalid_argument_base("bad base wait time, base wait time is not in range [0, MAX]");
                 }   
-                
+
+                if (std::clamp(retry_config.max_wait_time, MIN_MAX_WAIT_TIME, MAX_MAX_WAIT_TIME) != retry_config.max_wait_time)
+                {
+                    throw invalid_argument_base("bad base wait time, base wait time is not in range [0, MAX]");
+                }
+
                 if (std::clamp(static_cast<size_t>(retry_config.exponential_base), MIN_EXPONENTIAL_BASE, MAX_EXPONENTIAL_BASE) != retry_config.exponential_base)
                 {
                     throw invalid_argument_base("bad exponential base, exponential base is not in range [2, 10]");
@@ -63,6 +72,7 @@ namespace data_loader::retryer_device::normal_device
                 }
 
                 this->base_wait_time            = retry_config.base_wait_time;
+                this->max_wait_time             = retry_config.max_wait_time;
                 this->exponential_base          = retry_config.exponential_base;
                 this->max_retry_count           = retry_config.max_retry_count;
                 this->retryable_exception_vec   = std::nullopt;
@@ -130,7 +140,10 @@ namespace data_loader::retryer_device::normal_device
 
             auto get_sleep_duration_at_index(size_t i) -> std::chrono::nanoseconds
             {
-                return this->base_wait_time * static_cast<size_t>(std::pow(this->exponential_base, i));
+                std::chrono::nanoseconds tentative_dur  = this->base_wait_time * static_cast<size_t>(std::pow(this->exponential_base, i)); //TODOs: uniform distribution within 2x range (maybe not)
+                std::chrono::nanoseconds actual_dur     = std::min(tentative_dur, this->max_wait_time);
+
+                return actual_dur;
             }
 
             auto get_break_duration(std::chrono::nanoseconds sleep_dur) -> std::chrono::nanoseconds

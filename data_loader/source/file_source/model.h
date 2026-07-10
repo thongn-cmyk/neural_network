@@ -65,7 +65,6 @@ namespace data_loader::source::file_source
     {
         return dg::network_compact_serializer::dgstd_deserialize<FileLoaderConfig>(config.config_bytestream);
     }
-
 }
 
 #endif

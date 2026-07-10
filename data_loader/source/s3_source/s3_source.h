@@ -1,5 +1,5 @@
-#ifndef __DATA_LOADER_S3_SOURCE_H__
-#define __DATA_LOADER_S3_SOURCE_H__
+#ifndef __DATA_LOADER_SOURCE_S3_SOURCE_S3_SOURCE_H__
+#define __DATA_LOADER_SOURCE_S3_SOURCE_S3_SOURCE_H__
 
 #include <stdint.h>
 #include <stdlib.h>

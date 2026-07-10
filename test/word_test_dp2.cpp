@@ -420,7 +420,7 @@ auto get_optimizer() -> std::unique_ptr<matrix_optimizer_subsystem::CoordinatedS
 static inline const std::unordered_map<size_t, std::vector<size_t>> SHAPE_MAP = 
 {
     {
-        32,
+        8,
         {
             size_t{1} << 1,
             1,
@@ -429,7 +429,7 @@ static inline const std::unordered_map<size_t, std::vector<size_t>> SHAPE_MAP =
         }
     },
     {
-        128,
+        32,
         {
             size_t{1} << 2,
             2,
@@ -438,7 +438,7 @@ static inline const std::unordered_map<size_t, std::vector<size_t>> SHAPE_MAP =
         }
     },
     {
-        1024,
+        256,
         {
             size_t{1} << 4,
             4,
@@ -521,7 +521,7 @@ auto get_training_pair(const std::vector<float>& x,
                        const UniformDiscretizer& discretizer) -> std::pair<std::shared_ptr<tensor_model::Matrix>,
                                                                            std::shared_ptr<tensor_model::Matrix>>
 {
-    const size_t MULTIPLIER_FACTOR  = tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ;
+    const size_t MULTIPLIER_FACTOR  = 1;
     std::vector<float> inflated_x   = {};
 
     for (float e: x)

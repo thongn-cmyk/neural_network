@@ -225,7 +225,7 @@ namespace taylor_matrix::host_matrix::tensor_process_group_operation
     template <class QuantizationMachine,
               class PromotedFloatType = tensor_model::tensor_std_float_t,
               class Allocator = std::allocator<char>,
-              size_t BATCH_SZ = 64u>
+              size_t BATCH_SZ = 1u>
     constexpr __attribute__((noinline)) auto left_major_interpolate_process_group(const std::shared_ptr<tensor_model::ProcessGroup>& lhs,
                                                                                   const std::shared_ptr<tensor_model::ProcessGroup>& rhs,
                                                                                   QuantizationMachine&& quant_machine,

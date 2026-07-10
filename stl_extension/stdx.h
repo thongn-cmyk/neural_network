@@ -342,7 +342,7 @@ namespace stdx
                 {
                     if (value > std::numeric_limits<uint64_t>::max())
                     {
-                        throw std::runtime_error("bad unsigned->unsigned conversion, max value reached");
+                        throw std::invalid_argument("bad unsigned->unsigned conversion, max value reached");
                     }
 
                     this->value = value;
@@ -351,12 +351,12 @@ namespace stdx
                 {
                     if (value < 0)
                     {
-                        throw std::runtime_error("bad signed-unsigned conversion, < 0");
+                        throw std::invalid_argument("bad signed-unsigned conversion, < 0");
                     }
 
                     if (value > std::numeric_limits<uint64_t>::max())
                     {
-                        throw std::runtime_error("bad signed-unsigned conversion, max value reached");
+                        throw std::invalid_argument("bad signed-unsigned conversion, max value reached");
                     }
 
                     this->value = value;
@@ -395,7 +395,7 @@ namespace stdx
                 {
                     if (value < 0)
                     {
-                        throw std::runtime_error("overflow integer conversion");
+                        throw std::invalid_argument("overflow integer conversion");
                     }
                     else
                     {
@@ -413,7 +413,7 @@ namespace stdx
                 {
                     if (value > std::numeric_limits<T1>::max())
                     {
-                        throw std::runtime_error("overflow integer conversion");
+                        throw std::invalid_argument("overflow integer conversion");
                     }
                     else
                     {
@@ -425,12 +425,12 @@ namespace stdx
 
         if (value > std::numeric_limits<T1>::max())
         {
-            throw std::runtime_error("overflow integer conversion");
+            throw std::invalid_argument("overflow integer conversion");
         }
 
         if (value < std::numeric_limits<T1>::min())
         {
-            throw std::runtime_error("overflow integer conversion");
+            throw std::invalid_argument("overflow integer conversion");
         }
 
         return value;
@@ -453,7 +453,7 @@ namespace stdx
     {
         if (sz == 0u)
         {
-            throw std::runtime_error("zero guard");
+            throw std::invalid_argument("zero guard");
         }
 
         return sz;
@@ -468,7 +468,7 @@ namespace stdx
         {
             if (std::isnan(float_arr[i]))
             {
-                throw std::runtime_error("invalid float range, NaN");
+                throw std::invalid_argument("invalid float range, NaN");
             }
         }
     }
@@ -480,7 +480,7 @@ namespace stdx
 
         if (std::isnan(val))
         {
-            throw std::runtime_error("invalid float, NaN");
+            throw std::invalid_argument("invalid float, NaN");
         }
     }
 
@@ -493,12 +493,12 @@ namespace stdx
         {
             if (std::isnan(float_arr[i]))
             {
-                throw std::runtime_error("invalid float range, NaN");
+                throw std::invalid_argument("invalid float range, NaN");
             }
 
             if (std::isinf(float_arr[i]))
             {
-                throw std::runtime_error("invalid float range, inf");
+                throw std::invalid_argument("invalid float range, inf");
             }
         }
     }
@@ -510,12 +510,12 @@ namespace stdx
 
         if (std::isnan(val))
         {
-            throw std::runtime_error("invalid float range, NaN");
+            throw std::invalid_argument("invalid float range, NaN");
         }
 
         if (std::isinf(val))
         {
-            throw std::runtime_error("invalid float range, inf");
+            throw std::invalid_argument("invalid float range, inf");
         }
     }
 
@@ -523,7 +523,7 @@ namespace stdx
     {
         if (idx >= bound_sz)
         {
-            throw std::runtime_error("out of bound access");
+            throw std::invalid_argument("out of bound access");
         }
 
         return idx;
@@ -818,7 +818,7 @@ namespace stdx
 
                 if (org_value != this->value) [[unlikely]]
                 {
-                    throw std::runtime_error("float precision lost");
+                    throw std::invalid_argument("float precision lost");
                 }
                 else [[likely]]
                 {

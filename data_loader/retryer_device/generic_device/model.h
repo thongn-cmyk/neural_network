@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <variant>
 #include <data_loader/retryer_device/normal_device/model.h>
+#include <data_loader/retryer_device/infinite_device/model.h>
 #include <serializer/compact_serializer.h>
 #include <stl_extension/stdx.h>
 #include <string>
@@ -14,8 +15,9 @@ namespace data_loader::retryer_device::generic_device
     struct GenericRetryConfig
     {
         std::variant<stdx::reflectible_monostate,
-                     retryer_device::normal_device::ExternalRetryConfig> config;
-    
+                     retryer_device::normal_device::ExternalRetryConfig,
+                     retryer_device::infinite_device::ExternalInfiniteRetryConfig> config;
+
         template <class Reflector>
         void dg_reflect(const Reflector& reflector) const
         {

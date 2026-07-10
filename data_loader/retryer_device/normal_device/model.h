@@ -14,6 +14,7 @@ namespace data_loader::retryer_device::normal_device
     struct RetryConfig
     {
         std::chrono::nanoseconds base_wait_time;
+        std::chrono::nanoseconds max_wait_time;
         uint32_t exponential_base;
         uint32_t max_retry_count;
         std::optional<std::vector<std::string>> retryable_exception_vec;
@@ -22,6 +23,7 @@ namespace data_loader::retryer_device::normal_device
         void dg_reflect(const Reflector& reflector) const
         {
             reflector(base_wait_time,
+                      max_wait_time,
                       exponential_base,
                       max_retry_count,
                       retryable_exception_vec);
@@ -31,6 +33,7 @@ namespace data_loader::retryer_device::normal_device
         void dg_reflect(const Reflector& reflector)
         {
             reflector(base_wait_time,
+                      max_wait_time,
                       exponential_base,
                       max_retry_count,
                       retryable_exception_vec);

@@ -3,6 +3,7 @@
 
 #include <stl_extension/stdx.h>
 #include <data_loader/retryer_device/normal_device/normal_device.h>
+#include <data_loader/retryer_device/infinite_device/infinite_device.h>
 #include <data_loader/retryer_device/retryer_device_interface.h>
 #include <data_loader/retryer_device/runnable_device_interface.h>
 #include <stdint.h>
@@ -26,7 +27,11 @@ namespace data_loader::retryer_device::generic_device
             {
                 if (std::holds_alternative<retryer_device::normal_device::ExternalRetryConfig>(config.config))
                 {
-                    this->base = std::make_unique<retryer_device::normal_device::RetryerMachine>(std::get<retryer_device::normal_device::ExternalRetryConfig>(config.config));
+                    this->base  = std::make_unique<retryer_device::normal_device::RetryerMachine>(std::get<retryer_device::normal_device::ExternalRetryConfig>(config.config));
+                }
+                else if (std::holds_alternative<retryer_device::infinite_device::ExternalInfiniteRetryConfig>(config.config))
+                {
+                    this->base  = std::make_unique<retryer_device::infinite_device::InfiniteRetryerMachine>(std::get<retryer_device::infinite_device::ExternalInfiniteRetryConfig>(config.config));
                 }
                 else
                 {

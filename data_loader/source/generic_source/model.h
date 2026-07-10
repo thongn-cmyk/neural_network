@@ -6,6 +6,7 @@
 #include <stl_extension/stdx.h>
 #include <data_loader/source/file_source/model.h>
 #include <data_loader/source/kafka_broker_source/model.h>
+#include <data_loader/source/s3_source/model.h>
 #include <variant>
 #include <string>
 #include <serializer/compact_serializer.h>
@@ -16,6 +17,7 @@ namespace data_loader::source::generic_source
     {
         std::variant<stdx::reflectible_monostate,
                      data_loader::source::file_source::ExternalFileLoaderConfig,
+                     data_loader::source::s3_source::ExternalS3LoaderConfig,
                      data_loader::source::kafka_broker_source::ExternalKafkaBrokerConfig> source;
 
         template <class Reflector>
