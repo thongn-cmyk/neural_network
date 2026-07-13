@@ -1,5 +1,5 @@
-#ifndef __DATA_LOADER_GENERIC_RETRYER_DEVICE_H__
-#define __DATA_LOADER_GENERIC_RETRYER_DEVICE_H__
+#ifndef __DATA_LOADER_RETRYER_DEVICE_GENERIC_DEVICE_GENERIC_DEVICE_H__
+#define __DATA_LOADER_RETRYER_DEVICE_GENERIC_DEVICE_GENERIC_DEVICE_H__
 
 #include <stl_extension/stdx.h>
 #include <data_loader/retryer_device/normal_device/normal_device.h>

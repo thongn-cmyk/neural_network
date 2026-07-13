@@ -22,7 +22,7 @@ namespace data_loader::retryer_device::infinite_device
         }
     };
 
-    struct ExtenralInfiniteRetryConfig
+    struct ExternalInfiniteRetryConfig
     {
         std::string config_bytestream;
 

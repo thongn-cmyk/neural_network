@@ -1,5 +1,5 @@
-#ifndef __DATA_LOADER_SOURCE_INTERFACE_H__
-#define __DATA_LOADER_SOURCE_INTERFACE_H__
+#ifndef __DATA_LOADER_SOURCE_SOURCE_LOADER_INTERFACE_H__
+#define __DATA_LOADER_SOURCE_SOURCE_LOADER_INTERFACE_H__
 
 #include <stdint.h>
 #include <stdlib.h>

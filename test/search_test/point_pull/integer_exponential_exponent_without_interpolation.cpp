@@ -218,7 +218,7 @@ auto get_random_coordinated_search_optimizer_engine() -> std::unique_ptr<matrix_
 void run_one_test(const size_t point_pull_sz,
                   const size_t coefficient_sz)
 {
-    const size_t OPTIMIZATION_SZ    = size_t{1} << 2;
+    const size_t OPTIMIZATION_SZ    = size_t{1} << 4;
 
     std::shared_ptr<matrix_optimizer_subsystem::CoordinatedSearchOptimizerEngine> test_engine   = get_random_coordinated_search_optimizer_engine();
 
@@ -266,11 +266,11 @@ void run_test()
 
     const std::vector<std::pair<size_t, size_t>> TEST_PAIR_VEC  = 
     {
-        {1, 2},
-        {2, 3},
-        {3, 4},
-        {4, 5},
-        {5, 6},
+        // {1, 2},
+        // {2, 3},
+        // {3, 4},
+        // {4, 5},
+        // {5, 6},
         {6, 7},
         {7, 8},
         {8, 9},

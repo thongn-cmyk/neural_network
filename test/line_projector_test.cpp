@@ -59,7 +59,7 @@ void test_one_projector()
     static auto uint_distributor        = std::uniform_int_distribution<size_t>();
 
     size_t coefficient_sz   = uint_distributor(randomizer) % COEFFICIENT_SZ_RANGE;
-    auto projector          = temporal_coefficient_projector::CoefficientProjectorFactory::get_random_coefficient_projector(coefficient_sz);
+    auto projector          = temporal_coefficient_projector::BasicApplicableProjectorFactory::get_random_coefficient_projector(coefficient_sz);
 
     test_projector(*projector, coefficient_sz);
 }

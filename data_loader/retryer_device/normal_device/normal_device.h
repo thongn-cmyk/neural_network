@@ -1,5 +1,5 @@
-#ifndef __DATA_LOADER_NORMAL_RETRYER_DEVICE_H__
-#define __DATA_LOADER_NORMAL_RETRYER_DEVICE_H__
+#ifndef __DATA_LOADER_RETRYER_DEVICE_NORMAL_DEVICE_NORMAL_DEVICE_H__
+#define __DATA_LOADER_RETRYER_DEVICE_NORMAL_DEVICE_NORMAL_DEVICE_H__
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -28,13 +28,13 @@ namespace data_loader::retryer_device::normal_device
 
             std::chrono::nanoseconds base_wait_time;
             std::chrono::nanoseconds max_wait_time;
-            size_t exponential_base;
+            double exponential_base;
             size_t retry_idx;
             size_t max_retry_count;
             std::optional<std::unordered_set<std::string>> retryable_exception_vec;
         
-            static inline constexpr size_t MIN_EXPONENTIAL_BASE             = 2;
-            static inline constexpr size_t MAX_EXPONENTIAL_BASE             = 10;
+            static inline constexpr double MIN_EXPONENTIAL_BASE             = 2;
+            static inline constexpr double MAX_EXPONENTIAL_BASE             = 10;
             static inline constexpr size_t MIN_RETRY_COUNT                  = 0u;
             static inline constexpr size_t MAX_RETRY_COUNT                  = 10;
 
@@ -61,7 +61,12 @@ namespace data_loader::retryer_device::normal_device
                     throw invalid_argument_base("bad base wait time, base wait time is not in range [0, MAX]");
                 }
 
-                if (std::clamp(static_cast<size_t>(retry_config.exponential_base), MIN_EXPONENTIAL_BASE, MAX_EXPONENTIAL_BASE) != retry_config.exponential_base)
+                if (std::isnan(retry_config.exponential_base))
+                {
+                    throw invalid_argument_base("bad exponential base, exponential base is NaN");
+                }
+
+                if (std::clamp(static_cast<double>(retry_config.exponential_base), MIN_EXPONENTIAL_BASE, MAX_EXPONENTIAL_BASE) != retry_config.exponential_base)
                 {
                     throw invalid_argument_base("bad exponential base, exponential base is not in range [2, 10]");
                 }
@@ -140,7 +145,7 @@ namespace data_loader::retryer_device::normal_device
 
             auto get_sleep_duration_at_index(size_t i) -> std::chrono::nanoseconds
             {
-                std::chrono::nanoseconds tentative_dur  = this->base_wait_time * static_cast<size_t>(std::pow(this->exponential_base, i)); //TODOs: uniform distribution within 2x range (maybe not)
+                std::chrono::nanoseconds tentative_dur  = std::chrono::duration_cast<std::chrono::nanoseconds>(this->base_wait_time * static_cast<size_t>(std::pow(this->exponential_base, i))); //TODOs: uniform distribution within 2x range (maybe not)
                 std::chrono::nanoseconds actual_dur     = std::min(tentative_dur, this->max_wait_time);
 
                 return actual_dur;

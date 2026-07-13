@@ -175,7 +175,7 @@ namespace data_loader::source::azure_source
         data_loader::stream_reader::ExternalDelimitedStreamReaderConfig delim_config;
         ExternalSecuredAzureClientConfig service_client_config;
         std::string container_name;
-        std::string blob_name;
+        std::string blob_name;  
         std::optional<uint64_t> read_ahead_buffer_sz_hint;
         std::optional<uint64_t> unit_byte_sz_hint;
 

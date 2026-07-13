@@ -1341,15 +1341,15 @@ auto get_training_pair_vector(const TrainingTokenConfig& training_token_config) 
 
             if (training_token_config.training_strategy == TRAINING_STRATEGY_GLOBAL_PARITY)
             {
-                out_token   = get_hex_parity_vector(training_token_config.actual_dimension_sz, randomize_uhex());
+                out_token   = get_binary_parity_vector(training_token_config.actual_dimension_sz, randomize_bool());
             }
             else if (training_token_config.training_strategy == TRAINING_STRATEGY_TWO_ADJECENT_REGION_PARITY)
             {
-                out_token   = multiply_vector(get_hex_parity_vector(even_unsigned_div(training_token_config.actual_dimension_sz, 2), randomize_uhex()), 2);
+                out_token   = multiply_vector(get_binary_parity_vector(even_unsigned_div(training_token_config.actual_dimension_sz, 2), randomize_bool()), 2);
             }
             else if (training_token_config.training_strategy == TRAINING_STRATEGY_FOUR_ADJECENT_REGION_PARITY)
             {
-                out_token   = multiply_vector(get_hex_parity_vector(even_unsigned_div(training_token_config.actual_dimension_sz, 4), randomize_uhex()), 4);
+                out_token   = multiply_vector(get_binary_parity_vector(even_unsigned_div(training_token_config.actual_dimension_sz, 4), randomize_bool()), 4);
             }
             else
             {
@@ -1405,47 +1405,36 @@ auto get_parity_distance(const std::shared_ptr<tensor_model::Matrix>& lhs,
         std::abort();
     }
 
-    double one_parity_score = 0;
-    size_t parity_sz        = 0u;
+    double lhs_false_sum    = 0;
+    double lhs_true_sum     = 0;
+
+    double rhs_false_sum    = 0;
+    double rhs_true_sum     = 0;
+
+    std::vector<tensor_std_float_t> true_vec{};
+    std::vector<tensor_std_float_t> false_vec{};
 
     for (size_t i = 0u; i < rhs_flat_tensor_vec.size(); ++i)
     {
         if (rhs_flat_tensor_vec[i] == 1)
         {
-            parity_sz           += 1;
-            one_parity_score    = std::max(one_parity_score, static_cast<double>(std::exp(lhs_flat_tensor_vec[i])));
+            rhs_true_sum    += 1;
+            lhs_true_sum    = std::max(lhs_true_sum, static_cast<double>(std::exp(lhs_flat_tensor_vec[i])));
         }
-    }
-
-    size_t parity_hub_sz            = rhs_flat_tensor_vec.size() / parity_sz;
-    double max_round_parity_score   = 0;
-
-    for (size_t i = 0u; i < parity_hub_sz; ++i)
-    {
-        double round_parity_score   = 0;
-
-        for (size_t j = 0u; j < parity_sz; ++j)
+        else
         {
-            size_t idx  = i * parity_sz + j;
-            
-            if (rhs_flat_tensor_vec[idx] == 1)
-            {
-                continue;
-            }
-
-            round_parity_score  = std::max(round_parity_score, static_cast<double>(std::exp(lhs_flat_tensor_vec[idx])));
+            rhs_false_sum   += 0;
+            lhs_false_sum   = std::max(lhs_false_sum, static_cast<double>(std::exp(lhs_flat_tensor_vec[i])));
         }
-
-        max_round_parity_score  = std::max(round_parity_score, max_round_parity_score);
     }
 
-    if (one_parity_score > max_round_parity_score)
+    double lhs_parity       = lhs_true_sum - lhs_false_sum;
+    double rhs_parity       = rhs_true_sum - rhs_false_sum;
+
+    if (lhs_parity > 0)
     {
         return 0;
     }
-
-    double lhs_parity   = one_parity_score - max_round_parity_score;
-    double rhs_parity   = parity_sz;
 
     return std::pow(lhs_parity - rhs_parity, 2); 
 }
@@ -1459,49 +1448,36 @@ auto is_same_parity(const std::shared_ptr<tensor_model::Matrix>& lhs,
     tensor_factory::flatten(lhs, lhs_flat_tensor_vec);
     tensor_factory::flatten(rhs, rhs_flat_tensor_vec);
 
-    //what we'd want is not parity distance, in this particular scenerio
-
     if (lhs_flat_tensor_vec.size() != rhs_flat_tensor_vec.size())
     {
         std::cout << "mayday, mismatched tensor logit vector\n";
         std::abort();
     }
 
-    double one_parity_score = 0;
-    size_t parity_sz        = 0u;
+    double lhs_false_sum    = 0;
+    double lhs_true_sum     = 0;
+
+    double rhs_false_sum    = 0;
+    double rhs_true_sum     = 0;
 
     for (size_t i = 0u; i < rhs_flat_tensor_vec.size(); ++i)
     {
         if (rhs_flat_tensor_vec[i] == 1)
         {
-            parity_sz           += 1;
-            one_parity_score    += std::exp(lhs_flat_tensor_vec[i]);
+            rhs_true_sum    += 1;
+            lhs_true_sum    = std::max(lhs_true_sum, static_cast<double>(std::exp(lhs_flat_tensor_vec[i])));
         }
-    }
-
-    size_t parity_hub_sz            = rhs_flat_tensor_vec.size() / parity_sz;
-    double max_round_parity_score   = 0;
-
-    for (size_t i = 0u; i < parity_hub_sz; ++i)
-    {
-        double round_parity_score   = 0;
-
-        for (size_t j = 0u; j < parity_sz; ++j)
+        else
         {
-            size_t idx  = i * parity_sz + j;
-            
-            if (rhs_flat_tensor_vec[idx] == 1)
-            {
-                continue;
-            }
-
-            round_parity_score  += std::exp(lhs_flat_tensor_vec[idx]);
+            rhs_false_sum   += 0;
+            lhs_false_sum   = std::max(lhs_false_sum, static_cast<double>(std::exp(lhs_flat_tensor_vec[i])));
         }
-
-        max_round_parity_score  = std::max(round_parity_score, max_round_parity_score);
     }
 
-    return one_parity_score > max_round_parity_score;
+    double lhs_parity       = lhs_true_sum - lhs_false_sum;
+    double rhs_parity       = rhs_true_sum - rhs_false_sum;
+    
+    return lhs_parity > 0;
 }
 
 auto get_optimizer() -> std::unique_ptr<matrix_optimizer_subsystem::CoordinatedSearchOptimizerEngine>

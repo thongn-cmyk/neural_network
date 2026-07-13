@@ -4,7 +4,9 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <stl_extension/stdx.h>
+#include <data_loader/source/azure_source/model.h>
 #include <data_loader/source/file_source/model.h>
+#include <data_loader/source/gcs_source/model.h>
 #include <data_loader/source/kafka_broker_source/model.h>
 #include <data_loader/source/s3_source/model.h>
 #include <variant>
@@ -16,9 +18,11 @@ namespace data_loader::source::generic_source
     struct GenericReaderConfig
     {
         std::variant<stdx::reflectible_monostate,
+                     data_loader::source::azure_source::ExternalAzureLoaderConfig,
                      data_loader::source::file_source::ExternalFileLoaderConfig,
-                     data_loader::source::s3_source::ExternalS3LoaderConfig,
-                     data_loader::source::kafka_broker_source::ExternalKafkaBrokerConfig> source;
+                     data_loader::source::gcs_source::ExternalGCSLoaderConfig,
+                     data_loader::source::kafka_broker_source::ExternalKafkaBrokerConfig,
+                     data_loader::source::s3_source::ExternalS3LoaderConfig> source;
 
         template <class Reflector>
         void dg_reflect(const Reflector& reflector) const
@@ -63,4 +67,5 @@ namespace data_loader::source::generic_source
         return dg::network_compact_serializer::dgstd_deserialize<GenericReaderConfig>(config.config_bytestream);
     }
 }
+
 #endif

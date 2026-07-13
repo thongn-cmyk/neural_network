@@ -9,7 +9,7 @@ namespace taylor_matrix::host_matrix::generic_two_dimensional_cubic_interpolatio
 {
     consteval auto get_cubic_exp_interpolated_2d_projection_base_size() -> size_t
     {
-        return 2u;
+        return 3u;
     }
 
     // template <class QuantizationMachine>
@@ -132,14 +132,22 @@ namespace taylor_matrix::host_matrix::generic_two_dimensional_cubic_interpolatio
 
         using namespace taylor_matrix::host_matrix::shape_projection;
 
-        constexpr size_t BASE_SZ    = get_cubic_exp_interpolated_2d_projection_base_size();
+        const size_t REQUIRED_SZ    = 3u;
+        size_t next_offset          = coeff_arr_offset + REQUIRED_SZ;
 
-        FloatType x_arr[]{x0, x1};
+        if constexpr(HasBoundCheck)
+        {
+            if (next_offset > coeff_arr_cap)
+            {
+                throw std::invalid_argument("insufficient remaining coefficient size");
+            }
+        }
 
-        PromotedFloatType y_0_1     = multivariate_taylor_shape_project(x_arr, stdx::to_size_container(std::integral_constant<size_t, 2>{}),
-                                                                        stdx::to_size_container(std::integral_constant<size_t, BASE_SZ>{}),
-                                                                        coeff_arr, coeff_arr_offset, coeff_arr_cap,
-                                                                        promotion_tag);
+        PromotedFloatType a         = coeff_arr[coeff_arr_offset];
+        PromotedFloatType b         = coeff_arr[coeff_arr_offset + 1];
+        PromotedFloatType c         = coeff_arr[coeff_arr_offset + 2];
+        PromotedFloatType y_0_1     = a * x0 + b * x1 + c;
+        coeff_arr_offset            = next_offset;
 
         return y_0_1;
     }

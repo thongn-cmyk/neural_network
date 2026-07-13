@@ -9,7 +9,7 @@
 #include <variant>
 #include "model.h"
 #include <data_loader/retryer_device/infinite_device/config_builder.h>
-#include <data_loader/retryer_deivce/normal_device/config_builder.h>
+#include <data_loader/retryer_device/normal_device/config_builder.h>
 
 namespace data_loader::retryer_device::generic_device
 {
@@ -17,7 +17,7 @@ namespace data_loader::retryer_device::generic_device
     {
         private:
 
-            using Builder_0 = data_loader::retryer_device::infinite_device::InfiniteRetryMachineConfigBuilder;
+            using Builder_0 = data_loader::retryer_device::infinite_device::InfiniteRetryerMachineConfigBuilder;
             using Builder_1 = data_loader::retryer_device::normal_device::RetryerMachineConfigBuilder;
 
             std::variant<Builder_0, Builder_1> builder;
@@ -60,14 +60,14 @@ namespace data_loader::retryer_device::generic_device
                     return
                     {
                         .config = std::get<Builder_0>(this->builder).build()
-                    }
+                    };
                 }
                 else if (std::holds_alternative<Builder_1>(this->builder))
                 {
                     return
                     {
                         .config = std::get<Builder_1>(this->builder).build()
-                    }
+                    };
                 }
                 else
                 {

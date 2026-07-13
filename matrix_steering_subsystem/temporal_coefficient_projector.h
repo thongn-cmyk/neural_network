@@ -15,6 +15,7 @@
 #include "space_operation.h"
 #include "shape_projection.h"
 #include "taylor_projection.h"
+#include "quantization_machine.h"
 
 namespace temporal_coefficient_projector
 {
@@ -273,30 +274,6 @@ namespace temporal_coefficient_projector
     };
 
     template <class PromotedFloatType = std_float_t>
-    class ExponentialTemporalCoefficientProjector: public virtual TemporalCoefficientProjectorInterface
-    {
-        private:
-
-            std::vector<PromotedFloatType> space;
-
-        public:
-
-            ExponentialTemporalCoefficientProjector(std::vector<PromotedFloatType> space) noexcept: space(std::move(space)){}
-
-            auto project(std_float_t t) -> std::vector<std_float_t>
-            {
-                std::vector<std_float_t> rs(this->space.size());
-
-                for (size_t i = 0u; i < this->space.size(); ++i)
-                {
-                    rs[i] = std::exp(this->space[i]);
-                }
-
-                return rs;
-            }
-    };
-
-    template <class PromotedFloatType = std_float_t>
     class MultiplicationTemporalCoefficientProjector: public virtual TemporalCoefficientProjectorInterface
     {
         private:
@@ -338,7 +315,7 @@ namespace temporal_coefficient_projector
 
             std::unique_ptr<TemporalCoefficientProjectorInterface> domain_scaler;
             std::unique_ptr<TemporalCoefficientProjectorInterface> rhs;
-        
+
         public:
 
             DomainScaledTemporalCoefficientProjector(std::unique_ptr<TemporalCoefficientProjectorInterface> domain_scaler,
@@ -547,9 +524,444 @@ namespace temporal_coefficient_projector
             }
     };
 
-    class CoefficientProjectorFactory
+    template <class PromotedFloatType = std_float_t>
+    class LerpProjector: public virtual TemporalCoefficientProjectorInterface
     {
         private:
+
+            std::vector<std::vector<PromotedFloatType>> coefficient_2d_vec;
+            std::unique_ptr<quantization_machine::QuantizationMachineInterface<PromotedFloatType>> quantization_machine;
+
+        public:
+
+            LerpProjector(std::vector<std::vector<PromotedFloatType>> coefficient_2d_vec,
+                          std::unique_ptr<quantization_machine::QuantizationMachineInterface<PromotedFloatType>> quantization_machine) noexcept: coefficient_2d_vec(std::move(coefficient_2d_vec)),
+                                                                                                                                                 quantization_machine(std::move(quantization_machine)){}
+
+            auto project(std_float_t t) -> std::vector<std_float_t>
+            {
+                std::vector<std_float_t> result_vec = {};
+                size_t quantization_idx             = this->quantization_machine->quantitize(t);
+
+                for (const auto& d_vec: this->coefficient_2d_vec)
+                {
+                    result_vec.push_back
+                    (
+                        this->lerp_project(t, d_vec, quantization_idx)
+                    );
+                }
+
+                return result_vec;
+            }
+
+        private:
+
+            auto lerp_project(PromotedFloatType x,
+                              const std::vector<PromotedFloatType>& coeff_vec,
+                              size_t idx) -> PromotedFloatType
+            {
+                if (coeff_vec.empty())
+                {
+                    return 0;
+                }
+
+                if (coeff_vec.size() == 1u)
+                {
+                    return coeff_vec.front();
+                }
+
+                constexpr size_t LERP_COEFFICIENT_SZ    = 2u;
+                size_t offset                           = idx * LERP_COEFFICIENT_SZ;
+                PromotedFloatType result                = 0;
+
+                {
+                    size_t idx              = (offset + 0u) % coeff_vec.size();
+                    PromotedFloatType coeff = coeff_vec[idx];
+                    result                  += coeff;
+                }
+
+                {
+                    size_t idx              = (offset + 1u) % coeff_vec.size();
+                    PromotedFloatType coeff = coeff_vec[idx];
+                    result                  += coeff * x;
+                }
+
+                return result;
+            }
+    };
+
+    template <class PromotedFloatType = std_float_t>
+    class CubicSplineProjector: public virtual TemporalCoefficientProjectorInterface
+    {
+        private:
+
+            std::vector<std::vector<PromotedFloatType>> coefficient_2d_vec;
+            std::unique_ptr<quantization_machine::QuantizationMachineInterface<PromotedFloatType>> quantization_machine;
+
+        public:
+
+            CubicSplineProjector(std::vector<std::vector<PromotedFloatType>> coefficient_2d_vec,
+                                 std::unique_ptr<quantization_machine::QuantizationMachineInterface<PromotedFloatType>> quantization_machine) noexcept: coefficient_2d_vec(std::move(coefficient_2d_vec)),
+                                                                                                                                                        quantization_machine(std::move(quantization_machine)){}
+
+            auto project(std_float_t t) -> std::vector<std_float_t>
+            {
+                std::vector<std_float_t> result_vec = {};
+                size_t quantization_idx             = this->quantization_machine->quantitize(t);
+
+                for (const auto& d_vec: this->coefficient_2d_vec)
+                {
+                    result_vec.push_back
+                    (
+                        this->cubic_project(t, d_vec, quantization_idx)
+                    );
+                }
+
+                return result_vec;
+            }
+
+        private:
+
+            auto cubic_project(PromotedFloatType x,
+                               const std::vector<PromotedFloatType>& coeff_vec,
+                               size_t idx) -> PromotedFloatType
+            {
+                if (coeff_vec.empty())
+                {
+                    return 0;
+                }
+
+                if (coeff_vec.size() == 1u)
+                {
+                    return coeff_vec[0];
+                }
+
+                if (coeff_vec.size() == 2u)
+                {
+                    return coeff_vec[0]
+                        + coeff_vec[1] * x;
+                }
+
+                if (coeff_vec.size() == 3u)
+                {
+                    return coeff_vec[0]
+                        + coeff_vec[1] * x
+                        + coeff_vec[2] * x * x;
+                }
+
+                constexpr size_t CUBIC_COEFFICIENT_SZ   = 4u;
+                size_t offset                           = idx * CUBIC_COEFFICIENT_SZ;
+
+                PromotedFloatType result                = 0;
+                PromotedFloatType multiplier            = 1;
+
+                for (size_t i = 0u; i < CUBIC_COEFFICIENT_SZ; ++i)
+                {
+                    size_t idx              = (offset + i) % coeff_vec.size();
+                    PromotedFloatType coeff = coeff_vec[idx];
+                    result                  += coeff * multiplier;
+                    multiplier              *= x;
+                }
+
+                return result;
+            }
+    };
+
+    class CoefficientProjectorFactory
+    {
+        public:
+
+            template <class FloatType, class PromotedFloatType = FloatType>
+            static auto get_line_projector(const std::vector<FloatType>& coefficient_vec,
+                                           const stdx::Tag<PromotedFloatType>& tag = stdx::Tag<PromotedFloatType>{}) -> std::unique_ptr<TemporalCoefficientProjectorInterface>
+            {
+                stdx::safe_float_range_access(coefficient_vec.data(), coefficient_vec.size());
+
+                return std::make_unique<LineTemporalCoefficientProjector<PromotedFloatType>>(stdx::to_castable_vector_initializer(coefficient_vec));
+            }
+
+            template <class FloatType0,
+                      class FloatType1,
+                      class FloatType2,
+                      class PromotedFloatType = FloatType0>
+            static auto get_oval_projector(const std::vector<FloatType0>& directional_vec,
+                                           const std::vector<FloatType1>& radian_vec,
+                                           const std::vector<FloatType2>& radius_vec,
+                                           const stdx::Tag<PromotedFloatType>& tag = stdx::Tag<PromotedFloatType>{}) -> std::unique_ptr<TemporalCoefficientProjectorInterface>
+            {
+                if (directional_vec.size() != radian_vec.size())
+                {
+                    throw std::invalid_argument("bad directional vector size, size mismatched");
+                }
+
+                if (radian_vec.size() != radius_vec.size())
+                {
+                    throw std::invalid_argument("bad radian vector size, size mismatched");
+                }
+
+                stdx::safe_float_range_access(directional_vec.data(), directional_vec.size());
+                stdx::safe_float_range_access(radian_vec.data(), radian_vec.size());
+                stdx::safe_float_range_access(radius_vec.data(), radius_vec.size());
+
+                return std::make_unique<OvalTemporalCoefficientProjector<PromotedFloatType>>
+                (
+                    LineTemporalCoefficientProjector<PromotedFloatType>(stdx::to_castable_vector_initializer(directional_vec)),
+                    stdx::to_castable_vector_initializer(radian_vec),
+                    stdx::to_castable_vector_initializer(radius_vec)
+                );
+            }
+
+            template <class PromotedFloatType = std_float_t>
+            static auto get_multiplication_projector(std::unique_ptr<TemporalCoefficientProjectorInterface>&& lhs,
+                                                     std::unique_ptr<TemporalCoefficientProjectorInterface>&& rhs,
+                                                     const stdx::Tag<PromotedFloatType>& tag = stdx::Tag<PromotedFloatType>{}) -> std::unique_ptr<TemporalCoefficientProjectorInterface>
+            {
+                if (lhs == nullptr)
+                {
+                    throw std::invalid_argument("bad lhs, null");
+                }
+
+                if (rhs == nullptr)
+                {
+                    throw std::invalid_argument("bad rhs, null");
+                }
+
+                return std::make_unique<MultiplicationTemporalCoefficientProjector<PromotedFloatType>>
+                (
+                    std::move(lhs),
+                    std::move(rhs)
+                );
+            }
+
+            template <class PromotedFloatType = std_float_t>
+            static auto get_domain_scaled_projector(std::unique_ptr<TemporalCoefficientProjectorInterface>&& domain_scaler,
+                                                    std::unique_ptr<TemporalCoefficientProjectorInterface>&& rhs,
+                                                    const stdx::Tag<PromotedFloatType>& tag = stdx::Tag<PromotedFloatType>{}) -> std::unique_ptr<TemporalCoefficientProjectorInterface>
+            {
+                if (domain_scaler == nullptr)
+                {
+                    throw std::invalid_argument("bad domain scaler, null");
+                }
+
+                if (rhs == nullptr)
+                {
+                    throw std::invalid_argument("bad rhs, null");
+                }
+
+                return std::make_unique<DomainScaledTemporalCoefficientProjector<PromotedFloatType>>
+                (
+                    std::move(domain_scaler),
+                    std::move(rhs)
+                );
+            }
+
+            template <class PromotedFloatType = std_float_t>
+            static auto get_generic_oval_projector(std::unique_ptr<TemporalCoefficientProjectorInterface>&& domain_projector,
+                                                   std::unique_ptr<TemporalCoefficientProjectorInterface>&& radius_projector,
+                                                   std::unique_ptr<TemporalCoefficientProjectorInterface>&& direction_projector,
+                                                   const stdx::Tag<PromotedFloatType>& tag = stdx::Tag<PromotedFloatType>{}) -> std::unique_ptr<TemporalCoefficientProjectorInterface>
+            {
+                if (domain_projector == nullptr)
+                {
+                    throw std::invalid_argument("bad domain projector, null");
+                }
+
+                if (radius_projector == nullptr)
+                {
+                    throw std::invalid_argument("bad radius projector, null");
+                }
+
+                if (direction_projector == nullptr)
+                {
+                    throw std::invalid_argument("bad direction projector, null");
+                }
+
+                return std::make_unique<GenericOvalTemporalCoefficientProjector<PromotedFloatType>>
+                (
+                    std::move(domain_projector),
+                    std::move(radius_projector),
+                    std::move(direction_projector)
+                );
+            }
+
+            static auto get_translation_projector(std::unique_ptr<TemporalCoefficientProjectorInterface>&& domain_projector,
+                                                  const std::vector<size_t>& translation_table,
+                                                  size_t projection_sz) -> std::unique_ptr<TemporalCoefficientProjectorInterface>
+            {
+                if (domain_projector == nullptr)
+                {
+                    throw std::invalid_argument("bad domain projector, null");
+                }
+
+                return std::make_unique<TranslationProjector>
+                (
+                    std::move(domain_projector),
+                    translation_table,
+                    projection_sz
+                );
+            }
+
+            static auto get_activation_projector(std::unique_ptr<TemporalCoefficientProjectorInterface>&& projector,
+                                                 std::vector<bool> activation_vec) -> std::unique_ptr<TemporalCoefficientProjectorInterface>
+            {
+                if (projector == nullptr)
+                {
+                    throw std::invalid_argument("bad projector, null");
+                }
+
+                std::vector<std_float_t> scaled_vec(activation_vec.size());
+
+                for (size_t i = 0u; i < activation_vec.size(); ++i)
+                {
+                    if (activation_vec[i] == true)
+                    {
+                        scaled_vec[i] = 1;
+                    }
+                    else
+                    {
+                        scaled_vec[i] = 0;
+                    }
+                }
+
+                return std::make_unique<PairWiseScaledProjector>(std::move(projector), std::move(scaled_vec));
+            }
+
+            static auto get_scalar_scaled_projector(std::unique_ptr<TemporalCoefficientProjectorInterface>&& base,
+                                                    std_float_t scalar_value) -> std::unique_ptr<TemporalCoefficientProjectorInterface>
+            {
+                if (base == nullptr)
+                {
+                    throw std::invalid_argument("bad base, null");
+                }
+
+                if (std::isnan(scalar_value))
+                {
+                    throw std::invalid_argument("bad scalar value, NaN");
+                }
+
+                return std::make_unique<ScalarScaledProjector>
+                (
+                    std::move(base),
+                    scalar_value
+                );
+            }
+
+            static auto get_pairwise_scaled_projector(std::unique_ptr<TemporalCoefficientProjectorInterface>&& base,
+                                                      const std::vector<std_float_t>& scaled_coeff_vec) -> std::unique_ptr<TemporalCoefficientProjectorInterface>
+            {
+                if (base == nullptr)
+                {
+                    throw std::invalid_argument("bad base, null");
+                }
+
+                stdx::safe_float_range_access(scaled_coeff_vec.data(), scaled_coeff_vec.size());
+
+                return std::make_unique<PairWiseScaledProjector>
+                (
+                    std::move(base),
+                    scaled_coeff_vec
+                );
+            }
+
+            static auto get_point_projector(const std::vector<std_float_t>& coor) -> std::unique_ptr<TemporalCoefficientProjectorInterface>
+            {
+                stdx::safe_float_range_access(coor.data(), coor.size());
+
+                return std::make_unique<PointCoefficientProjector>(coor);
+            }
+
+            template <class FloatType, class PromotedFloatType = FloatType>
+            static auto get_taylor_series_projector(const std::vector<std::vector<FloatType>>& coefficient_2d_vec,
+                                                    const stdx::Tag<PromotedFloatType>& tag = stdx::Tag<PromotedFloatType>{}) -> std::unique_ptr<TemporalCoefficientProjectorInterface>
+            {
+                std::vector<std::vector<PromotedFloatType>> promoted_coefficient_2d_vec{};
+
+                for (const auto& d_vec: coefficient_2d_vec)
+                {
+                    stdx::safe_float_range_access(d_vec.data(), d_vec.size());
+                    promoted_coefficient_2d_vec.push_back(stdx::to_castable_vector_initializer(d_vec));
+                }
+
+                return std::make_unique<TaylorSeriesProjector<PromotedFloatType>>(std::move(promoted_coefficient_2d_vec));
+            }
+
+            template <class FloatType, class PromotedFloatType = FloatType>
+            static auto get_taylor_radian_series_projector(const std::vector<std::vector<FloatType>>& coefficient_2d_vec,
+                                                           const stdx::Tag<PromotedFloatType>& tag = stdx::Tag<PromotedFloatType>{}) -> std::unique_ptr<TemporalCoefficientProjectorInterface>
+            {
+                std::vector<std::vector<PromotedFloatType>> promoted_coefficient_2d_vec{};
+
+                for (const auto& d_vec: coefficient_2d_vec)
+                {
+                    stdx::safe_float_range_access(d_vec.data(), d_vec.size());
+                    promoted_coefficient_2d_vec.push_back(stdx::to_castable_vector_initializer(d_vec));
+                }
+
+                return std::make_unique<TaylorRadianSeriesProjector<PromotedFloatType>>(std::move(promoted_coefficient_2d_vec));
+            }
+
+            template <class FloatType, class PromotedFloatType = FloatType>
+            static auto get_lerp_projector(const std::vector<std::vector<FloatType>>& coefficient_2d_vec,
+                                           std::unique_ptr<quantization_machine::QuantizationMachineInterface<PromotedFloatType>>&& quantization_machine,
+                                           const stdx::Tag<PromotedFloatType>& tag = stdx::Tag<PromotedFloatType>{}) -> std::unique_ptr<TemporalCoefficientProjectorInterface>
+            {
+                if (quantization_machine == nullptr)
+                {
+                    throw std::invalid_argument("bad quantization machine, null");
+                }
+
+                std::vector<std::vector<PromotedFloatType>> promoted_coefficient_2d_vec{};
+
+                for (const auto& d_vec: coefficient_2d_vec)
+                {
+                    stdx::safe_float_range_access(d_vec.data(), d_vec.size());
+                    promoted_coefficient_2d_vec.push_back(stdx::to_castable_vector_initializer(d_vec));
+                }
+
+                return std::make_unique<LerpProjector<PromotedFloatType>>(std::move(promoted_coefficient_2d_vec),
+                                                                          std::move(quantization_machine));
+            }
+
+            template <class FloatType, class PromotedFloatType = FloatType>
+            static auto get_cubic_spline_projector(const std::vector<std::vector<FloatType>>& coefficient_2d_vec,
+                                                   std::unique_ptr<quantization_machine::QuantizationMachineInterface<PromotedFloatType>>&& quantization_machine,
+                                                   const stdx::Tag<PromotedFloatType>& tag = stdx::Tag<PromotedFloatType>{}) -> std::unique_ptr<TemporalCoefficientProjectorInterface>
+            {
+                if (quantization_machine == nullptr)
+                {
+                    throw std::invalid_argument("bad quantization machine, null");
+                }
+
+                std::vector<std::vector<PromotedFloatType>> promoted_coefficient_2d_vec{};
+
+                for (const auto& d_vec: coefficient_2d_vec)
+                {
+                    stdx::safe_float_range_access(d_vec.data(), d_vec.size());
+                    promoted_coefficient_2d_vec.push_back(stdx::to_castable_vector_initializer(d_vec));
+                }
+
+                return std::make_unique<CubicSplineProjector<PromotedFloatType>>(std::move(promoted_coefficient_2d_vec),
+                                                                                 std::move(quantization_machine));
+            }
+
+            static auto get_chained_projector(std::vector<std::unique_ptr<TemporalCoefficientProjectorInterface>>&& projector_vec) -> std::unique_ptr<TemporalCoefficientProjectorInterface>
+            {
+                for (const auto& e: projector_vec)
+                {
+                    if (e == nullptr)
+                    {
+                        throw std::invalid_argument("bad projector, null");
+                    }
+                }
+
+                return std::make_unique<ChainedTemporalCoefficientProjector>(std::move(projector_vec));
+            }
+    };
+
+    class BasicApplicableProjectorFactory
+    {
+        private:
+
 
             static inline const std_float_t MIN_LOGIT_VALUE   = std::numeric_limits<std_float_t>::min();
             static inline const std_float_t MAX_LOGIT_VALUE   = stdx::to_precise_float_conversion_initializer<double>(size_t{1} << 20);
@@ -602,143 +1014,62 @@ namespace temporal_coefficient_projector
 
         public:
 
-            static auto get_activation_projector(std::unique_ptr<TemporalCoefficientProjectorInterface>&& projector,
-                                                 std::vector<bool> activation_vec) -> std::unique_ptr<TemporalCoefficientProjectorInterface>
-            {
-                if (projector == nullptr)
-                {
-                    throw std::invalid_argument("bad projector, null");
-                }
-
-                std::vector<std_float_t> scaled_vec(activation_vec.size());
-
-                for (size_t i = 0u; i < activation_vec.size(); ++i)
-                {
-                    if (activation_vec[i] == true)
-                    {
-                        scaled_vec[i] = 1;
-                    }
-                    else
-                    {
-                        scaled_vec[i] = 0;
-                    }
-                }
-
-                return std::make_unique<PairWiseScaledProjector>(std::move(projector), std::move(scaled_vec));
-            }
-
-            static auto get_point_coefficient_projector(const std::vector<std_float_t>& coor) -> std::unique_ptr<TemporalCoefficientProjectorInterface>
-            {
-                for (const auto& e: coor)
-                {
-                    if (std::isnan(e))
-                    {
-                        throw std::invalid_argument("bad numeric value, NaN");
-                    }
-                }
-
-                return std::make_unique<PointCoefficientProjector>(coor);
-            }
-
-            static auto get_chained_coefficient_projector(std::vector<std::unique_ptr<TemporalCoefficientProjectorInterface>>&& projector_vec) -> std::unique_ptr<TemporalCoefficientProjectorInterface>
-            {
-                for (const auto& e: projector_vec)
-                {
-                    if (e == nullptr)
-                    {
-                        throw std::invalid_argument("bad projector, null");
-                    }
-                }
-
-                return std::make_unique<ChainedTemporalCoefficientProjector>(std::move(projector_vec));
-            }
-
             template <class PromotedFloatType = std_float_t>
-            static auto get_random_line_coefficient_projector(size_t coefficient_sz) -> std::unique_ptr<TemporalCoefficientProjectorInterface>
+            static auto get_random_line_coefficient_projector(size_t coefficient_sz,
+                                                              const stdx::Tag<PromotedFloatType>& tag = stdx::Tag<PromotedFloatType>{}) -> std::unique_ptr<TemporalCoefficientProjectorInterface>
             {
                 std::vector<std_float_t> unit_vec = clamp_vector(get_random_unit_vector(coefficient_sz));
 
-                return std::make_unique<LineTemporalCoefficientProjector<PromotedFloatType>>(stdx::to_castable_vector_initializer(std::move(unit_vec)));
+                return CoefficientProjectorFactory::get_line_projector(unit_vec, tag);
             }
 
             template <class PromotedFloatType = std_float_t>
-            static auto get_random_oval_coefficient_projector(size_t coefficient_sz) -> std::unique_ptr<TemporalCoefficientProjectorInterface>
+            static auto get_random_oval_coefficient_projector(size_t coefficient_sz,
+                                                              const stdx::Tag<PromotedFloatType>& tag = stdx::Tag<PromotedFloatType>{}) -> std::unique_ptr<TemporalCoefficientProjectorInterface>
             {
                 std::vector<std_float_t> directional_vec  = clamp_vector(get_random_unit_vector(coefficient_sz));
                 std::vector<std_float_t> radian_vec       = clamp_vector(get_random_radian_coordinate(coefficient_sz));
                 std::vector<std_float_t> radius_vec       = clamp_vector(space_operation::mul_vector(get_random_unit_vector(coefficient_sz), static_cast<std_float_t>(FocalRandomizer::ld_randomize_focal())));
 
-                return std::make_unique<OvalTemporalCoefficientProjector<PromotedFloatType>>(LineTemporalCoefficientProjector<PromotedFloatType>(stdx::to_castable_vector_initializer(std::move(directional_vec))),
-                                                                                             stdx::to_castable_vector_initializer(std::move(radian_vec)),
-                                                                                             stdx::to_castable_vector_initializer(std::move(radius_vec)));
+                return CoefficientProjectorFactory::get_oval_projector(directional_vec,
+                                                                       radian_vec,
+                                                                       radius_vec,
+                                                                       tag);
             }
 
             template <class PromotedFloatType = std_float_t>
-            static auto get_random_rotating_arm_coefficient_projector(size_t coefficient_sz) -> std::unique_ptr<TemporalCoefficientProjectorInterface>
+            static auto get_random_rotating_arm_coefficient_projector(size_t coefficient_sz,
+                                                                      const stdx::Tag<PromotedFloatType>& tag = stdx::Tag<PromotedFloatType>{}) -> std::unique_ptr<TemporalCoefficientProjectorInterface>
             {
-                using namespace stdx;
-
-                return std::make_unique<ChainedTemporalCoefficientProjector>(to_variadic_vector_initializer(get_random_oval_coefficient_projector<PromotedFloatType>(coefficient_sz),
-                                                                                                            get_random_oval_coefficient_projector<PromotedFloatType>(coefficient_sz)));
+                return CoefficientProjectorFactory::get_chained_projector(stdx::to_variadic_vector_initializer(get_random_oval_coefficient_projector(coefficient_sz, tag),
+                                                                                                               get_random_oval_coefficient_projector(coefficient_sz, tag)));
             }
 
             template <class PromotedFloatType = std_float_t>
-            static auto get_random_line_oval_coefficient_projector(size_t coefficient_sz) -> std::unique_ptr<TemporalCoefficientProjectorInterface>
+            static auto get_random_line_oval_coefficient_projector(size_t coefficient_sz,
+                                                                   const stdx::Tag<PromotedFloatType>& tag = stdx::Tag<PromotedFloatType>{}) -> std::unique_ptr<TemporalCoefficientProjectorInterface>
             {
-                using namespace stdx;
-
-                return std::make_unique<ChainedTemporalCoefficientProjector>(to_variadic_vector_initializer(get_random_line_coefficient_projector<PromotedFloatType>(coefficient_sz),
-                                                                                                            get_random_oval_coefficient_projector<PromotedFloatType>(coefficient_sz)));
+                return CoefficientProjectorFactory::get_chained_projector(stdx::to_variadic_vector_initializer(get_random_line_coefficient_projector(coefficient_sz, tag),
+                                                                                                               get_random_oval_coefficient_projector(coefficient_sz, tag)));
             }
 
             template <class PromotedFloatType = std_float_t>
-            static auto get_random_coefficient_projector(size_t coefficient_sz) -> std::unique_ptr<TemporalCoefficientProjectorInterface>
+            static auto get_random_coefficient_projector(size_t coefficient_sz,
+                                                         const stdx::Tag<PromotedFloatType>& tag = stdx::Tag<PromotedFloatType>{}) -> std::unique_ptr<TemporalCoefficientProjectorInterface>
             {
-                using projector_func_ptr = std::unique_ptr<TemporalCoefficientProjectorInterface> (*) (size_t);
+                using projector_func_ptr = decltype(&get_random_line_coefficient_projector<PromotedFloatType>);
 
-                static std::vector<projector_func_ptr> func_ptr_vec{
+                static std::vector<projector_func_ptr> func_ptr_vec
+                {
                     get_random_line_coefficient_projector<PromotedFloatType>,
                     get_random_oval_coefficient_projector<PromotedFloatType>,
                     get_random_rotating_arm_coefficient_projector<PromotedFloatType>,
                     get_random_line_oval_coefficient_projector<PromotedFloatType>
                 };
 
-                return func_ptr_vec[NumericRandomizer::randomize_uint(0u, func_ptr_vec.size())](coefficient_sz);
+                return func_ptr_vec[NumericRandomizer::randomize_uint(0u, func_ptr_vec.size())](coefficient_sz, tag);
             }
     };
-
-    //this is very super hard, but we'd have to translate the coefficient sz into an arbitrary space of activated tensor nodes, otherwise we'd be floating-wise screwed
-
-    //in the FixedOvalProjectorFactory, we have done very well describing
-
-    //the radian-cursor speed of the multidimensional sphere for each of the dimensions
-    //relatively is important in the context
-
-    //then we'd want to scale that relatively_system by a scalar value, which is exponential or uniformly distributed
-
-    //so as soon as we finish iterating one sphere, we'd move another sphere cursor by an inch, essentially a nested for loop, in the extreme scenerio
-    //or we'd just iterate one sphere in another extreme scenerio, so the value a is important in the context, such is that the derivative at the point might not be relevant in the extreme context, says 1/100*sin(10000x) - x
-
-    //the reason I say this is hard because on one hand, we'd try our best to find the global minima, on the other hand, we'd want to increase that end to be so incredibly difficult that we would not mess up the dynamic-context layers 
-    //if the lower layers are formed too quickly, we'd have a really hard time to adjust the lower layers, which would defeat the purpose of dynamic context building
-
-    //but if it is too hard to bend the space for the lower and upper layers, we'd have slower decay of uniform distribution of possible shapes for the final output layer according to the former layers
-
-    //yesterday I was proving that this optimization radix is different than that of the different ground projections, such is that one cannot say we'd have to do only this because this is sufficient
-    //the different ground projections are to estimate the best possible hops to not over-abstractize the context
-
-    //we'd try to work on the branch predicted version of these, because this is actually predictable in some of the scenerios
-
-    //it seems to me that the question of whether a semantic skewed in what direction could be exploited in run-time and re-directed in run-time
-    //because in the uniform-distribution scenerio of logit a being equivalently as important as logit b, there seems to be no-problem for the projection to be a sphere-shaped semantic
-    //but we do have a problem otherwise
-
-    //the reason that radius a == radius b being so important is that every point within the r + r would intersect with the closed space of the upper arm if we are to draw a closed space of the same size around it
-    //this means that there exists a closed space of the radius at the intersected point that touches the point
-    //alright, so we'd settle for this being the solution
-
-    //so the question would be to map the searching semantic space into a uniform space where every point in the space is equivalently worth exploring
-    //on top of this assumed semantic space
 
     template <class PromotedFloatType = std_float_t>
     class FixedOvalProjectorFactory

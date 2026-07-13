@@ -1,5 +1,5 @@
-#ifndef __DATA_LOADER_SOURCE_EXCEPTION_H__
-#define __DATA_LOADER_SOURCE_EXCEPTION_H__
+#ifndef __DATA_LOADER_SOURCE_SOURCE_EXCEPTION_H__
+#define __DATA_LOADER_SOURCE_SOURCE_EXCEPTION_H__
 
 #include <exception>
 #include <data_loader/exception_base.h>
@@ -58,4 +58,3 @@ namespace data_loader::source::source_exception
 }
 
 #endif
-

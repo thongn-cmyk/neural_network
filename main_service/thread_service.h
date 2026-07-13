@@ -139,6 +139,8 @@ namespace main_service::thread_service
                 {
                     cancellation_token->cancel();
                     disposer->dispose_thread(thr);
+
+                    std::destroy_at(thr);
                     deallocator->deallocate(thr, 1u);
                 };
 
@@ -187,8 +189,6 @@ namespace main_service::thread_service
                 {
                     std::abort();
                 }
-
-                std::destroy_at(arg.thr);
             }
     };
 }

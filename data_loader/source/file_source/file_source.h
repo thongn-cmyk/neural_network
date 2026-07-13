@@ -34,12 +34,12 @@ namespace data_loader::source::file_source
 
         public:
 
-            static inline constexpr size_t MAX_READ_SZ      = size_t{1} << 20;
+            static inline constexpr size_t MAX_READ_SZ      = size_t{1} << 30;
             static inline constexpr size_t MIN_BUFFER_SZ    = size_t{1} << 10;
-            static inline constexpr size_t MAX_BUFFER_SZ    = size_t{1} << 20;
+            static inline constexpr size_t MAX_BUFFER_SZ    = size_t{1} << 30;
 
             static inline constexpr size_t MIN_TX_UNIT_SZ   = size_t{1} << 10;
-            static inline constexpr size_t MAX_TX_UNIT_SZ   = size_t{1} << 20;
+            static inline constexpr size_t MAX_TX_UNIT_SZ   = size_t{1} << 30;
 
             FileLoader(const FileLoaderConfig& config): delim_streamer(std::make_unique<data_loader::stream_reader::DelimitedStreamReader>(config.delim_config)),
                                                         f_stream(config.local_file_path, std::ios::binary),

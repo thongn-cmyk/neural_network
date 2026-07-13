@@ -17,15 +17,21 @@ namespace data_loader::source::file_source
     {
         private:
 
-            using self  = FileLoaderConfigBuilder;
-
+            using self                                  = FileLoaderConfigBuilder;
+            using DelimitedStreamReaderConfigBuilder    = data_loader::stream_reader::DelimitedStreamReaderConfigBuilder;
+ 
             std::optional<std::string> local_file_path;
             std::optional<uint64_t> token_unit_sz;
             std::optional<uint64_t> download_sz;
 
-            data_loader::stream_reader::DelimitedStreamReaderConfigBuilder delimited_stream_reader_config_builder;
+            std::unique_ptr<DelimitedStreamReaderConfigBuilder> delimited_stream_reader_config_builder;
 
         public:
+
+            FileLoaderConfigBuilder(): local_file_path(),
+                                       token_unit_sz(),
+                                       download_sz(),
+                                       delimited_stream_reader_config_builder(std::make_unique<DelimitedStreamReaderConfigBuilder>()){}
 
             auto set_local_file_path(const std::string& local_file_path) -> self&
             {
@@ -43,7 +49,7 @@ namespace data_loader::source::file_source
 
             auto set_token_max_unit_size(size_t sz) -> self&
             {
-                this->delimited_stream_reader_config_builder.set_max_size_per_token(sz);
+                this->delimited_stream_reader_config_builder->set_max_size_per_token(sz);
 
                 return *this;
             }
@@ -57,14 +63,14 @@ namespace data_loader::source::file_source
 
             auto set_token_delimitor(char c) -> self&
             {
-                this->delimited_stream_reader_config_builder.set_token_delimitor(c);
+                this->delimited_stream_reader_config_builder->set_token_delimitor(c);
 
                 return *this;
             }
 
             auto set_token_eor(char c) -> self&
             {
-                this->delimited_stream_reader_config_builder.set_token_eor(c);
+                this->delimited_stream_reader_config_builder->set_token_eor(c);
 
                 return *this;
             }
@@ -85,7 +91,7 @@ namespace data_loader::source::file_source
 
                 return
                 {
-                    .delim_config               = this->delimited_stream_reader_config_builder.build(),
+                    .delim_config               = this->delimited_stream_reader_config_builder->build(),
                     .local_file_path            = this->local_file_path.value(),
                     .read_ahead_buffer_sz_hint  = this->download_sz,
                     .unit_byte_sz_hint          = this->token_unit_sz

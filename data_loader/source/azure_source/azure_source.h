@@ -55,13 +55,13 @@ namespace data_loader::source::azure_source
             data_loader::azure_source::SecuredAzureClientConfig service_client_config;
             std::optional<BufferPointer> buf_pointer;
 
-            static inline constexpr size_t MAX_READ_SZ      = size_t{1} << 24;
+            static inline constexpr size_t MAX_READ_SZ      = size_t{1} << 30;
 
             static inline constexpr size_t MIN_BUFFER_SZ    = size_t{1} << 10;
-            static inline constexpr size_t MAX_BUFFER_SZ    = size_t{1} << 24;
+            static inline constexpr size_t MAX_BUFFER_SZ    = size_t{1} << 30;
 
             static inline constexpr size_t MIN_TX_UNIT_SZ   = size_t{1} << 10;
-            static inline constexpr size_t MAX_TX_UNIT_SZ   = size_t{1} << 24;
+            static inline constexpr size_t MAX_TX_UNIT_SZ   = size_t{1} << 30;
 
         public:
 

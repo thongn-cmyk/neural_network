@@ -15,12 +15,17 @@
 #include "temporal_coefficient_projector.h"
 #include "branch_optimizer.h"
 #include "cosine_recommender_machine_x.h"
+#include "quantization_machine.h"
 
 namespace temporal_coefficient_projector_2
 {
     using std_float_t = float_def::std_float_t;
 
-    //I have thought of every possible scenerio of how this could work, random and ranges are the only non-bias actionables in this scenerio, sue me
+    //I know it seems a lot
+    //because it is a lot
+
+    //you might think what is this feedback() scheme is all about
+    //it's actually one of the most mysterious source that I have come across when used in conjunction with <context> -> feedback
 
     class DecisiveFactoryInterface
     {
@@ -646,7 +651,7 @@ namespace temporal_coefficient_projector_2
                     coefficient_2d_vec.push_back(stdx::to_castable_vector_initializer(recommendable->get()));
                 }
 
-                std::unique_ptr<temporal_coefficient_projector::TemporalCoefficientProjectorInterface> projector = std::make_unique<temporal_coefficient_projector::TaylorRadianSeriesProjector<PromotedFloatType>>(std::move(coefficient_2d_vec));
+                std::unique_ptr<temporal_coefficient_projector::TemporalCoefficientProjectorInterface> projector = temporal_coefficient_projector::CoefficientProjectorFactory::get_taylor_radian_series_projector(std::move(coefficient_2d_vec));
 
                 return std::make_unique<InternalFactoryTensor>
                 (
@@ -718,7 +723,7 @@ namespace temporal_coefficient_projector_2
                     coefficient_2d_vec.push_back(stdx::to_castable_vector_initializer(recommendable->get()));
                 }
 
-                std::unique_ptr<temporal_coefficient_projector::TemporalCoefficientProjectorInterface> projector = std::make_unique<temporal_coefficient_projector::TaylorSeriesProjector<PromotedFloatType>>(std::move(coefficient_2d_vec));
+                std::unique_ptr<temporal_coefficient_projector::TemporalCoefficientProjectorInterface> projector = temporal_coefficient_projector::CoefficientProjectorFactory::get_taylor_series_projector(std::move(coefficient_2d_vec));
 
                 return std::make_unique<InternalFactoryTensor>
                 (
@@ -755,6 +760,145 @@ namespace temporal_coefficient_projector_2
                         }
                     }
             };
+    };
+
+    template <class PromotedFloatType = std_float_t>
+    class BasicSplineProjectorGenerator: public virtual TemporalCoefficientProjectorGeneratorInterface
+    {
+        private:
+
+            std::vector<std::unique_ptr<cosine_recommender_machine_x::CosineRecommenderMachineInterface>> cosine_recommender_vec;
+            std::shared_ptr<quantization_machine::QuantizationMachineInterface<PromotedFloatType>> quantization_machine;
+        
+        public:
+
+            BasicSplineProjectorGenerator(std::vector<std::unique_ptr<cosine_recommender_machine_x::CosineRecommenderMachineInterface>> cosine_recommender_vec,
+                                          std::shared_ptr<quantization_machine::QuantizationMachineInterface<PromotedFloatType>> quantization_machine) noexcept: cosine_recommender_vec(std::move(cosine_recommender_vec)),
+                                                                                                                                                                 quantization_machine(std::move(quantization_machine)){}
+
+            auto get(size_t coefficient_sz) -> std::unique_ptr<TemporalCoefficientProjectorContainerInterface>
+            {
+                std::vector<std::unique_ptr<cosine_recommender_machine_x::CosineRecommendationResultInterface>> recommendable_vec{};
+
+                if (this->cosine_recommender_vec.size() == 0u)
+                {
+                    std::abort();
+                }
+
+                for (size_t i = 0u; i < coefficient_sz; ++i)
+                {
+                    size_t slot_idx = i % this->cosine_recommender_vec.size();
+                    recommendable_vec.push_back(this->cosine_recommender_vec[slot_idx]->next());
+                }
+
+                std::vector<std::vector<PromotedFloatType>> coefficient_2d_vec{};
+
+                for (const auto& recommendable: recommendable_vec)
+                {
+                    coefficient_2d_vec.push_back(stdx::to_castable_vector_initializer(recommendable->get()));
+                }
+
+                std::unique_ptr<temporal_coefficient_projector::TemporalCoefficientProjectorInterface> projector = this->get_spline_projector(coefficient_2d_vec,
+                                                                                                                                              this->quantization_machine);
+
+                return std::make_unique<InternalFactoryTensor>
+                (
+                    std::move(projector),
+                    std::move(recommendable_vec)
+                );
+            }
+
+        private:
+
+            class InternalFactoryTensor: public virtual TemporalCoefficientProjectorContainerInterface
+            {
+                private:
+
+                    std::shared_ptr<temporal_coefficient_projector::TemporalCoefficientProjectorInterface> projector;
+                    std::vector<std::unique_ptr<cosine_recommender_machine_x::CosineRecommendationResultInterface>> recommendable_vec;
+
+                public:
+
+                    InternalFactoryTensor(std::shared_ptr<temporal_coefficient_projector::TemporalCoefficientProjectorInterface> projector,
+                                          std::vector<std::unique_ptr<cosine_recommender_machine_x::CosineRecommendationResultInterface>> recommendable_vec) noexcept: projector(std::move(projector)),
+                                                                                                                                                                       recommendable_vec(std::move(recommendable_vec)){}
+
+                    auto get() -> std::shared_ptr<temporal_coefficient_projector::TemporalCoefficientProjectorInterface>
+                    {
+                        return this->projector;
+                    }
+
+                    void feedback(double rating)
+                    {
+                        for (const auto& recommendable: this->recommendable_vec)
+                        {
+                            recommendable->feedback(rating);
+                        }
+                    }
+            };
+        
+        protected:
+
+            virtual auto get_spline_projector(const std::vector<std::vector<PromotedFloatType>>& coefficient_2d_vec,
+                                              const std::shared_ptr<quantization_machine::QuantizationMachineInterface<PromotedFloatType>>& quantization_machine) -> std::unique_ptr<temporal_coefficient_projector::TemporalCoefficientProjectorInterface> = 0;
+    };
+
+    template <class PromotedFloatType = std_float_t>
+    class LerpProjectorGenerator: public BasicSplineProjectorGenerator<PromotedFloatType>
+    {
+        private:
+
+            using Base = BasicSplineProjectorGenerator<PromotedFloatType>;
+
+        public:
+
+            LerpProjectorGenerator(std::vector<std::unique_ptr<cosine_recommender_machine_x::CosineRecommenderMachineInterface>> cosine_recommender_vec,
+                                   std::shared_ptr<quantization_machine::QuantizationMachineInterface<PromotedFloatType>> quantization_machine) noexcept: Base(std::move(cosine_recommender_vec),
+                                                                                                                                                               std::move(quantization_machine)){}
+
+        protected:
+
+            auto get_spline_projector(const std::vector<std::vector<PromotedFloatType>>& coefficient_2d_vec,
+                                      const std::shared_ptr<quantization_machine::QuantizationMachineInterface<PromotedFloatType>>& quantization_machine) -> std::unique_ptr<temporal_coefficient_projector::TemporalCoefficientProjectorInterface>
+            {
+                return temporal_coefficient_projector::CoefficientProjectorFactory::get_lerp_projector
+                (
+                    coefficient_2d_vec,
+                    std::unique_ptr<quantization_machine::QuantizationMachineInterface<PromotedFloatType>>
+                    (
+                        std::make_unique<quantization_machine::SharedPointerQuantizationMachine<PromotedFloatType>>(quantization_machine)
+                    )
+                );
+            }
+    };
+
+    template <class PromotedFloatType = std_float_t>
+    class CubicSplineProjectorGenerator: public BasicSplineProjectorGenerator<PromotedFloatType>
+    {
+        private:
+
+            using Base = BasicSplineProjectorGenerator<PromotedFloatType>;
+
+        public:
+
+            CubicSplineProjectorGenerator(std::vector<std::unique_ptr<cosine_recommender_machine_x::CosineRecommenderMachineInterface>> cosine_recommender_vec,
+                                          std::shared_ptr<quantization_machine::QuantizationMachineInterface<PromotedFloatType>> quantization_machine) noexcept: Base(std::move(cosine_recommender_vec),
+                                                                                                                                                                      std::move(quantization_machine)){}
+
+        protected:
+
+            auto get_spline_projector(const std::vector<std::vector<PromotedFloatType>>& coefficient_2d_vec,
+                                      const std::shared_ptr<quantization_machine::QuantizationMachineInterface<PromotedFloatType>>& quantization_machine) -> std::unique_ptr<temporal_coefficient_projector::TemporalCoefficientProjectorInterface>
+            {
+                return temporal_coefficient_projector::CoefficientProjectorFactory::get_cubic_spline_projector
+                (
+                    coefficient_2d_vec,
+                    std::unique_ptr<quantization_machine::QuantizationMachineInterface<PromotedFloatType>>
+                    (
+                        std::make_unique<quantization_machine::SharedPointerQuantizationMachine<PromotedFloatType>>(quantization_machine)
+                    )
+                );
+            }
     };
 
     template <class PromotedFloatType = std_float_t>
@@ -1116,12 +1260,6 @@ namespace temporal_coefficient_projector_2
             }
     };
 
-    //I think that we need two lenses too
-    //I was thinking of the virtual space of <closing in> of random space
-
-    //such is that we'd want to leverage context to reduce randomization ranges, but on top of that requires a translation to a bijective space of the randomization space
-    //but we wont talk about that for now
-
     class RangeFocalExtendedProjectorGenerator: public virtual TemporalCoefficientProjectorGeneratorInterface
     {
         private:
@@ -1230,9 +1368,9 @@ namespace temporal_coefficient_projector_2
 
                     InternalFactoryTensor(std::shared_ptr<temporal_coefficient_projector::TemporalCoefficientProjectorInterface> domain_scaler,
                                           std::shared_ptr<TemporalCoefficientProjectorContainerInterface> base_container,
-                                          std::unique_ptr<branch_optimizer::MultipleBranchPredictionResultInterface> branch_prediction_result): domain_scaler(std::move(domain_scaler)),
-                                                                                                                                                base_container(std::move(base_container)),
-                                                                                                                                                branch_prediction_result(std::move(branch_prediction_result)){}
+                                          std::unique_ptr<branch_optimizer::MultipleBranchPredictionResultInterface> branch_prediction_result) noexcept: domain_scaler(std::move(domain_scaler)),
+                                                                                                                                                         base_container(std::move(base_container)),
+                                                                                                                                                         branch_prediction_result(std::move(branch_prediction_result)){}
 
                     auto get() -> std::shared_ptr<temporal_coefficient_projector::TemporalCoefficientProjectorInterface>
                     {
@@ -1322,7 +1460,7 @@ namespace temporal_coefficient_projector_2
                 {
                     case 0:
                     {
-                        projector = temporal_coefficient_projector::CoefficientProjectorFactory::template get_random_coefficient_projector<PromotedFloatType>(coefficient_sz);
+                        projector = temporal_coefficient_projector::BasicApplicableProjectorFactory::template get_random_coefficient_projector<PromotedFloatType>(coefficient_sz);
                         break;
                     }
                     case 1:
@@ -1472,10 +1610,72 @@ namespace temporal_coefficient_projector_2
             }
 
             template <class PromotedFloatType = std_float_t>
+            static auto get_lerp_generator() -> std::unique_ptr<TemporalCoefficientProjectorGeneratorInterface>
+            {
+                const PromotedFloatType EXP_BASE        = 2;
+                const PromotedFloatType MULTIPLIER_BASE = 1;
+                const size_t DISCRETIZATION_SZ          = 64u;
+                const size_t LERP_COEFFICIENT_SZ        = 2u;
+                const size_t TOTAL_SPACE_SZ             = DISCRETIZATION_SZ * LERP_COEFFICIENT_SZ;
+                const size_t RECOMMENDER_SZ             = 4u;
+
+                std::vector<std::unique_ptr<cosine_recommender_machine_x::CosineRecommenderMachineInterface>> cosine_recommender_vec{};
+
+                for (size_t i = 0u; i < RECOMMENDER_SZ; ++i)
+                {
+                    cosine_recommender_vec.push_back(cosine_recommender_machine_x::MachineFactory::get_best_recommender_machine(TOTAL_SPACE_SZ));
+                }
+
+                std::shared_ptr<quantization_machine::QuantizationMachineInterface<PromotedFloatType>> quant_machine = std::make_unique<quantization_machine::ExponentialQuantizationMachine<PromotedFloatType>>
+                (
+                    DISCRETIZATION_SZ,
+                    EXP_BASE,
+                    MULTIPLIER_BASE
+                );
+
+                return std::make_unique<LerpProjectorGenerator<PromotedFloatType>>
+                (
+                    std::move(cosine_recommender_vec),
+                    std::move(quant_machine)
+                );
+            }
+
+            template <class PromotedFloatType = std_float_t>
+            static auto get_cubic_spline_generator() -> std::unique_ptr<TemporalCoefficientProjectorGeneratorInterface>
+            {
+                const PromotedFloatType EXP_BASE        = 2;
+                const PromotedFloatType MULTIPLIER_BASE = 1;
+                const size_t DISCRETIZATION_SZ          = 64u;
+                const size_t LERP_COEFFICIENT_SZ        = 4u;
+                const size_t TOTAL_SPACE_SZ             = DISCRETIZATION_SZ * LERP_COEFFICIENT_SZ;
+                const size_t RECOMMENDER_SZ             = 4u;
+
+                std::vector<std::unique_ptr<cosine_recommender_machine_x::CosineRecommenderMachineInterface>> cosine_recommender_vec{};
+
+                for (size_t i = 0u; i < RECOMMENDER_SZ; ++i)
+                {
+                    cosine_recommender_vec.push_back(cosine_recommender_machine_x::MachineFactory::get_best_recommender_machine(TOTAL_SPACE_SZ));
+                }
+
+                std::shared_ptr<quantization_machine::QuantizationMachineInterface<PromotedFloatType>> quant_machine = std::make_unique<quantization_machine::ExponentialQuantizationMachine<PromotedFloatType>>
+                (
+                    DISCRETIZATION_SZ,
+                    EXP_BASE,
+                    MULTIPLIER_BASE
+                );
+
+                return std::make_unique<CubicSplineProjectorGenerator<PromotedFloatType>>
+                (
+                    std::move(cosine_recommender_vec),
+                    std::move(quant_machine)
+                );
+            }
+
+            template <class PromotedFloatType = std_float_t>
             static auto get_multispace_shape_2_generator() -> std::unique_ptr<TemporalCoefficientProjectorGeneratorInterface>
             {
-                return std::make_unique<ChainedProjectorGenerator>(get_multispace_shape_generator(),
-                                                                   get_multispace_shape_generator());
+                return std::make_unique<ChainedProjectorGenerator>(get_lerp_generator<PromotedFloatType>(),
+                                                                   get_lerp_generator<PromotedFloatType>());
             }
 
         public:
@@ -1498,7 +1698,7 @@ namespace temporal_coefficient_projector_2
             template <class PromotedFloatType = std_float_t>
             static auto get_autoshape_generator() -> std::unique_ptr<TemporalCoefficientProjectorGeneratorInterface>
             {
-                return std::make_unique<ChanceGenerator>(std::make_unique<ChanceGenerator>(get_autolense_generator(get_multispace_shape_generator<PromotedFloatType>()),
+                return std::make_unique<ChanceGenerator>(std::make_unique<ChanceGenerator>(get_autolense_generator(get_lerp_generator<PromotedFloatType>()),
                                                                                            get_autolense_generator(get_monospace_shape_generator<PromotedFloatType>()),
                                                                                            conventional_randomizer::ChanceMachine(100, 33)),
 
