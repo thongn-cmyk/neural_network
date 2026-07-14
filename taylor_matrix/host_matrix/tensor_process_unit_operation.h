@@ -12,10 +12,9 @@
 #include "taylor_projection.h"
 #include "shape_projection.h"
 #include <array>
-#include "one_dimensional_cubic_interpolation.h"
-#include "two_dimensional_cubic_interpolation.h"
 #include "generic_one_dimensional_cubic_interpolation.h"
 #include "generic_two_dimensional_cubic_interpolation.h"
+#include "local_exception.h"
 
 namespace taylor_matrix::host_matrix::tensor_process_unit_operation
 {
@@ -125,7 +124,7 @@ namespace taylor_matrix::host_matrix::tensor_process_unit_operation
                                                                       const tensor_model::ProcessUnit& rhs,
                                                                       TaylorBaseCoeffSizeContainer base_coeff_sz_container,
                                                                       const tensor_model::tensor_std_float_t * coeff_arr, size_t& coeff_arr_offset, size_t coeff_arr_cap,
-                                                                      const stdx::Tag<TaylorBasePromotedFloatType>& taylor_base_promotion_tag = stdx::Tag<TaylorBasePromotedFloatType>{},
+                                                                      const stdx::Tag<TaylorBasePromotedFloatType>& promotion_tag = stdx::Tag<TaylorBasePromotedFloatType>{},
                                                                       bool has_logit_reuse_tag = true) -> tensor_model::ProcessUnit
     {
         constexpr size_t COMBINED_DIMENSION_SZ = PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ * 2u;
@@ -141,34 +140,64 @@ namespace taylor_matrix::host_matrix::tensor_process_unit_operation
                                                                 base_coeff_sz_container,
                                                                 coeff_arr, coeff_arr_offset, coeff_arr_cap,
                                                                 child.data(), child.size(),
-                                                                taylor_base_promotion_tag,
+                                                                promotion_tag,
                                                                 has_logit_reuse_tag);
 
         return {.logit_vec = child};
     }
 
-    template <class QuantizationMachine,
+    //I don't like that, so let's settle on another topic for now
+
+    //we'd start the engineering of virtual addressing
+
+    //I rather think that this is still key-value problems, yeah, we need to use Redis, or we don't?
+    //because TCP does not provide such low-latency and solve the unit problem like we do, we don't know if we can rely on the protocol to massively transfer an insane number of data to the observer pool
+
+    //what I'd imagine is that we have replicas, binary-tree replicas, gossiping to pass down the values, make it a high availability cluster of key-value pairs
+    //apart from replica, we'd have partition factors, to partition the key-value pairs into appropriate storage engines
+
+    //we'd build security protocol
+
+    //and we'd build virtual addressing on top of the key-value engine
+
+    //that's a lot of work, but we'd try to be concise about filesystem, RAM + etc.
+
+    template <class QuantizationMachine1D,
+              class QuantizationMachine2D,
               class PromotedFloatType = tensor_model::tensor_std_float_t>
     constexpr __attribute__((noinline)) auto interpolate_process_unit(const tensor_model::ProcessUnit& lhs,
                                                                       const tensor_model::ProcessUnit& rhs,
-                                                                      QuantizationMachine&& quant_machine,
+                                                                      QuantizationMachine1D&& quant_machine_1d,
+                                                                      QuantizationMachine2D&& quant_machine_2d,
                                                                       const tensor_model::tensor_std_float_t * coeff_arr, size_t& coeff_arr_offset, size_t coeff_arr_cap,
-                                                                      const stdx::Tag<PromotedFloatType>& taylor_base_promotion_tag = stdx::Tag<PromotedFloatType>{},
+                                                                      const stdx::Tag<PromotedFloatType>& promotion_tag = stdx::Tag<PromotedFloatType>{},
                                                                       bool has_logit_reuse_tag = true) -> tensor_model::ProcessUnit
     {
         using namespace taylor_matrix::host_matrix::generic_two_dimensional_cubic_interpolation;
 
+        (void) quant_machine_1d;
+
         std::array<tensor_model::tensor_std_float_t, PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ> child{};
+
+        const size_t transform_count    = PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ * PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ;
+        const size_t required_sz        = transform_count * get_cubic_interpolated_2d_projection_size(quant_machine_2d);
+        const size_t post_offset        = coeff_arr_offset + required_sz;
+
+        if (post_offset > coeff_arr_cap)
+        {
+            throw local_exception::insufficient_logit_vec_size();
+        }
 
         for (size_t i = 0u; i < PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ; ++i)
         {
             for (size_t j = 0u; j < PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ; ++j)
             {
-                child[i]    += cubic_exp_interpolated_2d_project(lhs.logit_vec[i],
-                                                                 rhs.logit_vec[j],
-                                                                 quant_machine,
-                                                                 coeff_arr, coeff_arr_offset, coeff_arr_cap,
-                                                                 taylor_base_promotion_tag);
+                child[i]    += cubic_interpolated_2d_project(lhs.logit_vec[i],
+                                                             rhs.logit_vec[j],
+                                                             quant_machine_2d,
+                                                             coeff_arr, coeff_arr_offset, coeff_arr_cap,
+                                                             promotion_tag,
+                                                             std::integral_constant<bool, false>{});
             }
 
             child[i] /= PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ;
@@ -186,7 +215,7 @@ namespace taylor_matrix::host_matrix::tensor_process_unit_operation
                                                                             tensor_model::ProcessUnit * out_arr,
                                                                             TaylorBaseCoeffSizeContainer base_coeff_sz_container,
                                                                             const tensor_model::tensor_std_float_t * coeff_arr, size_t& coeff_arr_offset, size_t coeff_arr_cap,
-                                                                            const stdx::Tag<TaylorBasePromotedFloatType>& taylor_base_promotion_tag = stdx::Tag<TaylorBasePromotedFloatType>{},
+                                                                            const stdx::Tag<TaylorBasePromotedFloatType>& promotion_tag = stdx::Tag<TaylorBasePromotedFloatType>{},
                                                                             bool has_logit_reuse_tag = true)
     {
         static_assert(BATCH_SZ != 0u);
@@ -240,16 +269,18 @@ namespace taylor_matrix::host_matrix::tensor_process_unit_operation
         }
     }
 
-    template <class QuantizationMachine,
+    template <class QuantizationMachine1D,
+              class QuantizationMachine2D,
               size_t BATCH_SZ,
               class PromotedFloatType = tensor_model::tensor_std_float_t>
     constexpr __attribute__((noinline)) void batch_interpolate_process_unit(const tensor_model::ProcessUnit * lhs_arr,
                                                                             const tensor_model::ProcessUnit * rhs_arr,
                                                                             const std::integral_constant<size_t, BATCH_SZ> batch_sz,
                                                                             tensor_model::ProcessUnit * out_arr,
-                                                                            QuantizationMachine&& quant_machine,
+                                                                            QuantizationMachine1D&& quant_machine_1d,
+                                                                            QuantizationMachine2D&& quant_machine_2d,
                                                                             const tensor_model::tensor_std_float_t * coeff_arr, size_t& coeff_arr_offset, size_t coeff_arr_cap,
-                                                                            const stdx::Tag<PromotedFloatType>& taylor_base_promotion_tag = stdx::Tag<PromotedFloatType>{},
+                                                                            const stdx::Tag<PromotedFloatType>& promotion_tag = stdx::Tag<PromotedFloatType>{},
                                                                             bool has_logit_reuse_tag = true)
     {
         const size_t saved_coeff_arr_offset = coeff_arr_offset;
@@ -260,19 +291,22 @@ namespace taylor_matrix::host_matrix::tensor_process_unit_operation
 
             out_arr[i] = interpolate_process_unit(lhs_arr[i],
                                                   rhs_arr[i],
-                                                  quant_machine,
+                                                  quant_machine_1d,
+                                                  quant_machine_2d,
                                                   coeff_arr, coeff_arr_offset, coeff_arr_cap,
-                                                  taylor_base_promotion_tag,
+                                                  promotion_tag,
                                                   has_logit_reuse_tag);
         }
     }
 
-    template <class QuantizationMachine,
+    template <class QuantizationMachine1D,
+              class QuantizationMachine2D,
               class PromotedFloatType = tensor_model::tensor_std_float_t>
     constexpr auto mono_transform(const tensor_model::ProcessUnit& arg,
-                                  QuantizationMachine&& quant_machine,
+                                  QuantizationMachine1D&& quant_machine_1d,
+                                  QuantizationMachine2D&& quant_machine_2d,
                                   const tensor_model::tensor_std_float_t * coeff_arr, size_t& coeff_arr_offset, size_t coeff_arr_cap,
-                                  const stdx::Tag<PromotedFloatType>& taylor_base_promotion_tag = stdx::Tag<PromotedFloatType>()) -> tensor_model::ProcessUnit
+                                  const stdx::Tag<PromotedFloatType>& promotion_tag = stdx::Tag<PromotedFloatType>()) -> tensor_model::ProcessUnit
     {
         using namespace taylor_matrix::host_matrix::generic_one_dimensional_cubic_interpolation;
 
@@ -281,9 +315,10 @@ namespace taylor_matrix::host_matrix::tensor_process_unit_operation
         {
             tensor_model::ProcessUnit xx = interpolate_process_unit(arg,
                                                                     arg,
-                                                                    quant_machine,
+                                                                    quant_machine_1d,
+                                                                    quant_machine_2d,
                                                                     coeff_arr, coeff_arr_offset, coeff_arr_cap,
-                                                                    taylor_base_promotion_tag,
+                                                                    promotion_tag,
                                                                     false);
 
             tensor_model::ProcessUnit avg_arr[]{arg, xx};
@@ -295,12 +330,21 @@ namespace taylor_matrix::host_matrix::tensor_process_unit_operation
         {
             tensor_model::ProcessUnit sub_xx{};
 
+            const size_t transform_count    = PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ;
+            const size_t post_offset        = coeff_arr_offset + transform_count * get_cubic_interpolated_projection_size(quant_machine_1d);
+
+            if (post_offset > coeff_arr_cap)
+            {
+                throw local_exception::insufficient_logit_vec_size();
+            }
+
             for (size_t i = 0u; i < PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ; ++i)
             {
-                sub_xx.logit_vec[i] = cubic_exp_interpolated_project(rs0.logit_vec[i],
-                                                                     quant_machine,
-                                                                     coeff_arr, coeff_arr_offset, coeff_arr_cap,
-                                                                     taylor_base_promotion_tag);
+                sub_xx.logit_vec[i] = cubic_interpolated_project(rs0.logit_vec[i],
+                                                                 quant_machine_1d,
+                                                                 coeff_arr, coeff_arr_offset, coeff_arr_cap,
+                                                                 promotion_tag,
+                                                                 std::integral_constant<bool, false>{});
             }
 
             tensor_model::ProcessUnit avg_arr[]{rs0, sub_xx};

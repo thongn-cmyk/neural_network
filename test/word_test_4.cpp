@@ -547,47 +547,6 @@ void initialize_concurrency_base()
     async_x::init(8u, 32u);
 }
 
-//today we'd work on compile-time optimizables (tomorrow)
-//I strongly believe that models are compile-time optimizables, and there is a program to tune the parameters, we have successfully proved that these logit paths could be punched through
-
-//what I want today tomorrow is we could run the Reddit PoC on cuda, on a hex vocabulary, or even a char vocabulary, but I doubt that would be an issue, for the reason being predicting the next bool is just as hard as predicting the next char
-//what we'd need is random sampling, a context window, and an exponential prediction for the exponential property is the word count in the input field
-
-//I have intel saying that 8192 hash_table_sz and <4, 2, 2, 2, ...> should suffice for super intelligent and super intelligence
-//that would still be well under < 128MB, so I don't think there will be transportation issues (there would be)
-//so I can say that memory sync is mandatory even though we break immutability
-
-//we'd need to tune the static_fields by analyzing the convergence and the training rate
-//we'd most likely focus on convergence
-
-//today I'd focus on flops
-
-//cuda memory allocations have to be on device, I have tried to think of different scenerios, but it's bad practice
-//we'd go through the implementation one more time, optimize host flops -> x2, x3, x4
-//we'll talk next steps
-
-//7/8 seems to be "the edge" of context diffraction, in the sense of I mean A, you mean B, we mean C
-//and 7/8 can drag the lowest "exponent" 10-12 transformation hops, the highest "exponent" 20 transformation hops
-
-//I have concluded that 3/4 7/8 is optimal in this sense, and does not converge to "the one" too fast
-//it means that we can train the initial layer logits without worrying about "nasal demons" or "disappearance" of final computation results
-//I mean disappearance is a feature, but not in the sense of feature that 1/2 ** 10 hops == 1 means that x ** (1/2 ** 10) cannot be trained
-
-//we chose 3/4 7/8 purely because it is computational efficient, it introduces entropy to the continuous projection, and it can drag to the final layer
-//we have anticipated for "disappearance" being the feature, by using y = y + x
-
-//we simply incorporated the implicit brain growth without ever blocking it, WOW!
-//maybe not, we'd still need training blockages
-
-//I have actually run some numbers about entropy / logit unit
-//it seems like one of the solution to the continuous projection scheme is to make the operating matrix bigger (in conjunction with the interpolation)
-
-//and if we can't "mean C," we'd have to increase the number of being_unit. Base LOGIT_SZ or PROCESS_GROUP_SZ are purely for crunching flops
-//and we have crunched all the possible flops (we just need better allocation patterns)
-//it's in the continuous equation term
-
-//the interpolations are probably not "part of the continuous" equation, but works in conjunction with the continuous equation if correct configurations (and synchronization points)
-
 int main()
 {
     initialize_concurrency_base();

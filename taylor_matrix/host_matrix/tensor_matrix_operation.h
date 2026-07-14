@@ -484,11 +484,13 @@ namespace taylor_matrix::host_matrix::tensor_matrix_operation
         return hash_clue % hash_table_sz;
     }
 
-    template <class QuantizationMachine,
+    template <class QuantizationMachine1D,
+              class QuantizationMachine2D,
               class PromotedFloatType = tensor_model::tensor_std_float_t,
               class Allocator = std::allocator<char>>
     constexpr __attribute__((noinline)) auto mono_transform(const std::shared_ptr<tensor_model::Matrix>& matrix,
-                                                            QuantizationMachine&& quant_machine,
+                                                            QuantizationMachine1D&& quant_machine_1d,
+                                                            QuantizationMachine2D&& quant_machine_2d,
                                                             const tensor_model::tensor_std_float_t * coeff_arr, size_t& coeff_arr_offset, size_t coeff_arr_cap,
                                                             const stdx::Tag<PromotedFloatType>& promotion_tag = stdx::Tag<PromotedFloatType>{},
                                                             const Allocator& allocator = Allocator()) -> std::shared_ptr<tensor_model::Matrix>
@@ -500,7 +502,8 @@ namespace taylor_matrix::host_matrix::tensor_matrix_operation
         for (size_t i = 0u; i < matrix->being_vec_sz; ++i)
         {
             being_vec[i] = tensor_being_unit_operation::mono_transform(matrix->being_vec[i],
-                                                                       quant_machine,
+                                                                       quant_machine_1d,
+                                                                       quant_machine_2d,
                                                                        coeff_arr, coeff_arr_offset, coeff_arr_cap,
                                                                        promotion_tag,
                                                                        allocator);
@@ -511,17 +514,20 @@ namespace taylor_matrix::host_matrix::tensor_matrix_operation
                                                                                .being_vec_sz    = matrix->being_vec_sz});
     }
 
-    template <class QuantizationMachine,
+    template <class QuantizationMachine1D,
+              class QuantizationMachine2D,
               class PromotedFloatType = tensor_model::tensor_std_float_t,
               class Allocator = std::allocator<char>>
     constexpr __attribute__((noinline)) auto feed_forward_transform(const std::shared_ptr<tensor_model::Matrix>& matrix,
-                                                                    QuantizationMachine&& quant_machine,
+                                                                    QuantizationMachine1D&& quant_machine_1d,
+                                                                    QuantizationMachine2D&& quant_machine_2d,
                                                                     const tensor_model::tensor_std_float_t * coeff_arr, size_t& coeff_arr_offset, size_t coeff_arr_cap,
                                                                     const stdx::Tag<PromotedFloatType>& promotion_tag = stdx::Tag<PromotedFloatType>{},
                                                                     const Allocator& allocator = Allocator()) -> std::shared_ptr<tensor_model::Matrix>
     {
         std::shared_ptr<tensor_model::Matrix> y = mono_transform(matrix,
-                                                                 quant_machine,
+                                                                 quant_machine_1d,
+                                                                 quant_machine_2d,
                                                                  coeff_arr, coeff_arr_offset, coeff_arr_cap,
                                                                  promotion_tag,
                                                                  allocator);
@@ -531,7 +537,8 @@ namespace taylor_matrix::host_matrix::tensor_matrix_operation
         return avg(avg_arr, 2u, allocator);
     }
 
-    template <class QuantizationMachine,
+    template <class QuantizationMachine1D,
+              class QuantizationMachine2D,
               class DispatchCodeGenerator,
               class PromotedFloatType = tensor_model::tensor_std_float_t,
               class Allocator = std::allocator<char>>
@@ -542,7 +549,8 @@ namespace taylor_matrix::host_matrix::tensor_matrix_operation
 
                                                               const stdx::transparent_vector<size_t, Allocator>& rotation_sz_vec,
                                                               const stdx::transparent_vector<double, Allocator>& parameter_bound_ratio_vec,
-                                                              QuantizationMachine&& quant_machine,
+                                                              QuantizationMachine1D&& quant_machine_1d,
+                                                              QuantizationMachine2D&& quant_machine_2d,
                                                               const std::add_pointer_t<tensor_model::tensor_std_float_t> * coeff_arr, size_t& coeff_arr_offset, size_t coeff_arr_cap,
 
                                                               DispatchCodeGenerator&& dispatch_code_gen,
@@ -576,7 +584,8 @@ namespace taylor_matrix::host_matrix::tensor_matrix_operation
 
             std::shared_ptr<BeingUnit> lhs = tensor_being_unit_operation::left_major_interpolate_being_unit(matrix->being_vec[0],
                                                                                                             matrix->being_vec[1],
-                                                                                                            quant_machine,
+                                                                                                            quant_machine_1d,
+                                                                                                            quant_machine_2d,
                                                                                                             coeff_arr[dispatch_code_gen.get_dispatch_code()], coeff_arr_offset, coeff_arr_cap,
                                                                                                             promotion_tag,
                                                                                                             has_logit_unit_reuse_tag,
@@ -591,7 +600,8 @@ namespace taylor_matrix::host_matrix::tensor_matrix_operation
 
             std::shared_ptr<BeingUnit> rhs = tensor_being_unit_operation::left_major_interpolate_being_unit(matrix->being_vec[1],
                                                                                                             matrix->being_vec[0],
-                                                                                                            quant_machine,
+                                                                                                            quant_machine_1d,
+                                                                                                            quant_machine_2d,
                                                                                                             coeff_arr[dispatch_code_gen.get_dispatch_code()], coeff_arr_offset, coeff_arr_cap,
                                                                                                             promotion_tag,
                                                                                                             has_logit_unit_reuse_tag,
@@ -610,7 +620,8 @@ namespace taylor_matrix::host_matrix::tensor_matrix_operation
                                                                               .being_vec_sz    = 2u});
 
             return feed_forward_transform(tmp,
-                                          quant_machine,
+                                          quant_machine_1d,
+                                          quant_machine_2d,
                                           coeff_arr[dispatch_code_gen.get_dispatch_code()], coeff_arr_offset, coeff_arr_cap,
                                           promotion_tag,
                                           allocator);
@@ -668,7 +679,8 @@ namespace taylor_matrix::host_matrix::tensor_matrix_operation
                                                                                     accum_suffix_map,
                                                                                     {std::next(rotation_sz_vec.begin()), rotation_sz_vec.end()},
                                                                                     {std::next(parameter_bound_ratio_vec.begin()), parameter_bound_ratio_vec.end()},
-                                                                                    quant_machine,
+                                                                                    quant_machine_1d,
+                                                                                    quant_machine_2d,
                                                                                     coeff_arr, coeff_arr_offset, coeff_arr_cap,
                                                                                     dispatch_code_gen,
                                                                                     promotion_tag,
@@ -716,7 +728,8 @@ namespace taylor_matrix::host_matrix::tensor_matrix_operation
                                                                                      accum_suffix_map,
                                                                                      {std::next(rotation_sz_vec.begin()), rotation_sz_vec.end()},
                                                                                      {std::next(parameter_bound_ratio_vec.begin()), parameter_bound_ratio_vec.end()},
-                                                                                     quant_machine,
+                                                                                     quant_machine_1d,
+                                                                                     quant_machine_2d,
                                                                                      coeff_arr, coeff_arr_offset, coeff_arr_cap,
                                                                                      dispatch_code_gen,
                                                                                      promotion_tag,
@@ -743,7 +756,8 @@ namespace taylor_matrix::host_matrix::tensor_matrix_operation
         std::shared_ptr<Matrix> tmp = series_normalize(incremental_matrix_vec.data(), incremental_matrix_vec.size(), allocator);
 
         return feed_forward_transform(tmp,
-                                      quant_machine,
+                                      quant_machine_1d,
+                                      quant_machine_2d,
                                       coeff_arr[dispatch_code_gen.get_dispatch_code()], coeff_arr_offset, coeff_arr_cap,
                                       promotion_tag,
                                       allocator);

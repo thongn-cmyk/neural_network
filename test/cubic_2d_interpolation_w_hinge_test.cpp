@@ -122,7 +122,7 @@ class Projector
             size_t sz   = 0u;
             size_t cap  = coeff_vec.size();
 
-            return cubic_exp_interpolated_2d_project(x0, x1,
+            return cubic_interpolated_2d_project(x0, x1,
                                                      coeff_vec.data(), sz, cap);
         }
 
@@ -276,7 +276,7 @@ class SplineProjectorMatrixWrapper: public virtual the_matrix::MatrixInterface
 
 auto get_uniform_spline_projector() -> std::unique_ptr<Projector>
 {
-    return std::make_unique<Projector>(std::vector<float>(taylor_matrix::host_matrix::two_dimensional_cubic_interpolation::get_cubic_exp_interpolated_2d_projection_size(), 0));
+    return std::make_unique<Projector>(std::vector<float>(taylor_matrix::host_matrix::two_dimensional_cubic_interpolation::get_cubic_interpolated_2d_projection_size(), 0));
 }
 
 auto get_matrix(const std::shared_ptr<Projector>& spline_projector) -> std::unique_ptr<the_matrix::MatrixInterface>

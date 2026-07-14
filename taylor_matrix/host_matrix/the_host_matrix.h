@@ -13,6 +13,8 @@
 #include <functional>
 #include <algorithm>
 #include <execution>
+#include "local_exception.h"
+#include "cubic_quantization_machine.h"
 
 namespace taylor_matrix::host_matrix::the_host_matrix
 {
@@ -50,6 +52,13 @@ namespace taylor_matrix::host_matrix::the_host_matrix
         return std::unique_ptr<std::add_pointer_t<T>[], decltype(destructor)>(ptr, std::move(destructor));
     }
 
+    struct QuantizationData
+    {
+        size_t discretization_sz;
+        tensor_std_float_t exp_base;
+        tensor_std_float_t multiplier_base;
+    };
+
     template <class PromotedFloatType>
     class TheHostMatrix: public virtual MatrixInterface
     {
@@ -66,9 +75,8 @@ namespace taylor_matrix::host_matrix::the_host_matrix
             bool has_being_logit_reuse_tag;
             bool has_base_matrix_logit_reuse_tag;
             std::vector<std::vector<tensor_std_float_t>> taylor_coeff_2d_vec;
-            size_t cubic_discretization_sz;
-            std_float_t cubic_exp_base;
-            std_float_t cubic_multiplier_base;
+            QuantizationData quant_data_1d;
+            QuantizationData quant_data_2d;
 
         public:
 
@@ -86,22 +94,20 @@ namespace taylor_matrix::host_matrix::the_host_matrix
                           bool has_being_logit_reuse_tag,
                           bool has_base_matrix_logit_reuse_tag,
                           std::vector<std::vector<tensor_std_float_t>> taylor_coeff_2d_vec,                        
-                          size_t cubic_discretization_sz,
-                          std_float_t cubic_exp_base,
-                          std_float_t cubic_multiplier_base) noexcept: shape_vec(std::move(shape_vec)),
-                                                                       focal_sz_vec(std::move(focal_sz_vec)),
-                                                                       focal_suffix_map(std::move(focal_suffix_map)),
-                                                                       accum_suffix_map(std::move(accum_suffix_map)),
-                                                                       rotation_sz_vec(std::move(rotation_sz_vec)),
-                                                                       parameter_bound_ratio_vec(std::move(parameter_bound_ratio_vec)),
-                                                                       has_process_unit_logit_reuse_tag(has_process_unit_logit_reuse_tag),
-                                                                       has_process_group_logit_reuse_tag(has_process_group_logit_reuse_tag),
-                                                                       has_being_logit_reuse_tag(has_being_logit_reuse_tag),
-                                                                       has_base_matrix_logit_reuse_tag(has_base_matrix_logit_reuse_tag),
-                                                                       taylor_coeff_2d_vec(std::move(taylor_coeff_2d_vec)),
-                                                                       cubic_discretization_sz(cubic_discretization_sz),
-                                                                       cubic_exp_base(cubic_exp_base),
-                                                                       cubic_multiplier_base(cubic_multiplier_base){}
+                          QuantizationData quant_data_1d,
+                          QuantizationData quant_data_2d) noexcept: shape_vec(std::move(shape_vec)),
+                                                                    focal_sz_vec(std::move(focal_sz_vec)),
+                                                                    focal_suffix_map(std::move(focal_suffix_map)),
+                                                                    accum_suffix_map(std::move(accum_suffix_map)),
+                                                                    rotation_sz_vec(std::move(rotation_sz_vec)),
+                                                                    parameter_bound_ratio_vec(std::move(parameter_bound_ratio_vec)),
+                                                                    has_process_unit_logit_reuse_tag(has_process_unit_logit_reuse_tag),
+                                                                    has_process_group_logit_reuse_tag(has_process_group_logit_reuse_tag),
+                                                                    has_being_logit_reuse_tag(has_being_logit_reuse_tag),
+                                                                    has_base_matrix_logit_reuse_tag(has_base_matrix_logit_reuse_tag),
+                                                                    taylor_coeff_2d_vec(std::move(taylor_coeff_2d_vec)),
+                                                                    quant_data_1d(quant_data_1d),
+                                                                    quant_data_2d(quant_data_2d){}
 
             auto project(const std::vector<std::shared_ptr<tensor_model::Matrix>>& matrix_vec) -> std::vector<std::shared_ptr<tensor_model::Matrix>>
             {
@@ -130,9 +136,13 @@ namespace taylor_matrix::host_matrix::the_host_matrix
                     size_t taylor_coeff_arr_offset  = 0u;
 
                     DispatchCodeGenerator generator(e.second, row_sz);
-                    QuantizationMachine<PromotedFloatType> quant_machine(this->cubic_discretization_sz,
-                                                                         this->cubic_exp_base,
-                                                                         this->cubic_multiplier_base);
+                    QuantizationMachine<PromotedFloatType> quant_machine_1d(this->quant_data_1d.discretization_sz,
+                                                                            this->quant_data_1d.exp_base,
+                                                                            this->quant_data_1d.multiplier_base);
+
+                    QuantizationMachine<PromotedFloatType> quant_machine_2d(this->quant_data_2d.discretization_sz,
+                                                                            this->quant_data_2d.exp_base,
+                                                                            this->quant_data_2d.multiplier_base);
 
                     result_vec[e.first] = tensor_matrix_operation::matrix_transform(e.second,
                                                                                     this->focal_sz_vec,
@@ -141,7 +151,8 @@ namespace taylor_matrix::host_matrix::the_host_matrix
                                                                                     this->rotation_sz_vec,
                                                                                     this->parameter_bound_ratio_vec,
 
-                                                                                    quant_machine,
+                                                                                    quant_machine_1d,
+                                                                                    quant_machine_2d,
                                                                                     taylor_coeff_2d_arr.get(), taylor_coeff_arr_offset, this->taylor_coeff_2d_vec.front().size(),
 
                                                                                     generator,
@@ -269,20 +280,10 @@ namespace taylor_matrix::host_matrix::the_host_matrix
             }
     };
 
-    //we'd need to be specific about entropy in the name and etc.
-    //we can't do it like this
+    //we'd try to be descriptive about the class identifier for that is the true North of configurable, not that we pass in non-sense not quantifiable arguments
 
     class TheHostMatrixFactory
     {
-        private:
-
-            struct QuantizationData
-            {
-                size_t discretization_sz;
-                tensor_std_float_t exp_base;
-                tensor_std_float_t multiplier_base;
-            };
-
         public:
 
             static inline constexpr uint8_t LOW_COMPUTE     = 0u;
@@ -297,14 +298,11 @@ namespace taylor_matrix::host_matrix::the_host_matrix
 
             using self = TheHostMatrixFactory;
 
-            uint8_t compute_option;
-            uint8_t entropy_option;
-
             std::optional<size_t> vector_sz;
 
             using promoted_float_t  = tensor_model::tensor_std_float_t;
 
-            static inline const std::vector<std::vector<size_t>> LOW_TRANSFORMATION_SHAPE_VEC = 
+            static inline const std::vector<std::vector<size_t>> TRANSFORMATION_SHAPE_VEC = 
             {
                 {
                     size_t{1} << 1,
@@ -337,82 +335,6 @@ namespace taylor_matrix::host_matrix::the_host_matrix
                 {
                     size_t{1} << 16,
                     4,
-                    tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
-                    tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
-                }
-            };
-
-            static inline const std::vector<std::vector<size_t>> MID_TRANSFORMATION_SHAPE_VEC = 
-            {
-                {
-                    size_t{1} << 1,
-                    1,
-                    tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
-                    tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
-                },
-
-                {
-                    size_t{1} << 2,
-                    2,
-                    tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
-                    tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
-                },
-
-                {
-                    size_t{1} << 4,
-                    4,
-                    tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
-                    tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
-                },
-
-                {
-                    size_t{1} << 8,
-                    8,
-                    tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
-                    tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
-                },
-
-                {
-                    size_t{1} << 16,
-                    16,
-                    tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
-                    tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
-                }
-            };
-
-            static inline const std::vector<std::vector<size_t>> HIGH_TRANSFORMATION_SHAPE_VEC =
-            {
-                {
-                    size_t{1} << 1,
-                    4,
-                    tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
-                    tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
-                },
-
-                {
-                    size_t{1} << 2,
-                    8,
-                    tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
-                    tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
-                },
-
-                {
-                    size_t{1} << 4,
-                    16,
-                    tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
-                    tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
-                },
-
-                {
-                    size_t{1} << 8,
-                    32,
-                    tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
-                    tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
-                },
-
-                {
-                    size_t{1} << 16,
-                    64,
                     tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ,
                     tensor_model::PROCESS_UNIT_LOGIT_VEC_DIMENSION_SZ
                 }
@@ -421,7 +343,7 @@ namespace taylor_matrix::host_matrix::the_host_matrix
             //it's hard, that we are cell-based creature, such is that we only want the matrix transformation to be balanced which is nxn for n is an integer >= 2
             //so we'd have to pack EVERYTHING into that one-cell to be "productive" in the sense of diffracting context into other cells
 
-            static inline const std::vector<std::vector<size_t>> LOW_TRANSFORMATION_FOCAL_VEC = 
+            static inline const std::vector<std::vector<size_t>> TRANSFORMATION_FOCAL_VEC = 
             {
                 {},
                 {size_t{1} << 1},
@@ -430,25 +352,7 @@ namespace taylor_matrix::host_matrix::the_host_matrix
                 {size_t{1} << 8, size_t{1} << 4, size_t{1} << 2, size_t{1} << 1}
             };
 
-            static inline const std::vector<std::vector<size_t>> MID_TRANSFORMATION_FOCAL_VEC = 
-            {
-                {},
-                {size_t{1} << 1},
-                {size_t{1} << 2, size_t{1} << 1},
-                {size_t{1} << 4, size_t{1} << 2, size_t{1} << 1},
-                {size_t{1} << 8, size_t{1} << 4, size_t{1} << 2, size_t{1} << 1}
-            };
-
-            static inline const std::vector<std::vector<size_t>> HIGH_TRANSFORMATION_FOCAL_VEC = 
-            {
-                {},
-                {size_t{1} << 1},
-                {size_t{1} << 2, size_t{1} << 1},
-                {size_t{1} << 4, size_t{1} << 2, size_t{1} << 1},
-                {size_t{1} << 8, size_t{1} << 4, size_t{1} << 2, size_t{1} << 1}
-            };
-
-            static inline const std::vector<std::vector<size_t>> LOW_TRANSFORMATION_ROTATION_VEC = 
+            static inline const std::vector<std::vector<size_t>> TRANSFORMATION_ROTATION_VEC = 
             {
                 {},
                 {4},
@@ -457,49 +361,23 @@ namespace taylor_matrix::host_matrix::the_host_matrix
                 {4, 2, 2, 2}
             };
 
-            static inline const std::vector<std::vector<size_t>> MID_TRANSFORMATION_ROTATION_VEC = 
+            static inline const double PARAMETER_BOUND_RATIO            = 0.0;
+
+            static inline const size_t HASH_TABLE_SZ                    = 1;
+
+            static inline const QuantizationData QUANTIZATION_DATA_1D   = 
             {
-                {},
-                {4},
-                {4, 2},
-                {4, 2, 2},
-                {4, 2, 2, 2}
-            };
-
-            static inline const std::vector<std::vector<size_t>> HIGH_TRANSFORMATION_ROTATION_VEC = 
-            {
-                {},
-                {4},
-                {4, 2},
-                {4, 2, 2},
-                {4, 2, 2, 2}
-            };
-
-            static inline const double PARAMETER_BOUND_RATIO        = 0.0;
-
-            static inline const size_t LOW_ENTROPY_HASH_TABLE_SZ    = 1;
-            static inline const size_t MID_ENTROPY_HASH_TABLE_SZ    = 1;
-            static inline const size_t HIGH_ENTROPY_HASH_TABLE_SZ   = 1;
-
-            static inline const QuantizationData LOW_ENTROPY_QUANTIZATION_DATA  = 
-            {
-                .discretization_sz  = 64,
+                .discretization_sz  = 256,
                 .exp_base           = 1.2,
                 .multiplier_base    = 1.0
             };
 
-            static inline const QuantizationData MID_ENTROPY_QUANTIZATION_DATA  = 
+            static inline const QuantizationData QUANTIZATION_DATA_2D   =
             {
-                .discretization_sz  = 256,
-                .exp_base           = 1.1,
+                .discretization_sz  = 32,
+                .exp_base           = 2.0,
                 .multiplier_base    = 1.0
-            };
-
-            static inline const QuantizationData HIGH_ENTROPY_QUANTIZATION_DATA = 
-            {
-                .discretization_sz  = 1024,
-                .exp_base           = 1.02,
-                .multiplier_base    = 1.0
+                
             };
 
             template <class PromotedFloatType = tensor_std_float_t>
@@ -510,7 +388,8 @@ namespace taylor_matrix::host_matrix::the_host_matrix
                                         const std::vector<size_t>& rotation_sz_vec,
                                         const std::vector<double>& parameter_bound_ratio_vec,
                                         size_t hash_table_sz,
-                                        QuantizationData quant_data,
+                                        QuantizationData quant_data_1d,
+                                        QuantizationData quant_data_2d,
                                         const stdx::Tag<PromotedFloatType>& taylor_base_promotion_tag = stdx::Tag<PromotedFloatType>{},
                                         bool has_process_unit_logit_reuse_tag = true,
                                         bool has_process_group_logit_reuse_tag = true,
@@ -534,9 +413,13 @@ namespace taylor_matrix::host_matrix::the_host_matrix
                         DispatchCodeGenerator generator(tensor_matrix_operation::make_matrix_from_shape_vec(matrix_shape),
                                                         hash_table_sz);
 
-                        QuantizationMachine<PromotedFloatType> quant_machine(quant_data.discretization_sz,
-                                                                             quant_data.exp_base,
-                                                                             quant_data.multiplier_base);
+                        QuantizationMachine<PromotedFloatType> quant_machine_1d(quant_data_1d.discretization_sz,
+                                                                                quant_data_1d.exp_base,
+                                                                                quant_data_1d.multiplier_base);
+
+                        QuantizationMachine<PromotedFloatType> quant_machine_2d(quant_data_2d.discretization_sz,
+                                                                                quant_data_2d.exp_base,
+                                                                                quant_data_2d.multiplier_base);
 
                         tensor_matrix_operation::matrix_transform(tensor_matrix_operation::make_matrix_from_shape_vec(matrix_shape),
                                                                   focal_sz_vec,
@@ -544,7 +427,8 @@ namespace taylor_matrix::host_matrix::the_host_matrix
                                                                   accum_suffix_map,
                                                                   rotation_sz_vec,
                                                                   parameter_bound_ratio_vec,
-                                                                  quant_machine,
+                                                                  quant_machine_1d,
+                                                                  quant_machine_2d,
                                                                   coeff_arr.get(), coeff_vec_sz, current_logit_vec_capacity,
                                                                   generator,
                                                                   taylor_base_promotion_tag,
@@ -565,61 +449,33 @@ namespace taylor_matrix::host_matrix::the_host_matrix
                                              has_being_logit_reuse_tag,
                                              has_base_matrix_logit_reuse_tag,
                                              stdx::make_2d_vector(hash_table_sz, coeff_vec_sz, 0.f),
-                                             quant_data.discretization_sz,
-                                             quant_data.exp_base,
-                                             quant_data.multiplier_base);
+                                             quant_data_1d,
+                                             quant_data_2d);
 
                         return std::make_unique<decltype(matrix)>(std::move(matrix));
                     }
-                    catch (std::invalid_argument& e){}
-
-                    current_logit_vec_capacity *= ITERATION_MULTIPLIER;
+                    catch (local_exception::insufficient_logit_vec_size& e)
+                    {
+                        current_logit_vec_capacity *= ITERATION_MULTIPLIER;
+                    }
+                    catch (std::exception& e)
+                    {
+                        throw;
+                    }
                 }
             }
 
         public:
 
-            TheHostMatrixFactory(): compute_option(LOW_COMPUTE),
-                                    entropy_option(LOW_ENTROPY),
-                                    vector_sz(std::nullopt){}
+            TheHostMatrixFactory(): vector_sz(std::nullopt){}
 
             auto set_entropy(uint8_t entropy_option) -> TheHostMatrixFactory&
             {
-                switch (entropy_option)
-                {
-                    case LOW_ENTROPY:
-                    case MID_ENTROPY:
-                    case HIGH_ENTROPY:
-                    {
-                        this->entropy_option = entropy_option;
-                        break;
-                    }
-                    default:
-                    {
-                        throw std::invalid_argument("bad entropy option, enumeration out of range");
-                    }
-                }
-
                 return *this;
             }
 
             auto set_compute(uint8_t compute_option) -> TheHostMatrixFactory&
             {
-                switch (compute_option)
-                {
-                    case LOW_COMPUTE:
-                    case MID_COMPUTE:
-                    case HIGH_COMPUTE:
-                    {
-                        this->compute_option = compute_option;
-                        break;
-                    }
-                    default:
-                    {
-                        throw std::invalid_argument("bad compute option, enumeration out of range");
-                    }
-                }
-
                 return *this;
             }
 
@@ -654,25 +510,7 @@ namespace taylor_matrix::host_matrix::the_host_matrix
 
                 const std::vector<std::vector<size_t>>& shape_vec = [&]
                 {
-                    switch (this->entropy_option)
-                    {
-                        case LOW_ENTROPY:
-                        {
-                            return self::LOW_TRANSFORMATION_SHAPE_VEC;
-                        }
-                        case MID_ENTROPY:
-                        {
-                            return self::MID_TRANSFORMATION_SHAPE_VEC;
-                        }
-                        case HIGH_ENTROPY:
-                        {
-                            return self::HIGH_TRANSFORMATION_SHAPE_VEC;
-                        }
-                        default:
-                        {
-                            std::abort();
-                        }
-                    }
+                    return self::TRANSFORMATION_SHAPE_VEC;
                 }();
 
                 for (const std::vector<size_t>& shape: shape_vec)
@@ -697,7 +535,8 @@ namespace taylor_matrix::host_matrix::the_host_matrix
                                        this->get_rotation_size_vector(),
                                        this->get_parameter_bound_ratio_vector(),
                                        this->get_hash_table_size(),
-                                       this->get_quantization_data(),
+                                       this->get_quantization_data_1d(),
+                                       this->get_quantization_data_2d(),
                                        this->get_taylor_base_promotion_tag(),
                                        this->get_has_process_logit_reuse_tag(),
                                        this->get_has_process_group_logit_reuse_tag(),
@@ -709,50 +548,14 @@ namespace taylor_matrix::host_matrix::the_host_matrix
 
             auto get_hash_table_size() -> size_t
             {
-                switch (this->entropy_option)
-                {
-                    case LOW_ENTROPY:
-                    {
-                        return self::LOW_ENTROPY_HASH_TABLE_SZ;
-                    }
-                    case MID_ENTROPY:
-                    {
-                        return self::MID_ENTROPY_HASH_TABLE_SZ;
-                    }
-                    case HIGH_ENTROPY:
-                    {
-                        return self::HIGH_ENTROPY_HASH_TABLE_SZ;
-                    }
-                    default:
-                    {
-                        std::abort();
-                    }
-                }
+                return self::HASH_TABLE_SZ;;
             }
 
             auto ceil_vector_size(size_t sz) -> size_t
             {
                 const std::vector<std::vector<size_t>>& shape_vec = [&]
                 {
-                    switch (this->entropy_option)
-                    {
-                        case LOW_ENTROPY:
-                        {
-                            return self::LOW_TRANSFORMATION_SHAPE_VEC;
-                        }
-                        case MID_ENTROPY:
-                        {
-                            return self::MID_TRANSFORMATION_SHAPE_VEC;
-                        }
-                        case HIGH_ENTROPY:
-                        {
-                            return self::HIGH_TRANSFORMATION_SHAPE_VEC;
-                        }
-                        default:
-                        {
-                            std::abort();
-                        }
-                    }
+                    return self::TRANSFORMATION_SHAPE_VEC;
                 }();
 
                 for (const std::vector<size_t>& shape: shape_vec)
@@ -856,46 +659,14 @@ namespace taylor_matrix::host_matrix::the_host_matrix
             {
                 std::vector<size_t> matrix_shape = this->get_matrix_shape();
 
-                switch (this->entropy_option)
+                size_t idx = std::distance(TRANSFORMATION_SHAPE_VEC.begin(), std::find(TRANSFORMATION_SHAPE_VEC.begin(), TRANSFORMATION_SHAPE_VEC.end(), matrix_shape));
+
+                if (idx == TRANSFORMATION_SHAPE_VEC.size())
                 {
-                    case LOW_ENTROPY:
-                    {
-                        size_t idx = std::distance(LOW_TRANSFORMATION_SHAPE_VEC.begin(), std::find(LOW_TRANSFORMATION_SHAPE_VEC.begin(), LOW_TRANSFORMATION_SHAPE_VEC.end(), matrix_shape));
-
-                        if (idx == LOW_TRANSFORMATION_SHAPE_VEC.size())
-                        {
-                            std::abort();
-                        }
-
-                        return LOW_TRANSFORMATION_FOCAL_VEC[idx];
-                    }
-                    case MID_ENTROPY:
-                    {
-                        size_t idx = std::distance(MID_TRANSFORMATION_SHAPE_VEC.begin(), std::find(MID_TRANSFORMATION_SHAPE_VEC.begin(), MID_TRANSFORMATION_SHAPE_VEC.end(), matrix_shape));
-
-                        if (idx == MID_TRANSFORMATION_SHAPE_VEC.size())
-                        {
-                            std::abort();
-                        }
-
-                        return MID_TRANSFORMATION_FOCAL_VEC[idx];
-                    }
-                    case HIGH_ENTROPY:
-                    {
-                        size_t idx = std::distance(HIGH_TRANSFORMATION_SHAPE_VEC.begin(), std::find(HIGH_TRANSFORMATION_SHAPE_VEC.begin(), HIGH_TRANSFORMATION_SHAPE_VEC.end(), matrix_shape));
-
-                        if (idx == HIGH_TRANSFORMATION_SHAPE_VEC.size())
-                        {
-                            std::abort();
-                        }
-
-                        return HIGH_TRANSFORMATION_FOCAL_VEC[idx];
-                    }
-                    default:
-                    {
-                        std::abort();
-                    }
+                    std::abort();
                 }
+
+                return TRANSFORMATION_FOCAL_VEC[idx];
             }
 
             auto get_focal_suffix_map() -> std::unordered_map<size_t, std::unordered_map<size_t, std::vector<std::vector<size_t>>>>
@@ -913,46 +684,14 @@ namespace taylor_matrix::host_matrix::the_host_matrix
             {
                 std::vector<size_t> matrix_shape = this->get_matrix_shape();
 
-                switch (this->entropy_option)
+                size_t idx = std::distance(TRANSFORMATION_SHAPE_VEC.begin(), std::find(TRANSFORMATION_SHAPE_VEC.begin(), TRANSFORMATION_SHAPE_VEC.end(), matrix_shape));
+
+                if (idx == TRANSFORMATION_SHAPE_VEC.size())
                 {
-                    case LOW_ENTROPY:
-                    {
-                        size_t idx = std::distance(LOW_TRANSFORMATION_SHAPE_VEC.begin(), std::find(LOW_TRANSFORMATION_SHAPE_VEC.begin(), LOW_TRANSFORMATION_SHAPE_VEC.end(), matrix_shape));
-
-                        if (idx == LOW_TRANSFORMATION_SHAPE_VEC.size())
-                        {
-                            std::abort();
-                        }
-
-                        return LOW_TRANSFORMATION_ROTATION_VEC[idx];
-                    }
-                    case MID_ENTROPY:
-                    {
-                        size_t idx = std::distance(MID_TRANSFORMATION_SHAPE_VEC.begin(), std::find(MID_TRANSFORMATION_SHAPE_VEC.begin(), MID_TRANSFORMATION_SHAPE_VEC.end(), matrix_shape));
-
-                        if (idx == MID_TRANSFORMATION_SHAPE_VEC.size())
-                        {
-                            std::abort();
-                        }
-
-                        return MID_TRANSFORMATION_ROTATION_VEC[idx];
-                    }
-                    case HIGH_ENTROPY:
-                    {
-                        size_t idx = std::distance(HIGH_TRANSFORMATION_SHAPE_VEC.begin(), std::find(HIGH_TRANSFORMATION_SHAPE_VEC.begin(), HIGH_TRANSFORMATION_SHAPE_VEC.end(), matrix_shape));
-
-                        if (idx == HIGH_TRANSFORMATION_SHAPE_VEC.size())
-                        {
-                            std::abort();
-                        }
-
-                        return HIGH_TRANSFORMATION_ROTATION_VEC[idx];
-                    }
-                    default:
-                    {
-                        std::abort();
-                    }
+                    std::abort();
                 }
+
+                return TRANSFORMATION_ROTATION_VEC[idx];
             }
 
             auto get_parameter_bound_ratio_vector() -> std::vector<double>
@@ -960,27 +699,14 @@ namespace taylor_matrix::host_matrix::the_host_matrix
                 return std::vector<double>(this->get_focal_size_vector().size(), PARAMETER_BOUND_RATIO);
             }
 
-            auto get_quantization_data() -> QuantizationData
+            auto get_quantization_data_1d() -> QuantizationData
             {
-                switch (this->entropy_option)
-                {
-                    case LOW_ENTROPY:
-                    {
-                        return self::LOW_ENTROPY_QUANTIZATION_DATA;
-                    }
-                    case MID_ENTROPY:
-                    {
-                        return self::MID_ENTROPY_QUANTIZATION_DATA;
-                    }
-                    case HIGH_ENTROPY:
-                    {
-                        return self::HIGH_ENTROPY_QUANTIZATION_DATA;
-                    }
-                    default:
-                    {
-                        std::abort();
-                    }
-                }
+                return self::QUANTIZATION_DATA_1D;
+            }
+
+            auto get_quantization_data_2d() -> QuantizationData
+            {
+                return self::QUANTIZATION_DATA_2D;
             }
 
             auto get_taylor_base_coefficient_size() -> std::integral_constant<size_t, 2u>

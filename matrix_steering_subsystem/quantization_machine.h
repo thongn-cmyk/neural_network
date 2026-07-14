@@ -15,6 +15,8 @@ namespace quantization_machine
 
             static_assert(std::is_floating_point_v<FloatType>);
 
+            virtual ~QuantizationMachineInterface() noexcept = default;
+
             virtual auto quantitize(FloatType x) -> size_t = 0;
             virtual auto quantization_size() -> size_t = 0;
     };

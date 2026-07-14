@@ -8,6 +8,7 @@
 #include <stl_extension/stdx.h>
 #include <type_traits>
 #include <stdexcept>
+#include "local_exception.h"
 
 namespace taylor_matrix::host_matrix::taylor_projection
 {
@@ -173,7 +174,7 @@ namespace taylor_matrix::host_matrix::taylor_projection
 
         if (rem_coeff_sz < required_sz)
         {
-            throw std::invalid_argument("insufficient remaining coefficient size");
+            throw local_exception::insufficient_logit_vec_size();
         }
     }
 
@@ -354,7 +355,7 @@ namespace taylor_matrix::host_matrix::taylor_projection
 
         if (rem_coeff_sz < required_sz)
         {
-            throw std::invalid_argument("insufficient remaining coefficient size");
+            throw local_exception::insufficient_logit_vec_size();
         }
     }
 

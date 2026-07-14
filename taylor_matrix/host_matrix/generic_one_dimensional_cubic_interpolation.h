@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 #include <stdlib.h>
-#include "taylor_projection.h"
+#include "local_exception.h"
 
 namespace taylor_matrix::host_matrix::generic_one_dimensional_cubic_interpolation
 {
@@ -13,7 +13,7 @@ namespace taylor_matrix::host_matrix::generic_one_dimensional_cubic_interpolatio
     }
 
     template <class QuantizationMachine>
-    constexpr auto get_cubic_exp_interpolated_projection_size(QuantizationMachine&& quant_machine) -> size_t
+    constexpr auto get_cubic_interpolated_projection_size(QuantizationMachine&& quant_machine) -> size_t
     {
         return quant_machine.quantization_size() * get_cubic_interpolated_projection_base_size();
     }
@@ -22,51 +22,33 @@ namespace taylor_matrix::host_matrix::generic_one_dimensional_cubic_interpolatio
               class QuantizationMachine,
               class PromotedFloatType = FloatType,
               bool HasBoundCheck = true>
-    constexpr auto cubic_exp_interpolated_project(FloatType x,
-                                                  QuantizationMachine&& quant_machine,
-                                                  const FloatType * coeff_arr, size_t& coeff_arr_offset, size_t coeff_arr_cap,
-                                                  const stdx::Tag<PromotedFloatType>& promotion_tag = stdx::Tag<PromotedFloatType>{},
-                                                  const std::integral_constant<bool, HasBoundCheck>& bound_check = std::integral_constant<bool, HasBoundCheck>{})
+    constexpr auto cubic_interpolated_project(FloatType x,
+                                              QuantizationMachine&& quant_machine,
+                                              const FloatType * coeff_arr, size_t& coeff_arr_offset, size_t coeff_arr_cap,
+                                              const stdx::Tag<PromotedFloatType>& promotion_tag = stdx::Tag<PromotedFloatType>{},
+                                              const std::integral_constant<bool, HasBoundCheck>& bound_check = std::integral_constant<bool, HasBoundCheck>{})
     {
-        using namespace taylor_matrix::host_matrix::taylor_projection;
-
-        constexpr double ALPHA          = 20;
-        constexpr size_t BASE_SZ        = get_cubic_interpolated_projection_base_size();
         PromotedFloatType result_y0     = 0;
 
-        size_t required_sz          = BASE_SZ * quant_machine.quantization_size();
-        size_t next_offset          = coeff_arr_offset + required_sz;
+        size_t required_sz              = get_cubic_interpolated_projection_size(quant_machine);
+        size_t next_offset              = coeff_arr_offset + required_sz;
 
         if constexpr(HasBoundCheck)
         {
             if (next_offset > coeff_arr_cap)
             {
-                throw std::invalid_argument("insufficient remaning coefficient size");
+                throw local_exception::insufficient_logit_vec_size();
             }
         }
 
-        intmax_t quant_slot         = quant_machine.quantitize(x);
-        // intmax_t prev_quant_slot    = std::max(intmax_t{0}, quant_slot - 1);
+        intmax_t quant_slot             = quant_machine.quantitize(x);
+        size_t y_offset                 = coeff_arr_offset + quant_slot * get_cubic_interpolated_projection_base_size();
 
-        // PromotedFloatType hinge_x   = quant_machine.template region_first<PromotedFloatType>(quant_slot);
+        PromotedFloatType a             = coeff_arr[y_offset + 0];
+        PromotedFloatType b             = coeff_arr[y_offset + 1];
 
-        // PromotedFloatType prev_y    = base_taylor_project(x,
-        //                                                   std::next(coeff_arr, BASE_SZ * prev_quant_slot), stdx::to_size_container(std::integral_constant<size_t, BASE_SZ>{}),
-        //                                                   promotion_tag,
-        //                                                   bound_check);
-
-        PromotedFloatType cur_y     = base_taylor_project(x,
-                                                          std::next(coeff_arr, BASE_SZ * quant_slot), stdx::to_size_container(std::integral_constant<size_t, BASE_SZ>{}),
-                                                          promotion_tag,
-                                                          bound_check);
-
-        // PromotedFloatType delta_x   = x - hinge_x;
-        // PromotedFloatType prev_perc = 1 / std::scalbn(static_cast<PromotedFloatType>(1), ALPHA * delta_x);
-
-        // result_y0                   = prev_perc * prev_y + (1 - prev_perc) * cur_y;
-        coeff_arr_offset            = next_offset;
-
-        // return result_y0;
+        PromotedFloatType cur_y         = a * x + b;
+        coeff_arr_offset                = next_offset;
 
         return cur_y;
     }

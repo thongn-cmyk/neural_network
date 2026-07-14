@@ -222,13 +222,15 @@ namespace taylor_matrix::host_matrix::tensor_process_group_operation
         return std::allocate_shared<tensor_model::ProcessGroup>(allocator, std::move(rs));
     }
 
-    template <class QuantizationMachine,
+    template <class QuantizationMachine1D,
+              class QuantizationMachine2D,
               class PromotedFloatType = tensor_model::tensor_std_float_t,
               class Allocator = std::allocator<char>,
               size_t BATCH_SZ = 1u>
     constexpr __attribute__((noinline)) auto left_major_interpolate_process_group(const std::shared_ptr<tensor_model::ProcessGroup>& lhs,
                                                                                   const std::shared_ptr<tensor_model::ProcessGroup>& rhs,
-                                                                                  QuantizationMachine&& quant_machine,
+                                                                                  QuantizationMachine1D&& quant_machine_1d,
+                                                                                  QuantizationMachine2D&& quant_machine_2d,
                                                                                   const tensor_model::tensor_std_float_t * coeff_arr, size_t& coeff_arr_offset, size_t coeff_arr_cap,
                                                                                   const stdx::Tag<PromotedFloatType>& taylor_base_promotion_tag = stdx::Tag<PromotedFloatType>{},
                                                                                   bool has_process_unit_logit_reuse_tag = true,
@@ -274,7 +276,8 @@ namespace taylor_matrix::host_matrix::tensor_process_group_operation
                                                                           rhs_tensor_arr,
                                                                           batch_sz,
                                                                           out_tensor_arr,
-                                                                          quant_machine,
+                                                                          quant_machine_1d,
+                                                                          quant_machine_2d,
                                                                           coeff_arr, coeff_arr_offset, coeff_arr_cap,
                                                                           taylor_base_promotion_tag,
                                                                           has_process_unit_logit_reuse_tag);
@@ -297,11 +300,13 @@ namespace taylor_matrix::host_matrix::tensor_process_group_operation
         return std::allocate_shared<tensor_model::ProcessGroup>(allocator, std::move(rs));
     }
 
-    template <class QuantizationMachine,
+    template <class QuantizationMachine1D,
+              class QuantizationMachine2D,
               class PromotedFloatType = tensor_model::tensor_std_float_t,
               class Allocator = std::allocator<char>>
     constexpr __attribute__((noinline)) auto mono_transform(const std::shared_ptr<tensor_model::ProcessGroup>& arg,
-                                                            QuantizationMachine&& quant_machine,
+                                                            QuantizationMachine1D&& quant_machine_1d,
+                                                            QuantizationMachine2D&& quant_machine_2d,
                                                             const tensor_model::tensor_std_float_t * coeff_arr, size_t& coeff_arr_offset, size_t coeff_arr_cap,
                                                             const stdx::Tag<PromotedFloatType>& taylor_base_promotion_tag = stdx::Tag<PromotedFloatType>{},
                                                             const Allocator& allocator = Allocator()) -> std::shared_ptr<tensor_model::ProcessGroup>
@@ -313,7 +318,8 @@ namespace taylor_matrix::host_matrix::tensor_process_group_operation
         {
             std::shared_ptr<tensor_model::ProcessGroup> xx  = left_major_interpolate_process_group(arg,
                                                                                                    arg,
-                                                                                                   quant_machine,
+                                                                                                   quant_machine_1d,
+                                                                                                   quant_machine_2d,
                                                                                                    coeff_arr, coeff_arr_offset, coeff_arr_cap,
                                                                                                    taylor_base_promotion_tag,
                                                                                                    false,
@@ -332,7 +338,8 @@ namespace taylor_matrix::host_matrix::tensor_process_group_operation
             for (size_t i = 0u; i < tensor_model::PROCESS_GROUP_PROCESS_UNIT_DIMENSION_SZ; ++i)
             {
                 sub_xx.process_vec[i]   = tensor_process_unit_operation::mono_transform(rs0->process_vec[i],
-                                                                                        quant_machine,
+                                                                                        quant_machine_1d,
+                                                                                        quant_machine_2d,
                                                                                         coeff_arr, coeff_arr_offset, coeff_arr_cap,
                                                                                         taylor_base_promotion_tag);
             }
