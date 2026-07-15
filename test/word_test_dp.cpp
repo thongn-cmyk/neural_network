@@ -62,36 +62,6 @@
 using namespace float_def;
 using tensor_std_float_t = tensor_model::tensor_std_float_t;
 
-//I'd need reevaluation, this is too slow and time-consuming
-//for the job, let's see if we can spin up a script that just does the job, single computer, 10 minutes
-
-//let's say that we have 64x64 window -> next word
-
-//that's our matrix
-
-//we have 2x2 resolution (this is our basis)
-//so it's (after reduction) 16 x 16 - > 4 x 4 -> 2x2 - > 2x1
-
-//for the dataset
-
-//we'd need essential build (dataset from leetcode, dataset from competitive programming)
-//we'd need dataset from Reddit
-//we'd need simple gaming knowledge, next word prediction of tutorial from top 100 Nintendo games
-//best speedrun 
-
-//I feel like we have a set of datasets
-
-//like common English set
-//common conversation set
-//competitive programming set
-//speedrun set
-//tutorial set
-
-//we'd have to search the best combination, and the policy for optimizables
-//we'd focus on this this afternoon, we'd get it done because I'm done with the sub-optimal scripts that are for PoC
-
-//
-
 auto randomize_int(size_t first, size_t last) -> size_t
 {
     if (first >= last)
@@ -581,7 +551,7 @@ void run_test()
     std::vector<tensor_std_float_t> tensor_vec                                              = std::vector<tensor_std_float_t>(get_binary_unf_interpolated_projection_size(projection_vec.front().x.size(),
                                                                                                                                                                           0,
                                                                                                                                                                           DISCRETIZATION_VALUE * SEMANTIC_SZ,
-                                                                                                                                                                          SEMANTIC_SZ),
+                                                                                                                                                                          SEMANTIC_SZ * 4),
                                                                                                                               0.f);
 
     std::cout << "projection vector size > " << projection_vec.size() << "\n";
@@ -590,7 +560,7 @@ void run_test()
     std::shared_ptr<the_matrix::MatrixInterface> matrix                                     = std::make_unique<SomeMatrix>(std::move(tensor_vec));
     std::unique_ptr<SomeProjector> projector                                                = std::make_unique<SomeProjector>(0,
                                                                                                                               DISCRETIZATION_VALUE * SEMANTIC_SZ,
-                                                                                                                              SEMANTIC_SZ);
+                                                                                                                              SEMANTIC_SZ * 4);
 
     std::unique_ptr<PointPullMatrixEvaluator> matrix_evaluator                              = std::make_unique<PointPullMatrixEvaluator>(projection_vec, std::move(projector));
     common_exception::CancellationToken cancellation_token                                  = {};
