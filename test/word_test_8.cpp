@@ -485,14 +485,7 @@ auto get_deviation(float expected, float actual, float acceptance_width) -> floa
         return actual;
     }
 
-    float diff  = std::abs(expected - actual);
-
-    if (diff < acceptance_width)
-    {
-        return 0;
-    }
-
-    return 1;
+    return std::pow(expected - actual, 2);
 }
 
 auto binary_unf_interpolated_deviation_project(const float * x_arr, size_t x_arr_sz,
@@ -739,8 +732,6 @@ auto get_optimizer() -> std::unique_ptr<matrix_optimizer_subsystem::CoordinatedS
     );
 }
 
-//because the root objective is the final layer of compression, we'd want to optimize by extracting only intermediate layers, how precisely?
-
 void initialize_concurrency_base()
 {
     using namespace concurrency_base;
@@ -813,7 +804,7 @@ void run_test()
     {
         matrix                      = optimizer->optimize(*matrix, *matrix_evaluator, cancellation_token);
         double optimized_deviation  = matrix_evaluator->get_deviation(*matrix);
-        current_root_weight         *= 1.2;
+        current_root_weight         *= 2;
         current_root_weight         = std::min(current_root_weight, MAX_ROOT_WEIGHT);
 
         matrix_evaluator->set_root_weight(current_root_weight);
