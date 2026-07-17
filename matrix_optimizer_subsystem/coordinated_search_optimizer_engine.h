@@ -114,7 +114,7 @@ namespace matrix_optimizer_subsystem
             static inline constexpr size_t DEFAULT_TIME_MACHINE_OPTIMIZER_FLOAT_BYTE_WIDTH  = size_t{1} << 3;
 
             static inline constexpr size_t DEFAULT_TIME_MACHINE_GENERATOR_CAPACITY          = size_t{1} << 10;
-            static inline constexpr size_t DEFAULT_PROJECTOR_GENERATOR_CAPACITY             = size_t{1} << 2;
+            static inline constexpr size_t DEFAULT_PROJECTOR_GENERATOR_CAPACITY             = size_t{1} << 0;
 
         public:
 

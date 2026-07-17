@@ -363,6 +363,55 @@ namespace conventional_randomizer
             }
     };
 
+    class RangeRandomizerObject
+    {
+        private:
+            
+            RandomizerObject base_randomizer;
+        
+        public:
+
+            auto randomize_range(size_t sz) -> size_t
+            {                
+                using fl_t = long double;
+
+                if (sz == 0u)
+                {
+                    throw std::invalid_argument("bad size, 0");
+                }
+
+                const size_t first      = 0u;
+                const size_t last       = sz;
+
+                if (this->base_randomizer.flip_a_coin())
+                {
+                    return this->base_randomizer.randomize_uint(first, last);
+                }
+
+                const size_t ZERO_CHANCE    = 64;
+
+                if (this->base_randomizer.randomize_uint(0u, ZERO_CHANCE) == 0u)
+                {
+                    return 0u;
+                }
+            
+                const size_t FL_DISCRETIZATION_SZ   = 1'000'000'000'000'000ULL;
+
+                const fl_t EXP_BASE_FIRST           = 1.2;
+                const fl_t EXP_BASE_LAST            = 10;
+                const fl_t exp_base                 = this->base_randomizer.randomize_fixed_point_float(EXP_BASE_FIRST, EXP_BASE_LAST, FL_DISCRETIZATION_SZ);
+
+                const fl_t exponent_first           = 0;
+                const fl_t exponent_last            = std::log(static_cast<fl_t>(sz)) / std::log(exp_base) + 1;
+                const fl_t exponent                 = this->base_randomizer.randomize_fixed_point_float(exponent_first, exponent_last, FL_DISCRETIZATION_SZ);
+
+                const size_t tentative_sz           = std::pow(exp_base, exponent);
+                const size_t actual_sz              = std::clamp(tentative_sz, first, static_cast<size_t>(last - 1u));
+
+                return actual_sz;
+            }
+    };
+
     class ExponentialSeededRangeFloatUniformDistributioner
     {
         public:

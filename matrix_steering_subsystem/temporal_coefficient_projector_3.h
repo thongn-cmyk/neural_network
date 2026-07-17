@@ -33,6 +33,7 @@ namespace temporal_coefficient_projector_3
 
             conventional_randomizer::RandomizerObject raw_randomizer;
             conventional_randomizer::ApplicationRandomizerObject app_randomizer;
+            conventional_randomizer::RangeRandomizerObject range_randomizer;
 
             size_t refocal_counter;
             size_t refocal_threshold;
@@ -48,6 +49,7 @@ namespace temporal_coefficient_projector_3
 
                                                               conventional_randomizer::RandomizerObject raw_randomizer,
                                                               conventional_randomizer::ApplicationRandomizerObject app_randomizer,
+                                                              conventional_randomizer::RangeRandomizerObject range_randomizer,
 
                                                               size_t refocal_counter,
                                                               size_t refocal_threshold,
@@ -56,6 +58,7 @@ namespace temporal_coefficient_projector_3
                                                                                               range_predictor(std::move(range_predictor)),
                                                                                               raw_randomizer(std::move(raw_randomizer)),
                                                                                               app_randomizer(std::move(app_randomizer)),
+                                                                                              range_randomizer(std::move(range_randomizer)),
                                                                                               refocal_counter(refocal_counter),
                                                                                               refocal_threshold(refocal_threshold),
                                                                                               projection_sz(projection_sz){}
@@ -153,7 +156,7 @@ namespace temporal_coefficient_projector_3
                 }
 
                 const size_t MIN_ACTIVATION_SZ  = 1u;
-                size_t tentative_sz             = this->app_randomizer.ld_randomize_percentage_focal() * sz;
+                size_t tentative_sz             = this->range_randomizer.randomize_range(sz + 1u);
 
                 return std::max(tentative_sz, MIN_ACTIVATION_SZ);
             }
@@ -165,7 +168,7 @@ namespace temporal_coefficient_projector_3
 
             auto randomize_vector_chunk_size_inclusive(size_t sz) -> size_t
             {
-                size_t tentative_chunk_size     = this->app_randomizer.ld_randomize_percentage_focal() * sz;
+                size_t tentative_chunk_size     = this->range_randomizer.randomize_range(sz + 1u);
                 const size_t MIN_CHUNK_SIZE     = 1u;
 
                 return std::max(std::max(MIN_CHUNK_SIZE, tentative_chunk_size), this->min_chunk_size_for_vector_size_of(sz));
@@ -360,6 +363,7 @@ namespace temporal_coefficient_projector_3
 
                                                                                            conventional_randomizer::RandomizerObject{},
                                                                                            conventional_randomizer::ApplicationRandomizerObject{},
+                                                                                           conventional_randomizer::RangeRandomizerObject{},
 
                                                                                            0u,
                                                                                            REFOCAL_THRESHOLD,

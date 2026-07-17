@@ -18,6 +18,7 @@ namespace coefficient_randomizer
             conventional_randomizer::RandomizerObject randomizer;
             conventional_randomizer::ApplicationRandomizerObject focal_randomizer;
             conventional_randomizer::VectorRandomizerObject vector_randomizer;
+            conventional_randomizer::RangeRandomizerObject range_randomizer;
 
         public:
 
@@ -121,7 +122,8 @@ namespace coefficient_randomizer
                     throw std::invalid_argument("bad exponential_dist_randomize_discretization_unit coefficient size, 0");
                 }
 
-                size_t tentative_discretization_sz = coefficient_sz * this->focal_randomizer.randomize_percentage_focal();
+                size_t tentative_discretization_sz  = this->range_randomizer.randomize_range(coefficient_sz + 1);
+
                 return std::clamp(tentative_discretization_sz, size_t{1u}, coefficient_sz);
             }
 
@@ -155,7 +157,7 @@ namespace coefficient_randomizer
                 }
 
                 size_t unit_count           = unit_count_sz - 1u;
-                size_t tentative_unit_count = unit_count * this->focal_randomizer.randomize_percentage_focal();
+                size_t tentative_unit_count = this->range_randomizer.randomize_range(unit_count + 1);
 
                 return std::clamp(tentative_unit_count, size_t{1u}, unit_count);
             }

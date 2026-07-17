@@ -322,6 +322,7 @@ namespace activation
 
         auto numeric_randomizer             = conventional_randomizer::RandomizerObject();
         auto focal_randomizer               = conventional_randomizer::ApplicationRandomizerObject();
+        auto range_randomizer               = conventional_randomizer::RangeRandomizerObject();
 
         for (activation_codex_t codex: activation_codex_vec)
         {
@@ -371,7 +372,7 @@ namespace activation
                     else
                     {
                         size_t rem_sz           = idx_mapper.size() - last_idx.value() - 1u;
-                        size_t tentative_offset = rem_sz * focal_randomizer.randomize_percentage_focal();
+                        size_t tentative_offset = range_randomizer.randomize_range(rem_sz + 1u);
                         size_t actual_offset    = std::clamp(tentative_offset, size_t{0u}, rem_sz);
                         cand                    = last_idx.value() + actual_offset;
                     }
@@ -396,7 +397,7 @@ namespace activation
                 }
                 case EXPONENTIAL_CODEX:
                 {
-                    size_t tentative_cand   = focal_randomizer.ld_randomize_percentage_focal() * (idx_mapper.size() - 1u);
+                    size_t tentative_cand   = range_randomizer.randomize_range(idx_mapper.size());
                     size_t actual_cand      = std::clamp(tentative_cand, static_cast<size_t>(0u), static_cast<size_t>(idx_mapper.size() - 1u));
                     size_t actual_idx       = idx_mapper.get_index(actual_cand);
 
@@ -444,7 +445,7 @@ namespace activation
                     else
                     {
                         size_t rem_sz           = last_idx.value();
-                        size_t tentative_offset = rem_sz * focal_randomizer.randomize_percentage_focal();
+                        size_t tentative_offset = range_randomizer.randomize_range(rem_sz + 1u);
                         size_t actual_offset    = std::clamp(tentative_offset, size_t{0u}, rem_sz);
                         cand                    = last_idx.value() - actual_offset;
                     }

@@ -428,13 +428,13 @@ auto get_projection(const std::vector<Ticker>& historical_data,
 auto extract_training_data() -> std::vector<Projection>
 {
     const std::string FR_DATE                       = "2013-01-01";
-    const std::string TO_DATE                       = "2023-01-01";
+    const std::string TO_DATE                       = "2023-12-01";
 
     const size_t FOCAL_STEP_SZ                      = 4;
     const size_t FOCAL_INITIAL_DAY_SZ               = 4;
     const size_t FOCAL_EXPONENTIAL_FACTOR           = 2;
     const size_t FOCAL_INTERVAL_SZ                  = 4;
-    const size_t ITERABLE_DAY_SZ                    = 300;
+    const size_t ITERABLE_DAY_SZ                    = 2000;
 
     const std::vector<std::string> TICKER_VEC       = 
     {
@@ -443,6 +443,76 @@ auto extract_training_data() -> std::vector<Projection>
         "AMZN",
         "LLY",
         "TSLA"
+    };
+
+    const std::vector<std::string> OTHER_TICKER_VEC =
+    {
+        "SPY",
+        "QQQ",
+        "VTI"
+    };
+
+    std::unordered_map<std::string, std::vector<Ticker>> ticker_data    = load_ticker_data(FR_DATE, TO_DATE); 
+    std::vector<Projection> rs                                          = {};
+
+    for (size_t i = 0u; i < ITERABLE_DAY_SZ; ++i)
+    {
+        std::vector<float> environment_data = {};
+
+        for (const std::string& ticker: OTHER_TICKER_VEC)
+        {
+            Projection prediction   = get_projection
+            (
+                ticker_data.at(ticker),
+                FOCAL_STEP_SZ,
+                FOCAL_INITIAL_DAY_SZ,
+                FOCAL_EXPONENTIAL_FACTOR,
+                FOCAL_INTERVAL_SZ,
+                i
+            );
+
+            environment_data.insert(environment_data.end(), prediction.x.begin(), prediction.x.end());
+        }
+
+        for (const std::string& ticker: TICKER_VEC)
+        {
+            Projection prediction   = get_projection
+            (
+                ticker_data.at(ticker),
+                FOCAL_STEP_SZ,
+                FOCAL_INITIAL_DAY_SZ,
+                FOCAL_EXPONENTIAL_FACTOR,
+                FOCAL_INTERVAL_SZ,
+                i
+            );
+
+            prediction.x.insert(prediction.x.end(), environment_data.begin(), environment_data.end());
+
+            rs.push_back(prediction);
+        }
+    }
+
+    return rs;
+}
+
+auto extract_test_data() -> std::vector<Projection>
+{
+    const std::string FR_DATE                       = "2020-01-01";
+    const std::string TO_DATE                       = "2024-01-01";
+
+    const size_t FOCAL_STEP_SZ                      = 4;
+    const size_t FOCAL_INITIAL_DAY_SZ               = 4;
+    const size_t FOCAL_EXPONENTIAL_FACTOR           = 2;
+    const size_t FOCAL_INTERVAL_SZ                  = 4;
+    const size_t ITERABLE_DAY_SZ                    = 10;
+
+    const std::vector<std::string> TICKER_VEC       = 
+    {
+        "MSFT",
+        "AAPL",
+        "AMZN",
+        "LLY",
+        "AMZN"
     };
 
     const std::vector<std::string> OTHER_TICKER_VEC =
@@ -538,8 +608,8 @@ auto two_dimensional_interpolated_project(float x0, float x1,
 }
 
 auto binary_unf_interpolated_project(const float * x_arr, size_t x_arr_sz,
-                                               float x_first, float x_last, size_t discretization_sz,
-                                               const float * coeff_arr, size_t& coeff_arr_offset, size_t coeff_arr_cap) -> float
+                                     float x_first, float x_last, size_t discretization_sz,
+                                     const float * coeff_arr, size_t& coeff_arr_offset, size_t coeff_arr_cap) -> float
 {
     if (x_arr_sz == 0u)
     {
@@ -746,17 +816,71 @@ class PointPullMatrixEvaluator: public virtual matrix_evaluator::MatrixEvaluator
 
             for (const Projection& projection: this->training_pair_vec)
             {
+                float actual            = this->projector->project(projection.x.data(), projection.x.size(),
+                                                                   coeff_vec.data(), coeff_vec.size());
+
                 expected_y_vec.push_back(projection.y);
-
-                float projected_y = this->projector->project(projection.x.data(), projection.x.size(),
-                                                             coeff_vec.data(), coeff_vec.size());
-
-                projected_y_vec.push_back(projected_y);
+                projected_y_vec.push_back(actual);
             }
 
-            return this->mean_sqrt(projected_y_vec, expected_y_vec);
+            return mean_sqrt(expected_y_vec, projected_y_vec);
+
+            // std::vector<float> coeff_vec        = stdx::to_castable_vector_initializer(matrix.get_coefficient_vector());
+            // eval_float_t total                  = 0;
+
+            // for (const Projection& projection: this->training_pair_vec)
+            // {
+            //     float expected          = projection.y;
+            //     float counter_expected  = (expected == 1) ? 0: 1;
+            //     float actual            = this->projector->project(projection.x.data(), projection.x.size(),
+            //                                                        coeff_vec.data(), coeff_vec.size());
+
+            //     float expected_dx       = std::abs(actual - expected);
+            //     float ctr_expected_dx   = std::abs(actual - counter_expected);
+
+            //     if (expected_dx < ctr_expected_dx)
+            //     {
+            //         total                   += 0;
+            //     }
+            //     else
+            //     {
+            //         double expected_parity  = 1;
+            //         double d                = ctr_expected_dx - expected;
+
+            //         total                   += std::pow(d - expected_parity, 2);
+            //     }
+            // }
+
+            // return total;
         }
-    
+
+        auto get_score(the_matrix::MatrixInterface& matrix) -> eval_float_t
+        {
+            std::vector<float> coeff_vec        = stdx::to_castable_vector_initializer(matrix.get_coefficient_vector());
+            size_t hit                          = 0u;
+            size_t total                        = 0u;
+
+            for (const Projection& projection: this->training_pair_vec)
+            {
+                float expected          = projection.y;
+                float counter_expected  = (expected == 1) ? 0: 1;
+                float actual            = this->projector->project(projection.x.data(), projection.x.size(),
+                                                                   coeff_vec.data(), coeff_vec.size());
+
+                float expected_dx       = std::abs(actual - expected);
+                float ctr_expected_dx   = std::abs(actual - counter_expected);
+
+                if (expected_dx < ctr_expected_dx)
+                {
+                    hit += 1;
+                }
+                
+                total += 1;
+            }
+
+            return static_cast<eval_float_t>(hit) / total;
+        }
+
     private:
         
         auto mean_sqrt(const std::vector<float>& lhs,
@@ -767,11 +891,12 @@ class PointPullMatrixEvaluator: public virtual matrix_evaluator::MatrixEvaluator
                 throw std::invalid_argument("bad operation, mismatch evaluation dimension");
             }
 
-            double total    = 0;
+            const double e_factor   = 0.004;
+            double total            = 0;
 
             for (size_t i = 0u; i < lhs.size(); ++i)
             {
-                total += std::pow(lhs[i] - rhs[i], 2);
+                total += std::pow(lhs[i] - rhs[i], 2) / std::exp(i * e_factor);
             }
             
             if (lhs.size() != 0u)
@@ -818,6 +943,30 @@ void initialize_concurrency_base()
     async_x::init(8u, 32u);
 }
 
+//I've thought very very hard about the hinge of combinables
+
+//we previously thought that addition would distribute the loads, but that was not the case in our equation
+//so unless that we could use addition to uniformly distribute the logit loads, additions would not be of use in our particular use case
+//Rungee phenomenon would kick in and we'd be way off course
+
+//so the only hinge left is interpolation, and overlapped interpolations (according to the overlap definition that we defined yesterday) do not make any sense either in our perfect reduction sense of word_test_dp
+    //such is that lhs contains 50 contributable words, rhs contains 50 contributable words, and the combination is 50x50 == 2500 contributable words
+    //as opposed to lhs contains 1 contributable word, rhs contains 2499 contributable words, then we are ... very skewed
+    //so how precisely do we counter this skew scenerio?
+    //would you say that we'd AVL tree rebalancing of words?
+    //or you would take a more generic approach to this matter
+
+//because the only thing that hinders us is the density at the root, not the overlapped semantic built up
+
+//I said that maybe, maybe that overlapped semantic built up could be of use in the sense of building intermediate layers to represent the root better
+//that's the case in our matrix equation
+
+//so the only answer left is to fatten the unit, 1 logit -> 2 logits, and use interpolation 2 o 2 -> 1
+//or fatten the unit, 1 logit -> 4 logits, and use interpolation 4 o 4 -> 1
+
+//ok, we are running huge tests, let's see if we can compress 1% of training data, we'd try to memorize all of the intraday, then'd move to the hourly and minute and second prediction
+//if we can punch 90% accuracy @ 1% of actual training data, we are fine
+
 void run_test()
 {
     const float DISCRETIZATION_VALUE    = 0.08;
@@ -829,6 +978,33 @@ void run_test()
     const double MAX_ROOT_WEIGHT        = 0.98;
 
     std::vector<Projection> projection_vec          = extract_training_data();
+
+    {
+        size_t up_counter       = 0u;
+        size_t total_counter    = projection_vec.size();
+
+        for (const auto& projection: projection_vec)
+        {
+            up_counter += projection.y == 1;
+        }
+
+        std::cout << "up > " << up_counter << " total > " << total_counter << "\n";
+    }
+
+    std::vector<Projection> test_projection_vec     = extract_test_data();
+
+
+    {
+        size_t up_counter       = 0u;
+        size_t total_counter    = test_projection_vec.size();
+
+        for (const auto& projection: test_projection_vec)
+        {
+            up_counter += projection.y == 1;
+        }
+
+        std::cout << "up > " << up_counter << " total > " << total_counter << "\n";
+    }
 
     std::unique_ptr<matrix_optimizer_subsystem::CoordinatedSearchOptimizerEngine> optimizer = get_optimizer();
     std::vector<tensor_std_float_t> tensor_vec                                              = std::vector<tensor_std_float_t>(get_binary_unf_interpolated_projection_size(projection_vec.front().x.size(),
@@ -847,22 +1023,46 @@ void run_test()
                                                                                                                               SEMANTIC_SZ);
 
     std::unique_ptr<PointPullMatrixEvaluator> matrix_evaluator                              = std::make_unique<PointPullMatrixEvaluator>(projection_vec, std::move(projector));
+
+    std::unique_ptr<SomeProjector> projector_eval                                           = std::make_unique<SomeProjector>(0,
+                                                                                                                              DISCRETIZATION_VALUE * SEMANTIC_SZ,
+                                                                                                                              SEMANTIC_SZ);
+
+    std::unique_ptr<PointPullMatrixEvaluator> matrix_evaluator_eval                         = std::make_unique<PointPullMatrixEvaluator>(test_projection_vec, std::move(projector_eval));
+
     common_exception::CancellationToken cancellation_token                                  = {};
 
     {
         double optimized_deviation  = matrix_evaluator->get_deviation(*matrix);
+        double score                = matrix_evaluator->get_score(*matrix);
 
         std::cout << "i > " << -1 << " deviation > " << optimized_deviation << "\n";
+        std::cout << "i > " << -1 << " score > " << score << "\n";
+
+        double optimized_deviation_eval = matrix_evaluator_eval->get_deviation(*matrix);
+        double score_eval               = matrix_evaluator_eval->get_score(*matrix);
+
+        std::cout << "i > " << -1 << " deviation_eval > " << optimized_deviation_eval << "\n";
+        std::cout << "i > " << -1 << " score_eval > " << score_eval << "\n";
     }
 
     for (size_t i = 0u; i < EPOCH_SZ; ++i)
     {
         matrix                      = optimizer->optimize(*matrix, *matrix_evaluator, cancellation_token);
         double optimized_deviation  = matrix_evaluator->get_deviation(*matrix);
+        double score                = matrix_evaluator->get_score(*matrix);
+
         current_root_weight         *= 2;
         current_root_weight         = std::min(current_root_weight, MAX_ROOT_WEIGHT);
 
         std::cout << "i > " << i << " deviation > " << optimized_deviation << "\n";
+        std::cout << "i > " << i << " score > " << score << "\n";
+
+        double optimized_deviation_eval = matrix_evaluator_eval->get_deviation(*matrix);
+        double score_eval               = matrix_evaluator_eval->get_score(*matrix);
+
+        std::cout << "i > " << i << " deviation_eval > " << optimized_deviation_eval << "\n";
+        std::cout << "i > " << i << " score_eval > " << score_eval << "\n";
     }
 }
 

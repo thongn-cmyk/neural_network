@@ -253,6 +253,7 @@ namespace cosine_recommender_machine
             RadianCoordinateCosineRandomizer base;
             conventional_randomizer::ApplicationRandomizerObject focal_randomizer;
             conventional_randomizer::RandomizerObject randomizer;
+            conventional_randomizer::RangeRandomizerObject range_randomizer;
 
             static inline constexpr size_t MAX_ACTIVATION_SZ        = size_t{1} << 16;
             static inline constexpr size_t MAX_DISCRETIZATION_COUNT = size_t{1} << 16;
@@ -273,8 +274,7 @@ namespace cosine_recommender_machine
 
                 size_t tentative_max_discretization_sz  = vec.size() / MAX_DISCRETIZATION_COUNT + size_t{vec.size() % MAX_DISCRETIZATION_COUNT != 0u};
                 size_t max_discretization_sz            = std::clamp(tentative_max_discretization_sz, size_t{1}, vec.size());
-
-                size_t discretization_sz;
+                size_t discretization_sz                = {};
 
                 if (this->randomizer.flip_a_coin())
                 {
@@ -282,7 +282,8 @@ namespace cosine_recommender_machine
                 }
                 else
                 {
-                    discretization_sz = std::clamp(static_cast<size_t>(this->focal_randomizer.randomize_percentage_focal() * vec.size()), size_t{1}, vec.size());
+                    size_t tentative_sz = this->range_randomizer.randomize_range(vec.size() + 1u);
+                    discretization_sz   = std::clamp(tentative_sz, size_t{1}, vec.size());
                 }
 
                 discretization_sz           = std::min(max_discretization_sz, discretization_sz);
@@ -295,7 +296,8 @@ namespace cosine_recommender_machine
                 }
                 else
                 {
-                    activation_count = std::min(std::min(static_cast<size_t>(this->focal_randomizer.randomize_percentage_focal() * discretization_count), discretization_count), MAX_ACTIVATION_SZ);
+                    size_t tentative_sz = this->range_randomizer.randomize_range(discretization_count + 1u);
+                    activation_count    = std::min(std::min(tentative_sz, discretization_count), MAX_ACTIVATION_SZ);
 
                     if (this->randomizer.flip_a_coin())
                     {
