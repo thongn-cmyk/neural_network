@@ -240,6 +240,22 @@ auto embed_price_vector(const std::vector<double>& vec) -> double
     return static_cast<double>(suffix_idx) / (suffix_sz - 1u);
 }
 
+auto embed_price2_vector(const std::vector<double>& vec) -> double
+{
+    auto [_, vec2]      = suffix_lossless_compress(vec);
+    auto [suffix, __]   = suffix_lossless_compress(vec2);
+
+    size_t suffix_sz    = suffix_array_enumeration_size(suffix.size());
+    size_t suffix_idx   = suffix_array_to_suffix_index(suffix);
+
+    if (suffix_sz == 1u)
+    {
+        return 1u;
+    }
+
+    return static_cast<double>(suffix_idx) / (suffix_sz - 1u);
+}
+
 struct Ticker
 {
     std::string ticker_id;
@@ -396,6 +412,7 @@ auto get_projection(const std::vector<Ticker>& historical_data,
         }
 
         x.push_back(embed_price_vector(low_vec));
+        x.push_back(embed_price2_vector(low_vec));
     }
 
     float y = {};
@@ -434,7 +451,7 @@ auto extract_training_data() -> std::vector<Projection>
     const size_t FOCAL_INITIAL_DAY_SZ               = 4;
     const size_t FOCAL_EXPONENTIAL_FACTOR           = 2;
     const size_t FOCAL_INTERVAL_SZ                  = 4;
-    const size_t ITERABLE_DAY_SZ                    = 2000;
+    const size_t ITERABLE_DAY_SZ                    = 300;
 
     const std::vector<std::string> TICKER_VEC       = 
     {
@@ -651,15 +668,18 @@ auto binary_unf_interpolated_project(const float * x_arr, size_t x_arr_sz,
     float global_interval               = x_last - x_first;
     float discretization_interval       = global_interval / discretization_sz;    
     size_t mid_sz                       = x_arr_sz / 2;
+    size_t nxt_discretization_sz        = std::max(static_cast<size_t>(discretization_sz / 2),
+                                                   size_t{4});
+
     // const size_t saved_coeff_arr_offset = coeff_arr_offset;
 
     float lhs                           = binary_unf_interpolated_project(x_arr, mid_sz,
-                                                                          x_first, x_last, discretization_sz,
+                                                                          x_first, x_last, nxt_discretization_sz,
                                                                           coeff_arr, coeff_arr_offset, coeff_arr_cap);
 
     // coeff_arr_offset                    = saved_coeff_arr_offset;
     float rhs                           = binary_unf_interpolated_project(std::next(x_arr, mid_sz), mid_sz,
-                                                                          x_first, x_last, discretization_sz,
+                                                                          x_first, x_last, nxt_discretization_sz,
                                                                           coeff_arr, coeff_arr_offset, coeff_arr_cap);
 
     if (std::isnan(lhs))
@@ -874,7 +894,7 @@ class PointPullMatrixEvaluator: public virtual matrix_evaluator::MatrixEvaluator
                 {
                     hit += 1;
                 }
-                
+
                 total += 1;
             }
 
@@ -891,7 +911,7 @@ class PointPullMatrixEvaluator: public virtual matrix_evaluator::MatrixEvaluator
                 throw std::invalid_argument("bad operation, mismatch evaluation dimension");
             }
 
-            const double e_factor   = 0.004;
+            const double e_factor   = 0.01;
             double total            = 0;
 
             for (size_t i = 0u; i < lhs.size(); ++i)
@@ -916,8 +936,8 @@ auto get_optimizer() -> std::unique_ptr<matrix_optimizer_subsystem::CoordinatedS
         {
             .matrix_cache_map_cap                       = size_t{1} << 4,
             .time_machine_cache_map_cap                 = size_t{1} << 4,
-            .optimization_epoch_sz                      = 128ULL,
-            .optimization_step_sz                       = 32ULL,
+            .optimization_epoch_sz                      = 1ULL,
+            .optimization_step_sz                       = 4096ULL,
             .optimization_loop_sz                       = 8ULL
         }
     );
@@ -967,9 +987,69 @@ void initialize_concurrency_base()
 //ok, we are running huge tests, let's see if we can compress 1% of training data, we'd try to memorize all of the intraday, then'd move to the hourly and minute and second prediction
 //if we can punch 90% accuracy @ 1% of actual training data, we are fine
 
+//Ok, I have tested all weekends
+
+//this is my give: we have reached saturation
+
+//level 2 suffix compression yields better result
+//word per slot == 4 - 8 => optimal 
+
+//best operable window => 1-2 months, more information does not yield better results
+
+//I have derived from theoretical limits of information compression (or entropy)
+//that this is optimal
+
+//for, we have constructed the base to be repeating of information => a recursive transformation of the root should handle the overlapped information
+//each root should be derived from 2, without loss of generality, immediate childs via some operation, and those two childs must be of optimal form in terms of information over the logit range
+//optimal form means that it represents the base logit via a compacted form and not <size_a> * <size_b> * <size_c> * ...
+//we can prove this via contradiction
+    //assume that the two childs are not in "optimal" form, then ...
+
+//if there is an optimizable, we should look at
+
+//(1): decay of slot size from base to top
+//(2): balance of base data engineer
+//(3): decay of data relevancy
+//(4): data relevancy reordering
+//(5): set of tradables
+
+//today we are writing a generic program specifically to tune those informations
+    //probably A* search
+
+//aiming for second window
+//we'd test on 3 seconds window
+//we'd get real second data from polygon
+//let's see if we could reach 60-70% on level 1 2 3 data
+
+//we are hopeful because we've seen improvement and confident level to be of reasonable range
+//we might play confident plays, but unit size must be reasonable across the confidants
+
+//I'll get to the bottom of this trade program to get out of this financial crisis, trust me
+
+//today we'd fine tune for 1 minute window, we'd try to bring the deviation down in one shot training
+//the best I've got is 0.189 for 1 day prediction, It's A Lot, I have increased the number of projection devices -> size_t{1} << 8, window to size_t{1} << 16
+//suffix compression of size 4
+//2 level suffix
+//most important twist, we'd leverage meme coins and OTC, our sole and only North in the underworld
+
+//can we do this?
+//it's the best that theoretical information could give, we'd hope that we can punch through this within 1 minute window before inference, I'm serious
+
+//what I also have observed is that these tickers are bounded by strings
+
+//we have the SPY string (OK)
+//we have the QQQ string (boost of SPY but in tech sector)
+//we need greed play
+//sympathy play
+//fear play
+//sector play
+//trait play
+//fundamental play
+//news play (maybe not), I had been up countless of nights to catch the news, yes it can be promising, because most major price moves are not in the hours, people don't like it to be in the hour, so pre-market was the low-float betting ground
+
 void run_test()
 {
-    const float DISCRETIZATION_VALUE    = 0.08;
+    const float DISCRETIZATION_VALUE    = 0.06;
     const float ACCEPTANCE_WIDTH        = 0.04;
     const size_t SEMANTIC_SZ            = 16;
     const size_t EPOCH_SZ               = size_t{1} << 8;

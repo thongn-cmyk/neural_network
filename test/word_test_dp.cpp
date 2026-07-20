@@ -530,9 +530,9 @@ auto get_optimizer() -> std::unique_ptr<matrix_optimizer_subsystem::CoordinatedS
         {
             .matrix_cache_map_cap                       = randomize_optional_int<uint64_t>(0, size_t{1} << 4),
             .time_machine_cache_map_cap                 = randomize_optional_int<uint64_t>(0, size_t{1} << 4),
-            .optimization_epoch_sz                      = 128ULL,
-            .optimization_step_sz                       = 4ULL,
-            .optimization_loop_sz                       = 2ULL
+            .optimization_epoch_sz                      = 1ULL,
+            .optimization_step_sz                       = 4096ULL,
+            .optimization_loop_sz                       = 8ULL
         }
     );
 }
@@ -551,7 +551,7 @@ void run_test()
     std::vector<tensor_std_float_t> tensor_vec                                              = std::vector<tensor_std_float_t>(get_binary_unf_interpolated_projection_size(projection_vec.front().x.size(),
                                                                                                                                                                           0,
                                                                                                                                                                           DISCRETIZATION_VALUE * SEMANTIC_SZ,
-                                                                                                                                                                          SEMANTIC_SZ * 4),
+                                                                                                                                                                          SEMANTIC_SZ ),
                                                                                                                               0.f);
 
     std::cout << "projection vector size > " << projection_vec.size() << "\n";
@@ -560,7 +560,7 @@ void run_test()
     std::shared_ptr<the_matrix::MatrixInterface> matrix                                     = std::make_unique<SomeMatrix>(std::move(tensor_vec));
     std::unique_ptr<SomeProjector> projector                                                = std::make_unique<SomeProjector>(0,
                                                                                                                               DISCRETIZATION_VALUE * SEMANTIC_SZ,
-                                                                                                                              SEMANTIC_SZ * 4);
+                                                                                                                              SEMANTIC_SZ);
 
     std::unique_ptr<PointPullMatrixEvaluator> matrix_evaluator                              = std::make_unique<PointPullMatrixEvaluator>(projection_vec, std::move(projector));
     common_exception::CancellationToken cancellation_token                                  = {};
