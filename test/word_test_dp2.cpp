@@ -254,37 +254,50 @@ struct insufficient_coefficient_size: std::invalid_argument
 };
 
 auto two_dimensional_interpolated_project(float x0, float x1,
-                                          float a, float b, float c) -> float
+                                          size_t x0_slot,
+                                          size_t x1_slot,
+                                          size_t discretization_sz,
+                                          const float * coeff_arr, size_t& coeff_arr_offset, size_t coeff_arr_cap) -> float
 {
-    return x0 * a + x1 * b + c;
+    using namespace taylor_matrix::host_matrix::taylor_projection;
+
+    if (x0_slot >= discretization_sz)
+    {
+        throw std::invalid_argument("bad x0 slot, >= discretization size");
+    }
+
+    if (x1_slot >= discretization_sz)
+    {
+        throw std::invalid_argument("bad x1 slot, >= discretization size");
+    }
+
+    size_t total_slot_sz        = discretization_sz * discretization_sz;
+    size_t coeff_per_slot_sz    = get_multivariate_taylor_projection_coefficient_size(2u, 2u);
+    size_t required_sz          = coeff_per_slot_sz * total_slot_sz;
+    size_t next_offset          = coeff_arr_offset + required_sz;
+
+    if (next_offset > coeff_arr_cap)
+    {
+        throw insufficient_coefficient_size();
+    }
+
+    size_t proj_slot    = x0_slot * discretization_sz + x1_slot;
+    size_t proj_offset  = coeff_arr_offset + proj_slot * coeff_per_slot_sz;
+
+    float x_arr[]{x0, x1};
+
+    float rs            = multivariate_taylor_project(x_arr, stdx::to_size_container(std::integral_constant<size_t, 2u>{}),
+                                                      stdx::to_size_container(std::integral_constant<size_t, 2u>{}),
+                                                      coeff_arr, proj_offset, coeff_arr_cap);
+
+    coeff_arr_offset    = next_offset;
+
+    return rs;
 }
 
-auto get_deviation(float expected, float actual, float acceptance_width) -> float
-{
-    if (std::isnan(expected))
-    {
-        return expected;
-    }
-
-    if (std::isnan(actual))
-    {
-        return actual;
-    }
-
-    float diff  = std::abs(expected - actual);
-
-    if (diff < acceptance_width)
-    {
-        return 0;
-    }
-
-    return 1;
-}
-
-auto binary_unf_interpolated_deviation_project(const float * x_arr, size_t x_arr_sz,
-                                               float x_next, float acceptance_width,
-                                               float x_first, float x_last, size_t discretization_sz,
-                                               const float * coeff_arr, size_t& coeff_arr_offset, size_t coeff_arr_cap) -> std::pair<float, float>
+auto binary_unf_interpolated_project(const float * x_arr, size_t x_arr_sz,
+                                     float x_first, float x_last, size_t discretization_sz,
+                                     const float * coeff_arr, size_t& coeff_arr_offset, size_t coeff_arr_cap) -> float
 {
     if (x_arr_sz == 0u)
     {
@@ -295,57 +308,48 @@ auto binary_unf_interpolated_deviation_project(const float * x_arr, size_t x_arr
 
     if (x_arr_sz == 1u)
     {
-        return std::make_pair
-        (
-            x_arr[0],
-            get_deviation(x_arr[0], x_next, acceptance_width)
-        );
+        return x_arr[0];
     }
 
     if (std::isnan(x_first))
     {
-        std::abort();
+        throw std::invalid_argument("bad x_first, NaN");
     }
 
     if (std::isnan(x_last))
     {
-        std::abort();
+        throw std::invalid_argument("bad x_last, NaN");
     }
 
     if (x_first >= x_last)
     {
-        std::abort();
+        throw std::invalid_argument("bad interval x_first >= x_last");
     }
 
     if (x_arr_sz % 2u != 0u)
     {
-        std::abort();
+        throw std::invalid_argument("bad x_arr_sz, not multiples of 2");
     }
 
     if (discretization_sz == 0u)
     {
-        std::abort();
+        throw std::invalid_argument("bad discretization size, 0");
     }
 
-    float global_interval               = x_last - x_first;
-    float discretization_interval       = global_interval / discretization_sz;    
-    size_t mid_sz                       = x_arr_sz / 2;
-    // const size_t saved_coeff_arr_offset = coeff_arr_offset;
+    float global_interval           = x_last - x_first;
+    float discretization_interval   = global_interval / discretization_sz;
 
-    auto [lhs, lhs_deviation]           = binary_unf_interpolated_deviation_project(x_arr, mid_sz,
-                                                                                    x_arr[mid_sz], acceptance_width,
-                                                                                    x_first, x_last, discretization_sz,
-                                                                                    coeff_arr, coeff_arr_offset, coeff_arr_cap);
+    float lhs                       = binary_unf_interpolated_project(x_arr, x_arr_sz / 2,
+                                                                      x_first, x_last, discretization_sz,
+                                                                      coeff_arr, coeff_arr_offset, coeff_arr_cap);
 
-    // coeff_arr_offset                    = saved_coeff_arr_offset;
-    auto [rhs, rhs_deviation]           = binary_unf_interpolated_deviation_project(std::next(x_arr, mid_sz), mid_sz,
-                                                                                    x_next, acceptance_width,
-                                                                                    x_first, x_last, discretization_sz,
-                                                                                    coeff_arr, coeff_arr_offset, coeff_arr_cap);
+    float rhs                       = binary_unf_interpolated_project(std::next(x_arr, x_arr_sz / 2), x_arr_sz / 2,
+                                                                      x_first, x_last, discretization_sz,
+                                                                      coeff_arr, coeff_arr_offset, coeff_arr_cap);
 
     if (std::isnan(lhs))
     {
-        return std::make_pair(lhs, lhs);
+        return lhs;
     }
 
     float _lhs                      = std::clamp(lhs, x_first, x_last);
@@ -354,37 +358,18 @@ auto binary_unf_interpolated_deviation_project(const float * x_arr, size_t x_arr
 
     if (std::isnan(rhs))
     {
-        return std::make_pair(rhs, rhs);
+        return rhs;
     }
 
     float _rhs                      = std::clamp(rhs, x_first, x_last);
     size_t tentative_rhs_slot       = (_rhs - x_first) / discretization_interval;
     size_t rhs_slot                 = std::min(tentative_rhs_slot, static_cast<size_t>(discretization_sz - 1u));
 
-    size_t required_sz              = discretization_sz * discretization_sz * 3u;
-    size_t nxt_offset               = coeff_arr_offset + required_sz;
-
-    if (nxt_offset > coeff_arr_cap)
-    {
-        throw insufficient_coefficient_size();
-    }
-
-    size_t flat_slot                = lhs_slot * discretization_sz + rhs_slot;
-    size_t relative_offset          = flat_slot * 3u; 
-    size_t global_offset            = coeff_arr_offset + relative_offset;
-
-    float a                         = coeff_arr[global_offset];
-    float b                         = coeff_arr[global_offset + 1];
-    float c                         = coeff_arr[global_offset + 2];
-
-    float cand_y                    = two_dimensional_interpolated_project(lhs, rhs, a, b, c);
-
-    float root_deviation            = get_deviation(cand_y, x_next, acceptance_width);
-    float total_deviation           = lhs_deviation / 4 + rhs_deviation / 4 + root_deviation;
-
-    coeff_arr_offset                = nxt_offset;
-
-    return std::make_pair(cand_y, total_deviation);
+    return two_dimensional_interpolated_project(lhs, rhs,
+                                                lhs_slot,
+                                                rhs_slot,
+                                                discretization_sz,
+                                                coeff_arr, coeff_arr_offset, coeff_arr_cap);
 }
 
 auto get_binary_unf_interpolated_projection_size(size_t x_arr_sz,
@@ -400,10 +385,9 @@ auto get_binary_unf_interpolated_projection_size(size_t x_arr_sz,
 
         try
         {
-            binary_unf_interpolated_deviation_project(x_vec.data(), x_arr_sz,
-                                                      0, 0,
-                                                      x_first, x_last, discretization_sz,
-                                                      coeff_vec.data(), cur_sz, cur_cap);
+            binary_unf_interpolated_project(x_vec.data(), x_arr_sz,
+                                            x_first, x_last, discretization_sz,
+                                            coeff_vec.data(), cur_sz, cur_cap);
 
             return cur_sz;
         }
@@ -453,48 +437,105 @@ class SomeMatrix: public virtual the_matrix::MatrixInterface
         }
 };
 
-class PointPullMatrixEvaluator: public virtual matrix_evaluator::MatrixEvaluatorInterface
+class SomeProjector
 {
     private:
 
-        std::vector<Projection> training_pair_vec;
-        float acceptance_width;
         float x_first;
         float x_last;
         size_t discretization_sz;
 
     public:
 
+        SomeProjector(float x_first,
+                      float x_last,
+                      size_t discretization_sz): x_first(x_first),
+                                                 x_last(x_last),
+                                                 discretization_sz(discretization_sz){}
+
+        auto project(const float * x_arr, size_t x_arr_sz,
+                     const float * coeff_arr, size_t coeff_arr_cap) -> float
+        {
+            size_t coeff_arr_offset = 0u;
+
+            return binary_unf_interpolated_project(x_arr, x_arr_sz,
+                                                   this->x_first, this->x_last, this->discretization_sz,
+                                                   coeff_arr, coeff_arr_offset, coeff_arr_cap);
+        }
+};
+
+class PointPullMatrixEvaluator: public virtual matrix_evaluator::MatrixEvaluatorInterface
+{
+    private:
+
+        std::vector<Projection> training_pair_vec;
+        std::unique_ptr<SomeProjector> projector;
+
+    public:
+
         PointPullMatrixEvaluator(std::vector<Projection> training_pair_vec,
-                                 float acceptance_width,
-                                 float x_first,
-                                 float x_last,
-                                 size_t discretization_sz): training_pair_vec(std::move(training_pair_vec)),
-                                                            acceptance_width(acceptance_width),
-                                                            x_first(x_first),
-                                                            x_last(x_last),
-                                                            discretization_sz(discretization_sz){}
+                                 std::unique_ptr<SomeProjector> projector): training_pair_vec(std::move(training_pair_vec)),
+                                                                            projector(std::move(projector)){}
 
         auto get_deviation(the_matrix::MatrixInterface& matrix) -> eval_float_t
         {
             std::vector<float> coeff_vec        = stdx::to_castable_vector_initializer(matrix.get_coefficient_vector());
-            float rs                            = 0;
+            std::vector<float> expected_y_vec   = {};
+            std::vector<float> projected_y_vec  = {};
 
             for (const Projection& projection: this->training_pair_vec)
             {
-                size_t coeff_vec_offset = 0u;
+                expected_y_vec.push_back(projection.y);
 
-                auto [y, e] = binary_unf_interpolated_deviation_project(projection.x.data(), projection.x.size(),
-                                                                        projection.y, this->acceptance_width,
-                                                                        this->x_first, this->x_last, this->discretization_sz,
-                                                                        coeff_vec.data(), coeff_vec_offset, coeff_vec.size());
+                float projected_y = this->projector->project(projection.x.data(), projection.x.size(),
+                                                             coeff_vec.data(), coeff_vec.size());
 
-                rs          += e;
+                projected_y_vec.push_back(projected_y);
             }
 
-            return rs;
+            return this->mean_sqrt(projected_y_vec, expected_y_vec);
+        }
+    
+    private:
+        
+        auto mean_sqrt(const std::vector<float>& lhs,
+                       const std::vector<float>& rhs) -> double
+        {
+            if (lhs.size() != rhs.size())
+            {
+                throw std::invalid_argument("bad operation, mismatch evaluation dimension");
+            }
+
+            double total    = 0;
+
+            for (size_t i = 0u; i < lhs.size(); ++i)
+            {
+                total += std::pow(lhs[i] - rhs[i], 2);
+            }
+            
+            if (lhs.size() != 0u)
+            {
+                total /= lhs.size();
+            }
+
+            return total;
         }
 };
+
+auto get_one_shot_optimizer() -> std::unique_ptr<matrix_optimizer_subsystem::CoordinatedSearchOptimizerEngine>
+{
+    return std::make_unique<matrix_optimizer_subsystem::CoordinatedSearchOptimizerEngine>
+    (
+        matrix_optimizer_subsystem::CoordinatedSearchOptimizerEngineConfig
+        {
+            .matrix_cache_map_cap                       = randomize_optional_int<uint64_t>(0, size_t{1} << 4),
+            .time_machine_cache_map_cap                 = randomize_optional_int<uint64_t>(0, size_t{1} << 4),
+            .optimization_epoch_sz                      = 1ULL,
+            .optimization_step_sz                       = 8192ULL,
+            .optimization_loop_sz                       = 8ULL
+        }
+    );
+}
 
 auto get_optimizer() -> std::unique_ptr<matrix_optimizer_subsystem::CoordinatedSearchOptimizerEngine>
 {
@@ -504,40 +545,39 @@ auto get_optimizer() -> std::unique_ptr<matrix_optimizer_subsystem::CoordinatedS
         {
             .matrix_cache_map_cap                       = randomize_optional_int<uint64_t>(0, size_t{1} << 4),
             .time_machine_cache_map_cap                 = randomize_optional_int<uint64_t>(0, size_t{1} << 4),
-            .optimization_epoch_sz                      = 512ULL,
-            .optimization_step_sz                       = 8ULL,
-            .optimization_loop_sz                       = 4ULL
+            .optimization_epoch_sz                      = 128ULL,
+            .optimization_step_sz                       = 32LL,
+            .optimization_loop_sz                       = 8ULL
         }
     );
 }
 
-void run_test()
+void test_generic(const size_t HEIGHT,
+                  const size_t SEMANTIC_SZ,
+                  bool is_by_line_optimizer)
 {
-    const size_t HEIGHT                 = 4;
-    const float DISCRETIZATION_VALUE    = 0.2;
-    const float ACCEPTANCE_WIDTH        = 0.01;
-    const size_t SEMANTIC_SZ            = 2;
-    const size_t EPOCH_SZ               = size_t{1} << 8;
+    const float DISCRETIZATION_VALUE    = 1.0 / SEMANTIC_SZ;
+    const size_t EPOCH_SZ               = size_t{1} << 4;
 
     std::shared_ptr<NodeContainer> node_container   = make_node_container(make_tree(HEIGHT, DISCRETIZATION_VALUE, SEMANTIC_SZ));
     std::vector<Projection> projection_vec          = make_projection(node_container->root);
 
-    std::unique_ptr<matrix_optimizer_subsystem::CoordinatedSearchOptimizerEngine> optimizer = get_optimizer();
+    std::unique_ptr<matrix_optimizer_subsystem::CoordinatedSearchOptimizerEngine> optimizer = is_by_line_optimizer ? get_one_shot_optimizer(): get_optimizer();
     std::vector<tensor_std_float_t> tensor_vec                                              = std::vector<tensor_std_float_t>(get_binary_unf_interpolated_projection_size(projection_vec.front().x.size(),
                                                                                                                                                                           0,
                                                                                                                                                                           DISCRETIZATION_VALUE * SEMANTIC_SZ,
-                                                                                                                                                                          SEMANTIC_SZ),
+                                                                                                                                                                          SEMANTIC_SZ ),
                                                                                                                               0.f);
 
     std::cout << "projection vector size > " << projection_vec.size() << "\n";
     std::cout << "coefficient vector size > " << tensor_vec.size() << "\n";
 
     std::shared_ptr<the_matrix::MatrixInterface> matrix                                     = std::make_unique<SomeMatrix>(std::move(tensor_vec));
-    std::unique_ptr<PointPullMatrixEvaluator> matrix_evaluator                              = std::make_unique<PointPullMatrixEvaluator>(projection_vec,
-                                                                                                                                         ACCEPTANCE_WIDTH,
-                                                                                                                                         0,
-                                                                                                                                         DISCRETIZATION_VALUE * SEMANTIC_SZ,
-                                                                                                                                         SEMANTIC_SZ);
+    std::unique_ptr<SomeProjector> projector                                                = std::make_unique<SomeProjector>(0,
+                                                                                                                              DISCRETIZATION_VALUE * SEMANTIC_SZ,
+                                                                                                                              SEMANTIC_SZ);
+
+    std::unique_ptr<PointPullMatrixEvaluator> matrix_evaluator                              = std::make_unique<PointPullMatrixEvaluator>(projection_vec, std::move(projector));
     common_exception::CancellationToken cancellation_token                                  = {};
 
     {
@@ -553,6 +593,74 @@ void run_test()
 
         std::cout << "i > " << i << " deviation > " << optimized_deviation << "\n";
     }
+}
+
+void test_height_4_slot_2_shot_1()
+{
+    std::cout << "__BEGIN_TEST_HEIGHT_4_SLOT_2_SHOT_1__\n";
+    test_generic(4, 2, true);
+    std::cout << "__END_TEST_HEIGHT_4_SLOT_2_SHOT_1__\n";
+}
+
+void test_height_4_slot_2_shot_many()
+{
+    std::cout << "__BEGIN_TEST_HEIGHT_4_SLOT_2_SHOT_MANY__\n";
+    test_generic(4, 2, false);
+    std::cout << "__END_TEST_HEIGHT_4_SLOT_2_SHOT_MANY__\n";
+}
+
+void test_height_4_slot_4_shot_1()
+{
+    std::cout << "__BEGIN_TEST_HEIGHT_4_SLOT_4_SHOT_1__\n";
+    test_generic(4, 4, true);
+    std::cout << "__END_TEST_HEIGHT_4_SLOT_4_SHOT_1__\n";
+}
+
+void test_height_4_slot_4_shot_many()
+{
+    std::cout << "__BEGIN_TEST_HEIGHT_4_SLOT_4_SHOT_MANY__\n";
+    test_generic(4, 4, false);
+    std::cout << "__END_TEST_HEIGHT_4_SLOT_4_SHOT_MANY__\n";
+}
+
+void test_height_6_slot_2_shot_1()
+{
+    std::cout << "__BEGIN_TEST_HEIGHT_6_SLOT_2_SHOT_1__\n";
+    test_generic(6, 2, true);
+    std::cout << "__END_TEST_HEIGHT_6_SLOT_2_SHOT_1__\n";
+}
+
+void test_height_6_slot_2_shot_many()
+{
+    std::cout << "__BEGIN_TEST_HEIGHT_6_SLOT_2_SHOT_MANY__\n";
+    test_generic(6, 2, false);
+    std::cout << "__END_TEST_HEIGHT_6_SLOT_2_SHOT_MANY__\n";
+}
+
+void test_height_6_slot_4_shot_1()
+{
+    std::cout << "__BEGIN_TEST_HEIGHT_6_SLOT_4_SHOT_1__\n";
+    test_generic(6, 4, true);
+    std::cout << "__END_TEST_HEIGHT_6_SLOT_4_SHOT_1__\n";
+}
+
+void test_height_6_slot_4_shot_many()
+{
+    std::cout << "__BEGIN_TEST_HEIGHT_6_SLOT_4_SHOT_MANY__\n";
+    test_generic(6, 4, false);
+    std::cout << "__END_TEST_HEIGHT_6_SLOT_4_SHOT_MANY__\n";
+}
+
+void run_test()
+{
+    test_height_4_slot_2_shot_1();
+    test_height_4_slot_2_shot_many();
+    test_height_4_slot_4_shot_1();
+    test_height_4_slot_4_shot_many();
+    test_height_6_slot_2_shot_1();
+    test_height_6_slot_2_shot_many();
+    test_height_6_slot_4_shot_1();
+    test_height_6_slot_4_shot_many();
 }
 
 int main()

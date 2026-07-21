@@ -240,20 +240,33 @@ auto embed_price_vector(const std::vector<double>& vec) -> double
     return static_cast<double>(suffix_idx) / (suffix_sz - 1u);
 }
 
-auto embed_price2_vector(const std::vector<double>& vec) -> double
+auto embed_price_vector(const std::vector<double>& vec,
+                        size_t sz) -> std::vector<double>
 {
-    auto [_, vec2]      = suffix_lossless_compress(vec);
-    auto [suffix, __]   = suffix_lossless_compress(vec2);
+    std::vector<double> cur = vec;
+    std::vector<double> rs  = {};
 
-    size_t suffix_sz    = suffix_array_enumeration_size(suffix.size());
-    size_t suffix_idx   = suffix_array_to_suffix_index(suffix);
-
-    if (suffix_sz == 1u)
+    for (size_t i = 0u; i < sz; ++i)
     {
-        return 1u;
+        auto [suffix, leftover] = suffix_lossless_compress(cur);
+        size_t suffix_sz        = suffix_array_enumeration_size(suffix.size());
+        size_t suffix_idx       = suffix_array_to_suffix_index(suffix);
+        cur                     = leftover;
+        double score            = {};
+
+        if (suffix_sz == 1u)
+        {
+            score = 1u;
+        }
+        else
+        {
+            score = static_cast<double>(suffix_idx) / (suffix_sz - 1u);
+        }
+
+        rs.push_back(score);
     }
 
-    return static_cast<double>(suffix_idx) / (suffix_sz - 1u);
+    return rs;
 }
 
 struct Ticker
@@ -411,8 +424,9 @@ auto get_projection(const std::vector<Ticker>& historical_data,
             low_vec.push_back(low);
         }
 
-        x.push_back(embed_price_vector(low_vec));
-        x.push_back(embed_price2_vector(low_vec));
+        auto tmp    = embed_price_vector(low_vec, 2);
+
+        x.insert(x.end(), tmp.begin(), tmp.end());
     }
 
     float y = {};
@@ -451,7 +465,7 @@ auto extract_training_data() -> std::vector<Projection>
     const size_t FOCAL_INITIAL_DAY_SZ               = 4;
     const size_t FOCAL_EXPONENTIAL_FACTOR           = 2;
     const size_t FOCAL_INTERVAL_SZ                  = 4;
-    const size_t ITERABLE_DAY_SZ                    = 300;
+    const size_t ITERABLE_DAY_SZ                    = 1000;
 
     const std::vector<std::string> TICKER_VEC       = 
     {
@@ -459,7 +473,7 @@ auto extract_training_data() -> std::vector<Projection>
         "AAPL",
         "AMZN",
         "LLY",
-        "TSLA"
+        "SPY"
     };
 
     const std::vector<std::string> OTHER_TICKER_VEC =
@@ -529,7 +543,7 @@ auto extract_test_data() -> std::vector<Projection>
         "AAPL",
         "AMZN",
         "LLY",
-        "AMZN"
+        "SPY"
     };
 
     const std::vector<std::string> OTHER_TICKER_VEC =
@@ -624,6 +638,8 @@ auto two_dimensional_interpolated_project(float x0, float x1,
     return x0 * a + x1 * b + c;
 }
 
+//can we limit the search space, somehow?
+
 auto binary_unf_interpolated_project(const float * x_arr, size_t x_arr_sz,
                                      float x_first, float x_last, size_t discretization_sz,
                                      const float * coeff_arr, size_t& coeff_arr_offset, size_t coeff_arr_cap) -> float
@@ -668,16 +684,16 @@ auto binary_unf_interpolated_project(const float * x_arr, size_t x_arr_sz,
     float global_interval               = x_last - x_first;
     float discretization_interval       = global_interval / discretization_sz;    
     size_t mid_sz                       = x_arr_sz / 2;
-    size_t nxt_discretization_sz        = std::max(static_cast<size_t>(discretization_sz / 2),
-                                                   size_t{4});
 
-    // const size_t saved_coeff_arr_offset = coeff_arr_offset;
+    const size_t saved_coeff_arr_offset = coeff_arr_offset;
+
+    size_t nxt_discretization_sz        = discretization_sz;
 
     float lhs                           = binary_unf_interpolated_project(x_arr, mid_sz,
                                                                           x_first, x_last, nxt_discretization_sz,
                                                                           coeff_arr, coeff_arr_offset, coeff_arr_cap);
 
-    // coeff_arr_offset                    = saved_coeff_arr_offset;
+    coeff_arr_offset                    = saved_coeff_arr_offset;
     float rhs                           = binary_unf_interpolated_project(std::next(x_arr, mid_sz), mid_sz,
                                                                           x_first, x_last, nxt_discretization_sz,
                                                                           coeff_arr, coeff_arr_offset, coeff_arr_cap);
@@ -843,35 +859,7 @@ class PointPullMatrixEvaluator: public virtual matrix_evaluator::MatrixEvaluator
                 projected_y_vec.push_back(actual);
             }
 
-            return mean_sqrt(expected_y_vec, projected_y_vec);
-
-            // std::vector<float> coeff_vec        = stdx::to_castable_vector_initializer(matrix.get_coefficient_vector());
-            // eval_float_t total                  = 0;
-
-            // for (const Projection& projection: this->training_pair_vec)
-            // {
-            //     float expected          = projection.y;
-            //     float counter_expected  = (expected == 1) ? 0: 1;
-            //     float actual            = this->projector->project(projection.x.data(), projection.x.size(),
-            //                                                        coeff_vec.data(), coeff_vec.size());
-
-            //     float expected_dx       = std::abs(actual - expected);
-            //     float ctr_expected_dx   = std::abs(actual - counter_expected);
-
-            //     if (expected_dx < ctr_expected_dx)
-            //     {
-            //         total                   += 0;
-            //     }
-            //     else
-            //     {
-            //         double expected_parity  = 1;
-            //         double d                = ctr_expected_dx - expected;
-
-            //         total                   += std::pow(d - expected_parity, 2);
-            //     }
-            // }
-
-            // return total;
+            return (mean_sqrt_w_exp_decay(expected_y_vec, projected_y_vec) + mean_sqrt(expected_y_vec, projected_y_vec)) / 2;
         }
 
         auto get_score(the_matrix::MatrixInterface& matrix) -> eval_float_t
@@ -903,6 +891,35 @@ class PointPullMatrixEvaluator: public virtual matrix_evaluator::MatrixEvaluator
 
     private:
         
+        //this is the only equation that we need assuming infinite number of tx, we dont have infinite number of tx
+
+        auto mean_sqrt_w_exp_decay(const std::vector<float>& lhs,
+                                   const std::vector<float>& rhs) -> double
+        {
+            if (lhs.size() != rhs.size())
+            {
+                throw std::invalid_argument("bad operation, mismatch evaluation dimension");
+            }
+
+            const double e_factor   = 0.1;
+            double total            = 0;
+            double normalization    = 0;
+
+            for (size_t i = 0u; i < lhs.size(); ++i)
+            {
+                double stake    = 1 / std::exp((i / 4) * e_factor);
+                normalization   += stake;
+                total           += std::pow(lhs[i] - rhs[i], 2) * stake;
+            }
+
+            if (normalization != 0)
+            {
+                total   /= normalization;
+            }
+
+            return std::sqrt(total);
+        }
+
         auto mean_sqrt(const std::vector<float>& lhs,
                        const std::vector<float>& rhs) -> double
         {
@@ -911,12 +928,11 @@ class PointPullMatrixEvaluator: public virtual matrix_evaluator::MatrixEvaluator
                 throw std::invalid_argument("bad operation, mismatch evaluation dimension");
             }
 
-            const double e_factor   = 0.01;
-            double total            = 0;
+            double total    = 0;
 
             for (size_t i = 0u; i < lhs.size(); ++i)
             {
-                total += std::pow(lhs[i] - rhs[i], 2) / std::exp(i * e_factor);
+                total += std::pow(lhs[i] - rhs[i], 2);
             }
             
             if (lhs.size() != 0u)
@@ -924,7 +940,7 @@ class PointPullMatrixEvaluator: public virtual matrix_evaluator::MatrixEvaluator
                 total /= lhs.size();
             }
 
-            return total;
+            return std::sqrt(total);
         }
 };
 
@@ -936,8 +952,8 @@ auto get_optimizer() -> std::unique_ptr<matrix_optimizer_subsystem::CoordinatedS
         {
             .matrix_cache_map_cap                       = size_t{1} << 4,
             .time_machine_cache_map_cap                 = size_t{1} << 4,
-            .optimization_epoch_sz                      = 1ULL,
-            .optimization_step_sz                       = 4096ULL,
+            .optimization_epoch_sz                      = 32ULL,
+            .optimization_step_sz                       = 64ULL,
             .optimization_loop_sz                       = 8ULL
         }
     );
@@ -1047,10 +1063,16 @@ void initialize_concurrency_base()
 //fundamental play
 //news play (maybe not), I had been up countless of nights to catch the news, yes it can be promising, because most major price moves are not in the hours, people don't like it to be in the hour, so pre-market was the low-float betting ground
 
+//there are two ways: one is line density, we'd try to encode as much as-information as possible in one line (Saladhadin)
+//                    second is brain density, I'd choose this every time, because we don't know what the lines are about
+
+//I'd try to find the best neural network for this
+//if we can consistently keep the stat @ 70%, we will move on to minute bar, otherwise we are here, I guess
+
 void run_test()
 {
     const float DISCRETIZATION_VALUE    = 0.06;
-    const float ACCEPTANCE_WIDTH        = 0.04;
+    const float ACCEPTANCE_WIDTH        = 0.06;
     const size_t SEMANTIC_SZ            = 16;
     const size_t EPOCH_SZ               = size_t{1} << 8;
 
@@ -1072,7 +1094,6 @@ void run_test()
     }
 
     std::vector<Projection> test_projection_vec     = extract_test_data();
-
 
     {
         size_t up_counter       = 0u;
