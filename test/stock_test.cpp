@@ -459,7 +459,7 @@ auto get_projection(const std::vector<Ticker>& historical_data,
 auto extract_training_data() -> std::vector<Projection>
 {
     const std::string FR_DATE                       = "2013-01-01";
-    const std::string TO_DATE                       = "2023-12-01";
+    const std::string TO_DATE                       = "2023-09-01";
 
     const size_t FOCAL_STEP_SZ                      = 4;
     const size_t FOCAL_INITIAL_DAY_SZ               = 4;
@@ -529,7 +529,7 @@ auto extract_training_data() -> std::vector<Projection>
 auto extract_test_data() -> std::vector<Projection>
 {
     const std::string FR_DATE                       = "2020-01-01";
-    const std::string TO_DATE                       = "2024-01-01";
+    const std::string TO_DATE                       = "2023-10-01";
 
     const size_t FOCAL_STEP_SZ                      = 4;
     const size_t FOCAL_INITIAL_DAY_SZ               = 4;
@@ -979,101 +979,24 @@ void initialize_concurrency_base()
     async_x::init(8u, 32u);
 }
 
-//I've thought very very hard about the hinge of combinables
+//when I did my research about logit density and one value training
+//it just seems that if we hit the logit density just right, we are protected by the one value training, such is that all the things in the universe is aligned just to give us the answer that is correct
+//if we can't hit the logit density, we'd be haywired and just memorize the answer, we now rely on the line density, training friction, all the wrongs and all other things to take the course
 
-//we previously thought that addition would distribute the loads, but that was not the case in our equation
-//so unless that we could use addition to uniformly distribute the logit loads, additions would not be of use in our particular use case
-//Rungee phenomenon would kick in and we'd be way off course
+//that is precisely what's hard with stocks
+//by the time we can understand numbers, the required density has far exceeded the maximum required to be protected by the one value training
 
-//so the only hinge left is interpolation, and overlapped interpolations (according to the overlap definition that we defined yesterday) do not make any sense either in our perfect reduction sense of word_test_dp
-    //such is that lhs contains 50 contributable words, rhs contains 50 contributable words, and the combination is 50x50 == 2500 contributable words
-    //as opposed to lhs contains 1 contributable word, rhs contains 2499 contributable words, then we are ... very skewed
-    //so how precisely do we counter this skew scenerio?
-    //would you say that we'd AVL tree rebalancing of words?
-    //or you would take a more generic approach to this matter
+//can we say that this is just a pyramid with virtual base?
+//yes, it's a binary tree with base that is virtually mapped to a physical actual logit index
 
-//because the only thing that hinders us is the density at the root, not the overlapped semantic built up
-
-//I said that maybe, maybe that overlapped semantic built up could be of use in the sense of building intermediate layers to represent the root better
-//that's the case in our matrix equation
-
-//so the only answer left is to fatten the unit, 1 logit -> 2 logits, and use interpolation 2 o 2 -> 1
-//or fatten the unit, 1 logit -> 4 logits, and use interpolation 4 o 4 -> 1
-
-//ok, we are running huge tests, let's see if we can compress 1% of training data, we'd try to memorize all of the intraday, then'd move to the hourly and minute and second prediction
-//if we can punch 90% accuracy @ 1% of actual training data, we are fine
-
-//Ok, I have tested all weekends
-
-//this is my give: we have reached saturation
-
-//level 2 suffix compression yields better result
-//word per slot == 4 - 8 => optimal 
-
-//best operable window => 1-2 months, more information does not yield better results
-
-//I have derived from theoretical limits of information compression (or entropy)
-//that this is optimal
-
-//for, we have constructed the base to be repeating of information => a recursive transformation of the root should handle the overlapped information
-//each root should be derived from 2, without loss of generality, immediate childs via some operation, and those two childs must be of optimal form in terms of information over the logit range
-//optimal form means that it represents the base logit via a compacted form and not <size_a> * <size_b> * <size_c> * ...
-//we can prove this via contradiction
-    //assume that the two childs are not in "optimal" form, then ...
-
-//if there is an optimizable, we should look at
-
-//(1): decay of slot size from base to top
-//(2): balance of base data engineer
-//(3): decay of data relevancy
-//(4): data relevancy reordering
-//(5): set of tradables
-
-//today we are writing a generic program specifically to tune those informations
-    //probably A* search
-
-//aiming for second window
-//we'd test on 3 seconds window
-//we'd get real second data from polygon
-//let's see if we could reach 60-70% on level 1 2 3 data
-
-//we are hopeful because we've seen improvement and confident level to be of reasonable range
-//we might play confident plays, but unit size must be reasonable across the confidants
-
-//I'll get to the bottom of this trade program to get out of this financial crisis, trust me
-
-//today we'd fine tune for 1 minute window, we'd try to bring the deviation down in one shot training
-//the best I've got is 0.189 for 1 day prediction, It's A Lot, I have increased the number of projection devices -> size_t{1} << 8, window to size_t{1} << 16
-//suffix compression of size 4
-//2 level suffix
-//most important twist, we'd leverage meme coins and OTC, our sole and only North in the underworld
-
-//can we do this?
-//it's the best that theoretical information could give, we'd hope that we can punch through this within 1 minute window before inference, I'm serious
-
-//what I also have observed is that these tickers are bounded by strings
-
-//we have the SPY string (OK)
-//we have the QQQ string (boost of SPY but in tech sector)
-//we need greed play
-//sympathy play
-//fear play
-//sector play
-//trait play
-//fundamental play
-//news play (maybe not), I had been up countless of nights to catch the news, yes it can be promising, because most major price moves are not in the hours, people don't like it to be in the hour, so pre-market was the low-float betting ground
-
-//there are two ways: one is line density, we'd try to encode as much as-information as possible in one line (Saladhadin)
-//                    second is brain density, I'd choose this every time, because we don't know what the lines are about
-
-//I'd try to find the best neural network for this
-//if we can consistently keep the stat @ 70%, we will move on to minute bar, otherwise we are here, I guess
+//I've researched a very very long time if lerp is actually the right way, it is the right way
+//I just want to test a few features before I add more features here
 
 void run_test()
 {
-    const float DISCRETIZATION_VALUE    = 0.06;
-    const float ACCEPTANCE_WIDTH        = 0.06;
-    const size_t SEMANTIC_SZ            = 16;
+    const float DISCRETIZATION_VALUE    = 0.12;
+    const float ACCEPTANCE_WIDTH        = 0.12;
+    const size_t SEMANTIC_SZ            = 8;
     const size_t EPOCH_SZ               = size_t{1} << 8;
 
     const double INITIAL_ROOT_WEIGHT    = 0.01;
@@ -1166,6 +1089,19 @@ void run_test()
         std::cout << "i > " << i << " score_eval > " << score_eval << "\n";
     }
 }
+
+//we can do 80%
+//I tried my best with Zip, but there are secret sauces that I have not read yet
+
+//we'd try this tomorrow
+//I will try to punch 80%, let me see if it is information or training problem or both
+
+//it is not training problem in the sense of search
+//but it is training problem in the sense of what information is more important if I present two identical x
+//so our ground of truth is not the same as we defined in word_test_dp (this is an important point)
+
+//I'd try funnel pattern to widen the logits upper in the binary tree to see if it helps
+//but we'd have to keep the search space in control, otherwise we won't hit optimality
 
 int main()
 {
