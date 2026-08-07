@@ -269,6 +269,41 @@ auto embed_price_vector(const std::vector<double>& vec,
     return rs;
 }
 
+auto get_output_score(const std::vector<double>& vec) -> double
+{
+    if (vec.empty())
+    {
+        throw std::invalid_argument("bad vector size, 0");
+    }
+
+    std::vector<std::pair<size_t, double>> enumerated_vec   = stdx::enumerate_vector(vec);
+
+    std::sort
+    (
+        enumerated_vec.begin(),
+        enumerated_vec.end(),
+        [](const auto& lhs, const auto& rhs)
+        {
+            return lhs.second < rhs.second;
+        }
+    );
+
+    if (enumerated_vec.size() == 1u)
+    {
+        return 1u;
+    }
+
+    for (size_t i = 0u; i < enumerated_vec.size(); ++i)
+    {
+        if (enumerated_vec[i].first + 1 == vec.size())
+        {
+            return static_cast<double>(i) / (vec.size() - 1);
+        }
+    }
+
+    std::abort();
+}
+
 struct Ticker
 {
     std::string ticker_id;
@@ -432,7 +467,7 @@ auto get_projection(const std::vector<Ticker>& historical_data,
     float y = {};
 
     {
-        size_t required_sz  = back_offset + 2u;
+        size_t required_sz  = (back_offset + 1u) + focal_initial_sz;
 
         if (required_sz > historical_data.size())
         {
@@ -440,8 +475,16 @@ auto get_projection(const std::vector<Ticker>& historical_data,
         }
 
         size_t first        = historical_data.size() - required_sz;
-        size_t second       = first + 1;
-        y                   = historical_data[second].l > historical_data[first].l;
+        size_t last         = first + (focal_initial_sz + 1u);
+
+        std::vector<double> low_vec = {};
+
+        for (size_t i = first; i < last; ++i)
+        {
+            low_vec.push_back(historical_data[i].l);
+        }
+
+        y                   = get_output_score(low_vec);
     }
 
     return Projection
@@ -451,21 +494,16 @@ auto get_projection(const std::vector<Ticker>& historical_data,
     };
 }
 
-//there is absolutely no compression if our training data already infers its past
-//so we'd have to increase the randomness of the data, like training for next seconds
-//if this works
-//I could really say that it was lerp
-
 auto extract_training_data() -> std::vector<Projection>
 {
     const std::string FR_DATE                       = "2013-01-01";
-    const std::string TO_DATE                       = "2023-09-01";
+    const std::string TO_DATE                       = "2023-08-01";
 
     const size_t FOCAL_STEP_SZ                      = 4;
     const size_t FOCAL_INITIAL_DAY_SZ               = 4;
     const size_t FOCAL_EXPONENTIAL_FACTOR           = 2;
     const size_t FOCAL_INTERVAL_SZ                  = 4;
-    const size_t ITERABLE_DAY_SZ                    = 1000;
+    const size_t ITERABLE_DAY_SZ                    = 500;
 
     const std::vector<std::string> TICKER_VEC       = 
     {
@@ -478,9 +516,9 @@ auto extract_training_data() -> std::vector<Projection>
 
     const std::vector<std::string> OTHER_TICKER_VEC =
     {
+        "VTI",
         "SPY",
-        "QQQ",
-        "VTI"
+        "QQQ"
     };
 
     std::unordered_map<std::string, std::vector<Ticker>> ticker_data    = load_ticker_data(FR_DATE, TO_DATE); 
@@ -529,7 +567,7 @@ auto extract_training_data() -> std::vector<Projection>
 auto extract_test_data() -> std::vector<Projection>
 {
     const std::string FR_DATE                       = "2020-01-01";
-    const std::string TO_DATE                       = "2023-10-01";
+    const std::string TO_DATE                       = "2023-09-01";
 
     const size_t FOCAL_STEP_SZ                      = 4;
     const size_t FOCAL_INITIAL_DAY_SZ               = 4;
@@ -548,9 +586,9 @@ auto extract_test_data() -> std::vector<Projection>
 
     const std::vector<std::string> OTHER_TICKER_VEC =
     {
+        "VTI",
         "SPY",
-        "QQQ",
-        "VTI"
+        "QQQ"
     };
 
     std::unordered_map<std::string, std::vector<Ticker>> ticker_data    = load_ticker_data(FR_DATE, TO_DATE); 
@@ -952,9 +990,9 @@ auto get_optimizer() -> std::unique_ptr<matrix_optimizer_subsystem::CoordinatedS
         {
             .matrix_cache_map_cap                       = size_t{1} << 4,
             .time_machine_cache_map_cap                 = size_t{1} << 4,
-            .optimization_epoch_sz                      = 32ULL,
-            .optimization_step_sz                       = 64ULL,
-            .optimization_loop_sz                       = 8ULL
+            .optimization_epoch_sz                      = 1024ULL,
+            .optimization_step_sz                       = 4ULL,
+            .optimization_loop_sz                       = 2ULL
         }
     );
 }
@@ -978,19 +1016,6 @@ void initialize_concurrency_base()
     init(Config{worker_info_vec});
     async_x::init(8u, 32u);
 }
-
-//when I did my research about logit density and one value training
-//it just seems that if we hit the logit density just right, we are protected by the one value training, such is that all the things in the universe is aligned just to give us the answer that is correct
-//if we can't hit the logit density, we'd be haywired and just memorize the answer, we now rely on the line density, training friction, all the wrongs and all other things to take the course
-
-//that is precisely what's hard with stocks
-//by the time we can understand numbers, the required density has far exceeded the maximum required to be protected by the one value training
-
-//can we say that this is just a pyramid with virtual base?
-//yes, it's a binary tree with base that is virtually mapped to a physical actual logit index
-
-//I've researched a very very long time if lerp is actually the right way, it is the right way
-//I just want to test a few features before I add more features here
 
 void run_test()
 {
@@ -1047,61 +1072,33 @@ void run_test()
                                                                                                                               SEMANTIC_SZ);
 
     std::unique_ptr<PointPullMatrixEvaluator> matrix_evaluator                              = std::make_unique<PointPullMatrixEvaluator>(projection_vec, std::move(projector));
-
     std::unique_ptr<SomeProjector> projector_eval                                           = std::make_unique<SomeProjector>(0,
                                                                                                                               DISCRETIZATION_VALUE * SEMANTIC_SZ,
                                                                                                                               SEMANTIC_SZ);
 
     std::unique_ptr<PointPullMatrixEvaluator> matrix_evaluator_eval                         = std::make_unique<PointPullMatrixEvaluator>(test_projection_vec, std::move(projector_eval));
-
     common_exception::CancellationToken cancellation_token                                  = {};
 
     {
         double optimized_deviation  = matrix_evaluator->get_deviation(*matrix);
-        double score                = matrix_evaluator->get_score(*matrix);
-
         std::cout << "i > " << -1 << " deviation > " << optimized_deviation << "\n";
-        std::cout << "i > " << -1 << " score > " << score << "\n";
 
         double optimized_deviation_eval = matrix_evaluator_eval->get_deviation(*matrix);
-        double score_eval               = matrix_evaluator_eval->get_score(*matrix);
-
         std::cout << "i > " << -1 << " deviation_eval > " << optimized_deviation_eval << "\n";
-        std::cout << "i > " << -1 << " score_eval > " << score_eval << "\n";
     }
 
     for (size_t i = 0u; i < EPOCH_SZ; ++i)
     {
         matrix                      = optimizer->optimize(*matrix, *matrix_evaluator, cancellation_token);
         double optimized_deviation  = matrix_evaluator->get_deviation(*matrix);
-        double score                = matrix_evaluator->get_score(*matrix);
-
-        current_root_weight         *= 2;
-        current_root_weight         = std::min(current_root_weight, MAX_ROOT_WEIGHT);
 
         std::cout << "i > " << i << " deviation > " << optimized_deviation << "\n";
-        std::cout << "i > " << i << " score > " << score << "\n";
 
         double optimized_deviation_eval = matrix_evaluator_eval->get_deviation(*matrix);
-        double score_eval               = matrix_evaluator_eval->get_score(*matrix);
 
         std::cout << "i > " << i << " deviation_eval > " << optimized_deviation_eval << "\n";
-        std::cout << "i > " << i << " score_eval > " << score_eval << "\n";
     }
 }
-
-//we can do 80%
-//I tried my best with Zip, but there are secret sauces that I have not read yet
-
-//we'd try this tomorrow
-//I will try to punch 80%, let me see if it is information or training problem or both
-
-//it is not training problem in the sense of search
-//but it is training problem in the sense of what information is more important if I present two identical x
-//so our ground of truth is not the same as we defined in word_test_dp (this is an important point)
-
-//I'd try funnel pattern to widen the logits upper in the binary tree to see if it helps
-//but we'd have to keep the search space in control, otherwise we won't hit optimality
 
 int main()
 {

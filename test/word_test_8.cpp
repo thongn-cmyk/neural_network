@@ -373,6 +373,33 @@ auto to_hex_vec(const std::string& s) -> std::string
     return rs;
 }
 
+auto from_hex_vec(const std::string& s) -> std::string
+{
+    assert(s.size() % 2 == 0);
+
+    std::string rs{};
+    rs.reserve(s.size() / 2);
+
+    auto nibble = [](char c) -> uint8_t
+    {
+        if (c >= '0' && c <= '9') return static_cast<uint8_t>(c - '0');
+        if (c >= 'a' && c <= 'f') return static_cast<uint8_t>(c - 'a' + 10);
+        if (c >= 'A' && c <= 'F') return static_cast<uint8_t>(c - 'A' + 10);
+        throw std::invalid_argument("invalid hex character");
+    };
+
+    for (std::size_t i = 0; i < s.size(); i += 2)
+    {
+        uint8_t lo = nibble(s[i]);
+        uint8_t hi = nibble(s[i + 1]);
+        uint8_t byte = static_cast<uint8_t>((hi << 4) | lo);
+
+        rs.push_back(std::bit_cast<char>(byte));
+    }
+
+    return rs;
+}
+
 auto tokenize(const std::string& s,
               size_t hex_window_sz,
               size_t token_sz) -> std::vector<Token>
@@ -538,15 +565,15 @@ auto binary_unf_interpolated_deviation_project(const float * x_arr, size_t x_arr
     float global_interval               = x_last - x_first;
     float discretization_interval       = global_interval / discretization_sz;    
     size_t mid_sz                       = x_arr_sz / 2;
-    const size_t saved_coeff_arr_offset = coeff_arr_offset;
+    // const size_t saved_coeff_arr_offset = coeff_arr_offset;
 
     auto [lhs, lhs_deviation]           = binary_unf_interpolated_deviation_project(x_arr, mid_sz,
-                                                                                    x_arr[mid_sz], acceptance_width,
+                                                                                    x_next, acceptance_width,
                                                                                     x_first, x_last, discretization_sz,
                                                                                     coeff_arr, coeff_arr_offset, coeff_arr_cap,
                                                                                     root_weight);
 
-    coeff_arr_offset                    = saved_coeff_arr_offset;
+    // coeff_arr_offset                    = saved_coeff_arr_offset;
     auto [rhs, rhs_deviation]           = binary_unf_interpolated_deviation_project(std::next(x_arr, mid_sz), mid_sz,
                                                                                     x_next, acceptance_width,
                                                                                     x_first, x_last, discretization_sz,
@@ -759,9 +786,9 @@ void run_test()
     const size_t TEST_SZ                = size_t{1} << 11;
     const size_t WINDOW_SZ              = 128u;
 
-    const float DISCRETIZATION_VALUE    = 0.02;
+    const float DISCRETIZATION_VALUE    = 0.10;
     const float ACCEPTANCE_WIDTH        = 0.04;
-    const size_t SEMANTIC_SZ            = 40;
+    const size_t SEMANTIC_SZ            = 10;
     const size_t EPOCH_SZ               = size_t{1} << 8;
 
     const double INITIAL_ROOT_WEIGHT    = 0.01;
